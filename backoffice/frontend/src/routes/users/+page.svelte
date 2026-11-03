@@ -36,10 +36,11 @@
 		table: 'entries',
 		load: async () => {
 			const ids = (await listAllKeys(userId)).map((key) => key.id);
-			return ids.length ? listEntries({ keyIds: ids, limit: 25 }) : [];
+			return listEntries({ keyIds: ids, openedBy: userId, limit: 25 });
 		},
 		map: toEntry,
-		accept: (entry) => (keys.items ?? []).some((key) => key.id === entry.keyId),
+		accept: (entry) =>
+			entry.openedBy === userId || (keys.items ?? []).some((key) => key.id === entry.keyId),
 		sort: (a, b) => b.timestamp.getTime() - a.timestamp.getTime(),
 		limit: 25
 	});
@@ -124,7 +125,9 @@
 						<ActivityRow
 							{entry}
 							{now}
-							label={(entry.keyId && serialByKey.get(entry.keyId)) || 'Deleted key'}
+							label={entry.openedBy
+								? 'Web UI'
+								: (entry.keyId && serialByKey.get(entry.keyId)) || 'Deleted key'}
 						/>
 					</div>
 				{:else}

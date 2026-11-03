@@ -19,7 +19,8 @@ export type UserSummary = { id: string; email: string; blocked: boolean };
 export type KeySummary = {
 	id: string;
 	userId: string;
-	serialNumber: string;
+	/** Null for a virtual key: it has no tag. */
+	serialNumber: string | null;
 	notBefore: Date;
 	expiresAt: Date;
 	disabled: boolean;
@@ -32,14 +33,17 @@ export type KeyStatus = 'active' | 'disabled' | 'expired' | 'pending';
 export type Key = {
 	id: string;
 	user: KeyUser;
-	serialNumber: string;
+	serialNumber: string | null;
 	notBefore: Date;
 	expiresAt: Date;
 	issuedAt: Date;
 	issuedBy: string;
 	disabled: boolean;
+	serialReleased: boolean;
 	jwt: string;
 	v1: boolean;
+	// Signed with RSA (RS256) rather than the legacy shared secret.
+	v2: boolean;
 };
 
 export type Entry = {
@@ -49,8 +53,22 @@ export type Entry = {
 	reason?: FailReason;
 	timestamp: Date;
 	serialNumberFromTag?: string;
+	/** Set when an admin opened the door from the web UI: who gave the command. */
+	openedBy: string | null;
 };
 
 export type UserOption = { value: string; label: string };
 
-export type CurrentUser = { id: string; email: string; nickname: string };
+export type CurrentUser = {
+	id: string;
+	email: string;
+	nickname: string;
+	/** Admins manage keys; everyone else sees and disables their own. */
+	isAdmin: boolean;
+	/** An admin, or a member holding an active key. */
+	canUnlock: boolean;
+	/** Set while an email change waits for its confirmation link. */
+	pendingEmail?: string;
+	createdAt: Date;
+	lastSignInAt?: Date;
+};

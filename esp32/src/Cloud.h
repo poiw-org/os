@@ -1,41 +1,60 @@
-// The door's connection to Supabase.
+// The door's connection to Supabase, in three parts that never wait for each other:
 //
-// While healthy the door holds one realtime websocket (a Phoenix channel, `door:<id>`) on which it
-// receives key changes (postgres_changes on public.keys) and force-open commands (broadcast).
-// To keep memory use flat, one TLS session is used at a time, so REST work (token refresh, uploading the event
-// journal, resyncing the blacklist) happens in short maintenance windows when no one is using the
-// door: the websocket is closed, the REST calls run, and the websocket is reopened. A tap never
-// waits for the network; all access decisions are local.
+//  - the realtime task (Realtime.h) holds a websocket on the private channel `door:<id>`, which
+//    carries force-open commands and live key changes;
+//  - the REST task (here) signs in, uploads the event journal and refetches the blacklist over
+//    short TLS sessions of its own, while the websocket stays up;
+//  - loop() only supervises Wi-Fi and collects what the other two report.
 //
-// Every failure ends in a backoff and a retry, and the door keeps working from its local state.
+// So a tap never waits for the network, and a force-open command never waits for an upload, a
+// token refresh or a flash write. All access decisions are local; every failure ends in a backoff
+// and a retry, and the door keeps working from its local state.
+//
+// Two TLS sessions are open at the same time while both tasks work. That costs about 80 KB of
+// heap, which an ESP32 has; Net.cpp refuses a connection that memory would not allow.
 #pragma once
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include "AccessToken.h"
+#include "Backoff.h"
 #include "BlacklistSet.h"
 #include "Clock.h"
+#include "Realtime.h"
 #include "Settings.h"
-#include "WsClient.h"
+#include "SigningKey.h"
 
 class Cloud {
  public:
-	struct Hooks {
-		void (*forceOpen)();  // open the door now
-	};
-
-	Cloud() : ws_(tls_) {}
-	void begin(const Settings& settings, Clock& clock, BlacklistSet& blacklist, Hooks hooks);
-	// `quiet`: the door has been idle, so a maintenance window is acceptable.
-	void service(bool quiet);
-	bool online() const { return joined_; }
+	void begin(const Settings& settings, Clock& clock, BlacklistSet& blacklist, SigningKey& signingKey);
+	// Wi-Fi supervision; cheap, call it every loop.
+	void service();
+	bool online() const { return events_.joined.load(std::memory_order_acquire); }
+	// True once per force-open command received since the last call.
+	bool takeForceOpen() { return events_.forceOpen.exchange(false, std::memory_order_acq_rel); }
+	// Writer mode. A request from the backoffice stays readable until releaseWriteRequest().
+	const RealtimeEvents::WriteRequest* writeRequest() const {
+		return events_.writePending.load(std::memory_order_acquire) ? &events_.write : nullptr;
+	}
+	void releaseWriteRequest() { events_.writePending.store(false, std::memory_order_release); }
+	void setScanSerial(const char* serial) { strlcpy(events_.scanSerial, serial, sizeof(events_.scanSerial)); }
+	bool takeWriteCancel() { return events_.writeCancel.exchange(false, std::memory_order_acq_rel); }
+	// Publishes where the writer session stands; the realtime task reports it to the backoffice.
+	void reportWrite(WriteState s) {
+		events_.writeState.store(s, std::memory_order_release);
+		events_.writeStateSeq.fetch_add(1, std::memory_order_acq_rel);
+	}
 	void printStatus();
 
  private:
-	// Wi-Fi
+	static constexpr size_t kFlushBatch = 8;
+	static constexpr size_t kRecordJson = 400;
+
+	static void runRest(void* self);
+	[[noreturn]] void restLoop();
 	void manageWifi(uint32_t ms);
 	// Session
-	bool ensureSession();
+	void refreshSession(uint32_t ms);
 	bool grantToken(bool useRefresh);
-	bool tokenNeedsRefresh(uint32_t ms) const;
 	// REST
 	// Sends a request and reads the status line and headers. Returns the HTTP status (-1 on a
 	// transport error) with the connection left open at the start of the body; call finish() when
@@ -43,44 +62,44 @@ class Cloud {
 	int request(const char* method, const char* path, const char* body, size_t bodyLen, const char* prefer,
 	            bool authed);
 	void finish() { tls_.stop(); }
-	bool prepareTls();
-	void cycle(uint32_t ms);
 	void noteStatus(int code);
+	bool syncDue(uint32_t ms) const;
 	bool syncBlacklist();
+	bool fetchSigningKey();
 	bool flushJournal();
-	// Realtime
-	bool openRealtime();
-	void dropRealtime(const char* why, bool failure);
-	void pump(uint32_t ms);
-	void onMessage(const char* text, size_t len);
-	void sendHeartbeat();
-	void sendAck(const char* id);
-	bool maintenanceDue(uint32_t ms) const;
-	void backoff(bool permanent);
-	void persistBlacklistIfDirty();
+	void persistBlacklistIfDirty(uint32_t ms);
 
 	const Settings* cfg_ = nullptr;
 	Clock* clock_ = nullptr;
 	BlacklistSet* blacklist_ = nullptr;
-	Hooks hooks_ = {nullptr};
+	SigningKey* signingKey_ = nullptr;
 
+	// Shared with the realtime task.
+	AccessToken token_;
+	RealtimeEvents events_;
+	Realtime realtime_;
+
+	// Owned by the REST task.
 	WiFiClientSecure tls_;
-	WsClient ws_;
-
-	char access_[1400] = {0};
+	TaskHandle_t restTask_ = nullptr;
 	char refresh_[160] = {0};
 	uint32_t refreshAtMs_ = 0;  // when to renew the access token (millis)
 	bool authRejected_ = false;
+	Backoff authBackoff_{3000, 300000};
+	Backoff syncBackoff_{3000, 300000};
+	Backoff journalBackoff_{3000, 300000};
+	Backoff keyBackoff_{3000, 300000};
+	uint32_t keyFetchedMs_ = 0;
+	bool keyFetched_ = false;
+	bool everSynced_ = false;
+	uint32_t lastSyncMs_ = 0;
+	bool dirtySeen_ = false;
+	uint32_t dirtySeenMs_ = 0;
+	BlacklistSet staging_;                                   // a download is built here, then swapped in
+	char header_[2048];                                      // one request's headers
+	char body_[kFlushBatch * kRecordJson + 20];              // one batch of events as JSON
 
-	bool joined_ = false;
+	// Wi-Fi supervision (loop task).
 	bool wifiWasUp_ = false;
 	uint32_t wifiKickMs_ = 0, wifiBeginMs_ = 0;
-	uint32_t nextAttemptMs_ = 0, lastRxMs_ = 0, lastHeartbeatMs_ = 0, lastSyncMs_ = 0;
-	uint32_t syncRetryMs_ = 0, journalRetryMs_ = 0;
-	uint32_t failures_ = 0, ref_ = 0, heartbeatRef_ = 0;
-	bool heartbeatOutstanding_ = false;
-	bool syncDue_ = true, blacklistDirty_ = false;
-	uint32_t lowMemory_ = 0;
-	char recentCommands_[4][40] = {{0}};
-	uint8_t recentNext_ = 0;
 };

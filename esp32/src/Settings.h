@@ -12,7 +12,7 @@ struct Settings {
 	char email[64];         // the door's Supabase user
 	char password[64];
 	char doorId[32];        // row id in public.doors; also the realtime channel name
-	char jwtSecret[129];     // must equal the edge function's JWT_SIGNING_KEY
+	char jwtSecret[129];     // the old JWT_SIGNING_KEY: verifies v1 (HS256) keys only
 	char ntpServer[40];
 };
 

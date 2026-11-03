@@ -4,15 +4,16 @@
 	import { signOut } from '#lib/auth.ts';
 	import type { CurrentUser } from '#lib/types.ts';
 	import Avatar from '#lib/ui/Avatar.svelte';
+	import ForceOpenModal from './ForceOpenModal.svelte';
 	import SettingsModal from './SettingsModal.svelte';
 
 	let { user }: { user: CurrentUser | null } = $props();
 
 	let settingsOpen = $state(false);
+	let forceOpenOpen = $state(false);
 
 	const goToHome = () => (window.location.href = '/');
 	const createKey = () => (window.location.href = '/items/create');
-	const openDoor = () => (window.location.href = '/forceOpen');
 	const logout = async () => {
 		await signOut();
 		window.location.href = '/login';
@@ -34,7 +35,9 @@
 	</a>
 	{#if user}
 		<span class="flex items-center gap-1.5 md:gap-2">
-			<a onclick={openDoor} class="btn"><Fa icon={faDoorOpen} />OPEN DOOR</a>
+			<button type="button" onclick={() => (forceOpenOpen = true)} class="btn"
+				><Fa icon={faDoorOpen} />OPEN DOOR</button
+			>
 			<a onclick={createKey} class="btn btn-primary">+ ISSUE KEY</a>
 			<button
 				type="button"
@@ -49,6 +52,10 @@
 		</span>
 	{/if}
 </header>
+
+{#if user && forceOpenOpen}
+	<ForceOpenModal onclose={() => (forceOpenOpen = false)} />
+{/if}
 
 {#if user && settingsOpen}
 	<SettingsModal {user} onclose={() => (settingsOpen = false)} />

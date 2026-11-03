@@ -7,9 +7,15 @@
 	let { entry, label, now }: { entry: Entry; label: string; now: number } = $props();
 
 	const ok = $derived(entry.type === EntryType.SUCCESSFUL);
+	const web = $derived(entry.openedBy !== null);
 </script>
 
-<a href={resolve(entry.keyId ? `/items?id=${entry.keyId}` : '/')} class="row">
+<a
+	href={resolve(
+		web ? `/users?id=${entry.openedBy}` : entry.keyId ? `/items?id=${entry.keyId}` : '/'
+	)}
+	class="row"
+>
 	<span class="flex min-w-0 items-center gap-3">
 		<span
 			class="h-1.5 w-1.5 shrink-0 rounded-full {ok ? 'bg-green-500' : 'bg-red-500'}"
@@ -17,8 +23,13 @@
 		></span>
 		<span class="flex min-w-0 flex-col">
 			<span class="truncate">{label}</span>
-			<span class="text-xs text-gray-400"
-				>{ok ? 'Opened the door' : (entry.reason ?? 'Denied')}</span
+			<span class="flex items-center gap-1.5 text-xs text-gray-400"
+				>{#if web}<span
+						class="rounded border px-1 font-mono text-[10px] leading-4 tracking-wide text-gray-500"
+						>WEB</span
+					>Opened the door from the web UI{:else}{ok
+						? 'Opened the door'
+						: (entry.reason ?? 'Denied')}{/if}</span
 			>
 		</span>
 	</span>

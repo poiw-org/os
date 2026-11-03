@@ -8,10 +8,12 @@
 #pragma once
 #include <Arduino.h>
 #include <atomic>
+#include <string.h>
 #include <stddef.h>
 #include <stdint.h>
 #include "Jwt.h"
 #include "Pn532.h"
+#include "WriteState.h"
 
 struct TagRead {
 	uint8_t uid[10];
@@ -32,6 +34,20 @@ class Reader {
 	const TagRead* take() const { return full_.load(std::memory_order_acquire) ? &slot_ : nullptr; }
 	void release() { full_.store(false, std::memory_order_release); }
 	bool available() const { return ready_; }
+
+	// Writer mode: the next tag with this UID gets `token` written to it (NDEF text record, as the
+	// backoffice writes it with a phone), then is read back and compared. While armed no tag opens the
+	// door. Returns false while a write is in progress or when the token does not fit a tag.
+	bool arm(const char* token, size_t len, const uint8_t* uid, uint8_t uidLen, uint32_t windowMs);
+	// Scan mode: same flow, but the next tag of any kind just has its UID reported (see scannedUid()).
+	bool armScan(uint32_t windowMs);
+	// The UID of the tag a finished scan saw.
+	uint8_t scannedUid(uint8_t* out) const {
+		memcpy(out, jobUid_, jobUidLen_);
+		return jobUidLen_;
+	}
+	void cancelWrite();
+	WriteState writeState() const { return writeState_.load(std::memory_order_acquire); }
 	void printStatus() const;
 
  private:
@@ -40,6 +56,11 @@ class Reader {
 	bool probe();
 	void poll();
 	void read(const Pn532::Target& target);
+	void write(const Pn532::Target& target);
+	WriteState writeTo(const Pn532::Target& target);
+	WriteState writeType2(const Pn532::Target& target);
+	WriteState writeClassic(const Pn532::Target& target);
+	void finishWrite(WriteState s) { writeState_.store(s, std::memory_order_release); }
 
 	Pn532 pn_;
 	TagRead slot_;
@@ -52,4 +73,13 @@ class Reader {
 	uint32_t lastCheckMs_ = 0;
 	TaskHandle_t task_ = nullptr;
 	uint8_t area_[kAreaBytes];
+
+	// The write job: filled by arm() (loop task) before it publishes Armed, then used only by the reader task.
+	std::atomic<WriteState> writeState_{WriteState::Idle};
+	uint8_t job_[kAreaBytes];
+	size_t jobLen_ = 0;
+	uint8_t jobUid_[10];
+	uint8_t jobUidLen_ = 0;
+	bool scan_ = false;
+	uint32_t jobDeadlineMs_ = 0;
 };

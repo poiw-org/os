@@ -39,9 +39,12 @@ struct Chip {
 	std::vector<uint8_t> uid = {0x13, 0xE8, 0x1A, 0x11};
 	std::vector<uint8_t> ats;
 	uint8_t key[6] = {0xD3, 0xF7, 0xD3, 0xF7, 0xD3, 0xF7};
+	uint8_t keyB[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+	bool authedB = false;
 	bool classic = true;
 	int authedSector = -1;
 	uint8_t flat[4096];          // tag memory: Classic block b at b * 16, Type 2 page p at p * 4
+	bool readOnly = false;       // refuses writes
 	int failExchangeAfter = -1;  // from this many exchanges on, the tag stops answering (pulled away)
 } chip;
 
@@ -91,17 +94,26 @@ void process() {
 			uint8_t status = chip.failExchangeAfter >= 0 && chip.exchanges > chip.failExchangeAfter ? 0x01 : 0x00;
 			std::vector<uint8_t> d;
 			if (status) {
-			} else if (arg.size() >= 3 && arg[1] == 0x60) {  // AUTH_A, block, key, uid
-				bool ok = arg.size() == 13 && !memcmp(&arg[3], chip.key, 6) &&
+			} else if (arg.size() >= 3 && (arg[1] == 0x60 || arg[1] == 0x61)) {  // AUTH_A / AUTH_B, block, key, uid
+				bool b = arg[1] == 0x61;
+				bool ok = arg.size() == 13 && !memcmp(&arg[3], b ? chip.keyB : chip.key, 6) &&
 				          !memcmp(&arg[9], chip.uid.data() + chip.uid.size() - 4, 4);
-				if (ok) chip.authedSector = arg[2] / 4;
-				else status = 0x14;
+				if (ok) {
+					chip.authedSector = arg[2] / 4;
+					chip.authedB = b;
+				} else status = 0x14;
 			} else if (arg.size() == 3 && arg[1] == 0x30) {  // READ
 				if (chip.classic && chip.authedSector != arg[2] / 4) status = 0x01;
 				else {
 					const uint8_t* p = chip.flat + arg[2] * (chip.classic ? 16 : 4);
 					d.assign(p, p + 16);
 				}
+			} else if (arg.size() == 7 && arg[1] == 0xA2 && !chip.classic) {  // WRITE one page
+				if (chip.readOnly) status = 0x01;
+				else memcpy(chip.flat + arg[2] * 4, &arg[3], 4);
+			} else if (arg.size() == 19 && arg[1] == 0xA0 && chip.classic) {  // WRITE one 16-byte block (needs key B)
+				if (chip.authedSector != arg[2] / 4 || !chip.authedB || chip.readOnly) status = 0x01;
+				else memcpy(chip.flat + arg[2] * 16, &arg[3], 16);
 			} else {
 				status = 0x01;
 			}
@@ -247,7 +259,143 @@ static void testReader() {
 	CHECK(tag && tag->uidLen == 7 && chip.exchanges == (int)((n + 15) / 16));  // one 16-byte read per 16 bytes of message
 	reader.release();
 
+	// Writer mode on the same NTAG: the matching tag gets the token and it reads back.
+	reader.release();
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
+	memset(chip.flat, 0, sizeof(chip.flat));
+	chip.flat[12] = 0xE1, chip.flat[13] = 0x10, chip.flat[14] = 0x6D;  // NTAG216 capability container
+	const uint8_t uid7[7] = {0x04, 0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6};
+	const uint8_t other[7] = {0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
+	CHECK(reader.arm(TOKEN, strlen(TOKEN), other, 7, 60000) && reader.writeState() == WriteState::Armed);
+	chip.tagPresent = true;
+	reader.poll();
+	CHECK(reader.writeState() == WriteState::WrongTag && !reader.take());  // wrong tag: told so, door not opened
+	reader.poll();
+	CHECK(reader.writeState() == WriteState::WrongTag);
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
+	CHECK(reader.arm(TOKEN, strlen(TOKEN), uid7, 7, 60000));
+	chip.tagPresent = true;
+	reader.poll();
+	CHECK(reader.writeState() == WriteState::Done && !reader.take());
+	CHECK(!memcmp(chip.flat + 16, msg, n));
+	chip.exchanges = 0;
+	reader.poll();  // still resting on the reader: neither written again nor read as a tap
+	CHECK(!reader.take() && chip.exchanges == 0);
+
+	// Timeout, cancel, a tag too small, a tag that refuses, and a token that cannot be encoded.
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
+	CHECK(reader.arm(TOKEN, strlen(TOKEN), uid7, 7, 1000));
+	g_nowUs += 2000000;
+	reader.poll();
+	CHECK(reader.writeState() == WriteState::Timeout);
+	CHECK(reader.arm(TOKEN, strlen(TOKEN), uid7, 7, 60000));
+	reader.cancelWrite();
+	CHECK(reader.writeState() == WriteState::Cancelled);
+	chip.flat[14] = 0x12;  // NTAG213: 144 bytes
+	char big[600];
+	memset(big, 'A', sizeof(big) - 1);
+	big[sizeof(big) - 1] = 0;
+	CHECK(reader.arm(big, strlen(big), uid7, 7, 60000));
+	chip.tagPresent = true;
+	reader.poll();
+	CHECK(reader.writeState() == WriteState::TooSmall);
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
+	chip.flat[14] = 0x6D;
+	chip.readOnly = true;
+	CHECK(reader.arm(TOKEN, strlen(TOKEN), uid7, 7, 60000));
+	chip.tagPresent = true;
+	reader.poll();
+	CHECK(reader.writeState() == WriteState::Failed);
+	chip.readOnly = false;
+	char huge[Reader::kAreaBytes + 1];
+	memset(huge, 'A', sizeof(huge) - 1);
+	huge[sizeof(huge) - 1] = 0;
+	CHECK(!reader.arm(huge, strlen(huge), uid7, 7, 60000));
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
+	chip.tagPresent = true;
+	chip.flat[12] = 0;  // not NDEF formatted
+	reader.arm(TOKEN, strlen(TOKEN), uid7, 7, 60000);
+	reader.poll();
+	CHECK(reader.writeState() == WriteState::Unsupported);
+	chip.flat[12] = 0xE1;
+	reader.release();
+
+	// MIFARE Classic: an NDEF-formatted card is written with key B and reads back; others are refused.
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
+	resetChip();
+	chip.classic = true;
+	chip.sak = 0x08;
+	chip.uid = {0x13, 0xE8, 0x1A, 0x11};
+	memset(chip.flat, 0, sizeof(chip.flat));
+	CHECK(reader.arm(TOKEN, strlen(TOKEN), chip.uid.data(), 4, 60000));
+	chip.tagPresent = true;
+	reader.poll();
+	CHECK(reader.writeState() == WriteState::Done && !reader.take());
+	CHECK(!memcmp(chip.flat + 4 * 16, msg, 16) && !memcmp(chip.flat + 6 * 16, msg + 32, 16) &&
+	      (n <= 48 || !memcmp(chip.flat + 8 * 16, msg + 48, 16)));  // blocks 4, 5, 6, then past the trailer to 8
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
+	// A card whose key A is not the NDEF key is refused untouched; a token over 45 blocks does not fit.
+	chip.key[0] = 0x00;
+	memset(chip.flat, 0, sizeof(chip.flat));
+	CHECK(reader.arm(TOKEN, strlen(TOKEN), chip.uid.data(), 4, 60000));
+	chip.tagPresent = true;
+	reader.poll();
+	CHECK(reader.writeState() == WriteState::Unsupported && chip.flat[4 * 16] == 0);
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
+	chip.key[0] = 0xD3;
+	char large[Reader::kAreaBytes - 20];
+	memset(large, 'A', sizeof(large) - 1);
+	large[sizeof(large) - 1] = 0;
+	CHECK(reader.arm(large, strlen(large), chip.uid.data(), 4, 60000));
+	chip.tagPresent = true;
+	reader.poll();
+	CHECK(reader.writeState() == WriteState::TooSmall);
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
+
+	// Scan mode reports any tag's UID and does not open the door.
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
+	CHECK(reader.armScan(60000));
+	chip.tagPresent = true;
+	reader.poll();
+	uint8_t scanned[10];
+	CHECK(reader.writeState() == WriteState::Done && !reader.take() && reader.scannedUid(scanned) == 4 &&
+	      !memcmp(scanned, chip.uid.data(), 4));
+
 	// Unsupported tag types (ISO-DEP only) are handed out without a token, not read.
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
 	chip.tagPresent = false;
 	reader.poll();
 	g_nowUs += 700000;

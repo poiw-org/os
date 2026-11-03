@@ -7,7 +7,7 @@ used to keep the device's local state fresh and to report what happened.
 ## How it works
 
 ```
-tag ──► read token ──► verify HS256 signature ──► serial matches? blacklisted? expired? not yet valid?
+tag ──► read token ──► verify signature (v2: RS256 with the public key, v1: HS256) ──► serial matches? blacklisted? expired? not yet valid?
                         (secret from EEPROM)        (clock + blacklist from flash)
                                     │
                               open / deny ──► event appended to a flash journal ──► uploaded when online
@@ -15,9 +15,11 @@ tag ──► read token ──► verify HS256 signature ──► serial match
 
 - **Key tokens.** The `keys` edge function signs a JWT (`sub` user, `jti` key id, `aud` tag serial,
   `iat`/`nbf`/`exp`) that is written to the tag. The door verifies it offline with the shared secret.
-- **Blacklist.** Disabled keys. Fetched in full from `public.door_sync()` on every (re)connect and
-  every 15 minutes, updated live from realtime changes on `public.keys`, and mirrored to flash. Entries
-  drop out once the key would have expired anyway. Up to 200 keys.
+- **Blacklist.** Disabled keys. Fetched in full from `public.door_sync()` at start-up, after every
+  realtime reconnect (at most every 30 s) and every 5 minutes, updated live from realtime changes on
+  `public.keys`, and mirrored to flash. A key from the v1 system is blocked under both its ids, because
+  its card may carry either as the token's `jti`. Entries drop out once the key would have expired
+  anyway. Up to 200 keys.
 - **Clock.** SNTP, or the server time from `door_sync()` when NTP is blocked. A checkpoint is written
   to flash every 10 minutes. After a blackout the door starts from the newest of that checkpoint and
   the firmware build time and counts up from there. That estimate can only lag real time.
@@ -26,7 +28,18 @@ tag ──► read token ──► verify HS256 signature ──► serial match
   acknowledged them; the server ignores ones it already has, so a lost reply is harmless.
 - **Realtime.** One websocket on the private channel `door:<id>`: key changes (postgres_changes) and
   `force_open` commands (broadcast). The door answers `force_open_ack` so the backoffice can tell the
-  user the door really unlocked. Commands are never stored, so one can never fire after an outage.
+  user the door really unlocked, and answers a repeated command again without opening twice. Commands
+  are never stored, so one can never fire after an outage. The connection has a task of its own that
+  sleeps until a frame arrives, so a command reaches the relay within milliseconds, and it is never
+  closed for upkeep: the access token is renewed on the open channel.
+- **Writer mode.** The backoffice's "Write at door" sends `write_card` with a key token. The door only
+  accepts a token it can verify with its own signing secret, then waits 60 s for the tag named in the
+  token's audience (no tap opens the door meanwhile), writes it as an NDEF text record, reads it back
+  and reports `write_card_status` (`ready`, `wrong_tag`, `writing`, `done` or a failure). NFC Forum
+  Type 2 tags (NTAG213 is too small for most keys; use NTAG215/216) and MIFARE Classic cards that are
+  already NDEF-formatted (readable with the NDEF key A; written with key B, the factory default, else
+  key A; a blank card is refused and never touched; only the data blocks are written, no MAD). It beeps the attention tone
+  while waiting, a faster tone while writing, and the happy chord when done.
 - **Account.** The door signs in as a normal Supabase user listed in `public.door_users`. It can read
   keys, call `door_sync()` and `door_log()`, and use its own channel. It cannot read entries, change keys
   or see other tables.
@@ -35,12 +48,12 @@ tag ──► read token ──► verify HS256 signature ──► serial match
 
 | Failure                          | Behaviour                                                                                            |
 | -------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| No Wi-Fi / internet / Supabase   | Taps are decided locally; events queue in flash; retries with exponential backoff (3 s to 5 min).     |
+| No Wi-Fi / internet / Supabase   | Taps are decided locally; events queue in flash. Realtime retries after 1 s, backing off to 30 s; uploads and sign-in back off to 5 min. |
 | Power cut                        | Blacklist, clock checkpoint and journal are restored from flash. Writes are atomic or checksummed.     |
 | Power cut during a write         | Files are replaced via temp file + rename; a torn journal record is detected and repaired at boot.     |
 | Blacklist file corrupt           | Treated as empty and refetched at the next connection. Until then disabled keys still open the door.   |
-| Missed realtime event            | The 15-minute resync and every reconnect reconcile against the server.                                |
-| Half-open connection             | Websocket heartbeat every 25 s; a missing reply forces a reconnect.                                  |
+| Missed realtime event            | Every reconnect and a resync every 5 minutes reconcile against the server.                           |
+| Half-open connection             | Websocket heartbeat every 10 s; no reply within 4 s forces a reconnect.                              |
 | Token expired / revoked          | Refreshed at 75 % of its lifetime; falls back to signing in again.                                   |
 | Server rejects a batch of events | A permanently unacceptable batch (HTTP 400/413/422) is dropped so it cannot block the queue.         |
 | Door account misconfigured       | Logged on the serial console; retries every 5 minutes. The door itself keeps working.                |
@@ -54,9 +67,14 @@ Known limits, by design of the hardware or the protocol:
 - **A deleted key is not blocked.** Disable it first, then delete it (the backoffice warns about this).
 - **Estimated clock.** After a long blackout without network the clock lags: an expired key can
   still work and a freshly activated one can be refused until the first sync.
-- One TLS session is used at a time to keep memory use flat, so uploads and token refreshes happen in
-  short maintenance windows (a few seconds, only when nobody has used the door for 4 s) during which
-  the websocket is closed and reopened.
+- Two TLS sessions are open while the door uploads or renews something (about 80 KB of heap). That is
+  what lets the websocket stay up during upkeep. If memory ever falls too low for a second session the
+  upload waits and `status` counts the refusal; the websocket is served first.
+
+The firmware runs as four tasks: `loop()` (taps, relay, console), the NFC reader, the realtime
+websocket and the REST work (sign-in, event upload, blacklist sync). They share only a few atomic flags
+and three locked objects (the blacklist, the access token and the flash files), and no task waits on a
+network call made by another. `status` shows each task's stack headroom and the lowest free heap seen.
 
 ## Set up
 
@@ -80,6 +98,10 @@ Revoke a door at any time with `delete from public.door_users where ...` or by b
 ```sh
 cp config.example.h config.h   # then edit the pins (GPIO numbers)
 ```
+
+The speaker must be a **passive** buzzer (or piezo): the firmware plays tones on it. A rolled major chord
+sounds while the door is unlocked, a falling minor chord when a key is denied, and a force open from the
+web UI sounds an attention tone for 3 seconds before the relay fires.
 
 `config.h` holds wiring only and is git-ignored. The build stops if `DOOR_PIN` or `SPEAKER` is missing,
 because guessing a relay pin could fire the lock. The PN532 reader (in I2C mode) is wired to SDA 21
@@ -112,7 +134,7 @@ EEPROM. It restarts when you save.
 | Supabase publishable key     | Project Settings > API Keys (`sb_publishable_...` or the legacy anon key)   |
 | Door account email, password | The user you created above                                                  |
 | Door id                      | `main` unless you run several doors                                         |
-| Key signing secret           | Exactly the `JWT_SIGNING_KEY` secret of the `keys` edge function            |
+| Key signing secret           | The old `JWT_SIGNING_KEY`; only for v1 (HS256) keys. v2 keys need no secret |
 | NTP server                   | `pool.ntp.org`                                                              |
 
 ### Console commands
@@ -125,9 +147,19 @@ certificate authority, add the new root there and reflash; until then the door r
 
 ## Tests
 
-The access decision, token verification, blacklist, sync parser, journal format and time helpers are
-portable C++ and are tested on the workstation:
+The access decision, token verification, blacklist, sync parser, journal format and time helpers, the
+websocket framing, the retry backoff, the PN532 driver (against a simulated chip) and the flash
+journal (against an in-memory filesystem) are portable C++ and are tested on the workstation:
 
 ```sh
 make test   # builds host_test/ with the system C++ compiler
 ```
+
+## Key versions
+
+- **v1** keys are HS256 tokens signed with the shared `JWT_SIGNING_KEY`, checked with the signing secret stored on the door.
+- **v2** keys are RS256 tokens. The backoffice derives the key pair from its `RSA_KEY_SEED` secret each time it signs, and the door
+  fetches only the public modulus from the `door-key` edge function after signing in. It is kept in flash, so v2 keys verify offline
+  after the first fetch (it is refreshed every 6 hours). Until it has arrived, a v2 tag is denied with a log line saying so.
+
+The door accepts both. The backoffice issues only v2 keys.

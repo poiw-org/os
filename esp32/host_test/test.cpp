@@ -1,8 +1,13 @@
 // Host-side tests for the portable core. Build and run with `make test`.
 #include <stdio.h>
 #include <string.h>
+#include <string>
+#include <vector>
+#include "../src/AccessToken.h"
 #include "../src/Access.h"
+#include "../src/Backoff.h"
 #include "../src/BlacklistSet.h"
+#include "../src/Chimes.h"
 #include "../src/Crc.h"
 #include "../src/Journal.h"
 #include "../src/Jwt.h"
@@ -11,6 +16,7 @@
 #include "../src/Sha256.h"
 #include "../src/SyncParser.h"
 #include "../src/TimeUtil.h"
+#include "../src/WsFrame.h"
 
 static int failures = 0, checks = 0;
 #define CHECK(cond)                                                       \
@@ -24,6 +30,50 @@ static const char* GOOD = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMTEx
 static const char* WRONG_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJqdGkiOiJhYWFhYWFhYS1iYmJiLWNjY2MtZGRkZC1lZWVlZWVlZWVlZWUiLCJhdWQiOiIwNDphMTpiMjpjMzpkNDplNTpmNiIsImlhdCI6MTcwMDAwMDAwMCwibmJmIjoxNzAwMDAwMTAwLCJleHAiOjE4MDAwMDAwMDB9.lLxc2_l328ekowhAtSiB_7-vZqvL3HCrkw-RRFYu77s";
 static const char* OLD_UID = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJqdGkiOiJhYWFhYWFhYS1iYmJiLWNjY2MtZGRkZC1lZWVlZWVlZWVlZWUiLCJhdWQiOiIweDA0IDB4QTEgMHhCMiAweEMzIiwiaWF0IjoxNzAwMDAwMDAwLCJuYmYiOjE3MDAwMDAxMDAsImV4cCI6MTgwMDAwMDAwMH0.hZ4ahZal44NEg3H-Bn9B-dikNXKTyy8pWzlIaCQsS74";
 static const char* ALG_NONE = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJqdGkiOiJhYWFhYWFhYS1iYmJiLWNjY2MtZGRkZC1lZWVlZWVlZWVlZWUiLCJhdWQiOiIwNDphMTpiMjpjMzpkNDplNTpmNiIsImlhdCI6MTcwMDAwMDAwMCwibmJmIjoxNzAwMDAwMTAwLCJleHAiOjE4MDAwMDAwMDB9.FU4OLZoWDXSTg4lFeDCwW1UFK3yPQIAXQks_ZT7cENM";
+
+static VerifyKeys hsKeys() { return VerifyKeys{(const uint8_t*)SECRET, strlen(SECRET), nullptr}; }
+
+// v2 tokens: RS256 signed with a throwaway 2048-bit key (generated with node's crypto module).
+static const char* RSA_N = "lN-_bUdgw9pu-N_S_sieK3dnECFbyJDfxMERNA3HU26oevw5Hs26vd3dCXCwQEv3B8TzNKIQd011jxiLG0Ey32w3aYQlchX3zsNo8rY0AuB8yq_GmIdDbGEwVvjBwthcCXimvKjxxFt_4xrz3ayWj_x9jiSyDDYgNTwPJPa3EuM-AsJ73b-2y0SrMfwx8U3GYi5i1u5duKmzGqHc5FyoBFFO3dPYHmyucVV2-XgBvC3-YRFUTpqSRUSPSKfqwJt-Pr-2yhSzOwIJqQxZJk5geaLw2F-2f8sxdOBVC4F0sP3_FcWHzhGK0Bi449zJWuz0tHfVoTFUOKVvxdkEvnoIoQ";
+static const char* RSA_OTHER_N = "uHR78K6Zw0tIHEt2-10YqJvNqj-hNmESDfuEYIe5cQ9BQxnTzWj-SbQ0ObrI3rwl0S0jMwx027e-PuUH_qWeq5dL1HwYj2sTFDle7zHgwYTFzY7ujgxiLeBBMo8jcW2KNPOogb8E9al1JgkE_Q3OImEQT0uF2-WytvnSfEhux7TyLQp-FjuTPU8mfm0oreIoS6zPbDLJWj5eWH0bu_mIpYMNEA8lY9gUKWyTKX0-oT_HfEyeyaCaeVT17NtNmpoF7AL1u9PpVH8U5dcUrCtM-1npBBFqk6qeYQnZhgBBSYlas5VOE9HZfOzj5ucvJwt_3zm_08qeBakXbJ6T667lSQ";
+static const char* RSA_GOOD = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJqdGkiOiJhYWFhYWFhYS1iYmJiLWNjY2MtZGRkZC1lZWVlZWVlZWVlZWUiLCJhdWQiOiIwNGExYjJjM2Q0ZTVmNiIsImlhdCI6MTcwMDAwMDAwMCwibmJmIjoxNzAwMDAwMTAwLCJleHAiOjE4MDAwMDAwMDB9.JIxMsTzVzPZEEauQSXUyt_VrvoTy6MDJ_UmN41Vlkifa12fMIucZ5MyaER9Odm3q0UPTIIsj9uBRB9WB2QxuLkitejirK1IYafHvLafYhUcYv79AusViyAN_7VuckN2uL705VC7eftWZC2K6rMnwyitWro1MbJd-llxzOuULseousm-1rADLFz-JuwW-7g8VIm71OGD3IRFhj6xg1Nh11wMIGSqBpQfWvZOkd4mqbx93s7D7skxSR7V-2oCuNQuUOqQUJu50J9EGyQ3vgpAqtPLRcW7NATWw2G5J2Sw9T9yvD87ZJfzMwKofGNwuCcyR0f9yQaiZJYGEOXrI6o6xCQ";
+static const char* RSA_OTHER = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJqdGkiOiJhYWFhYWFhYS1iYmJiLWNjY2MtZGRkZC1lZWVlZWVlZWVlZWUiLCJhdWQiOiIwNGExYjJjM2Q0ZTVmNiIsImlhdCI6MTcwMDAwMDAwMCwibmJmIjoxNzAwMDAwMTAwLCJleHAiOjE4MDAwMDAwMDB9.GJjToRmh4G-QRMB6nFVVPkvUB5FLbNCWPmz-xm5VxxccN6cIxT-DTG-xk6bfu-xoEJ8t3y8CtmlSOeW30KHez7CObflh28Q3qRlbxY_QLyKoVFRrrdN_1N_CdK6t0FWn7wqrjgS9PGw_l92EMAiJPrVC9_jgrT4kp8PJh7S6F7WNFuYD1t4Hta_glL9ZIQx8aK9EANa-YUMa18EFGAiDh23HOJ2iBPDSOS33esgSmc5xE--7N2yjqJ9GVYCC0fjfhqf4RaeA092RRxchZjsrocYiRMQq7T4FfW3nN5EBtu0BQunWYxoQ1O5j-IBcGhfbtPEbxHfJ3FOzzVs-pDNfgQ";
+
+static void testRsaJwt() {
+	uint8_t n[kRsaBytes + 1], other[kRsaBytes + 1];
+	CHECK(base64UrlDecode(RSA_N, strlen(RSA_N), n, sizeof(n)) == (int)kRsaBytes);
+	CHECK(base64UrlDecode(RSA_OTHER_N, strlen(RSA_OTHER_N), other, sizeof(other)) == (int)kRsaBytes);
+	VerifyKeys keys{(const uint8_t*)SECRET, strlen(SECRET), n};
+	KeyClaims k;
+	CHECK(jwtVerify(RSA_GOOD, strlen(RSA_GOOD), keys, k) == JwtResult::Ok);
+	CHECK(!strcmp(k.jti, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee") && k.audLen == 7 && k.aud[0] == 0x04 && k.aud[6] == 0xf6);
+	CHECK(k.exp == 1800000000u && k.nbf == 1700000100u);
+	// Signed by another key pair, or checked against another public key.
+	CHECK(jwtVerify(RSA_OTHER, strlen(RSA_OTHER), keys, k) == JwtResult::BadSignature);
+	VerifyKeys wrong{(const uint8_t*)SECRET, strlen(SECRET), other};
+	CHECK(jwtVerify(RSA_GOOD, strlen(RSA_GOOD), wrong, k) == JwtResult::BadSignature);
+	// No public key known yet.
+	VerifyKeys none{(const uint8_t*)SECRET, strlen(SECRET), nullptr};
+	CHECK(jwtVerify(RSA_GOOD, strlen(RSA_GOOD), none, k) == JwtResult::NoPublicKey);
+	// A changed claim, last signature character, or a truncated signature must not verify.
+	std::string t = RSA_GOOD;
+	t[t.find('.') + 5] ^= 1;
+	CHECK(jwtVerify(t.c_str(), t.size(), keys, k) != JwtResult::Ok);
+	t = RSA_GOOD;
+	t[t.size() - 3] = t[t.size() - 3] == 'A' ? 'B' : 'A';
+	CHECK(jwtVerify(t.c_str(), t.size(), keys, k) == JwtResult::BadSignature);
+	t = RSA_GOOD;
+	t.pop_back();
+	CHECK(jwtVerify(t.c_str(), t.size(), keys, k) == JwtResult::Malformed);
+	// An RS256 token never verifies with the shared secret, and an HS256 token never with the public key.
+	CHECK(jwtVerify(GOOD, strlen(GOOD), VerifyKeys{(const uint8_t*)"x", 1, n}, k) == JwtResult::BadSignature);
+	CHECK(jwtVerify(GOOD, strlen(GOOD), hsKeys(), k) == JwtResult::Ok);
+	// A modulus that is not 2048 bits, or even, is refused.
+	uint8_t bad[kRsaBytes];
+	memcpy(bad, n, sizeof(bad));
+	bad[kRsaBytes - 1] &= 0xfe;
+	CHECK(jwtVerify(RSA_GOOD, strlen(RSA_GOOD), VerifyKeys{nullptr, 0, bad}, k) == JwtResult::BadSignature);
+}
 
 static void hex(const uint8_t* d, size_t n, char* out) {
 	for (size_t i = 0; i < n; i++) snprintf(out + 2 * i, 3, "%02x", d[i]);
@@ -64,30 +114,29 @@ static void testHash() {
 
 static void testJwt() {
 	KeyClaims k;
-	size_t secretLen = strlen(SECRET);
-	CHECK(jwtVerify(GOOD, strlen(GOOD), (const uint8_t*)SECRET, secretLen, k) == JwtResult::Ok);
+	CHECK(jwtVerify(GOOD, strlen(GOOD), hsKeys(), k) == JwtResult::Ok);
 	CHECK(!strcmp(k.jti, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"));
 	CHECK(!strcmp(k.sub, "11111111-2222-3333-4444-555555555555"));
 	CHECK(k.audLen == 7 && k.aud[0] == 0x04 && k.aud[6] == 0xf6);
 	CHECK(k.iat == 1700000000u && k.nbf == 1700000100u && k.exp == 1800000000u);
 
-	CHECK(jwtVerify(WRONG_KEY, strlen(WRONG_KEY), (const uint8_t*)SECRET, secretLen, k) == JwtResult::BadSignature);
-	CHECK(jwtVerify(ALG_NONE, strlen(ALG_NONE), (const uint8_t*)SECRET, secretLen, k) == JwtResult::BadClaims);  // right MAC, wrong alg
-	CHECK(jwtVerify(OLD_UID, strlen(OLD_UID), (const uint8_t*)SECRET, secretLen, k) == JwtResult::Ok && k.audLen == 4 &&
+	CHECK(jwtVerify(WRONG_KEY, strlen(WRONG_KEY), hsKeys(), k) == JwtResult::BadSignature);
+	CHECK(jwtVerify(ALG_NONE, strlen(ALG_NONE), hsKeys(), k) == JwtResult::BadClaims);  // right MAC, wrong alg
+	CHECK(jwtVerify(OLD_UID, strlen(OLD_UID), hsKeys(), k) == JwtResult::Ok && k.audLen == 4 &&
 	      k.aud[1] == 0xa1);
 
 	// Tampering with one payload character must break the signature.
 	char tampered[700];
 	strcpy(tampered, GOOD);
 	tampered[60] = tampered[60] == 'A' ? 'B' : 'A';
-	CHECK(jwtVerify(tampered, strlen(tampered), (const uint8_t*)SECRET, secretLen, k) != JwtResult::Ok);
-	CHECK(jwtVerify("", 0, (const uint8_t*)SECRET, secretLen, k) == JwtResult::Malformed);
-	CHECK(jwtVerify("a.b", 3, (const uint8_t*)SECRET, secretLen, k) == JwtResult::Malformed);
-	CHECK(jwtVerify("aaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbb", 37, (const uint8_t*)SECRET, secretLen, k) == JwtResult::Malformed);
+	CHECK(jwtVerify(tampered, strlen(tampered), hsKeys(), k) != JwtResult::Ok);
+	CHECK(jwtVerify("", 0, hsKeys(), k) == JwtResult::Malformed);
+	CHECK(jwtVerify("a.b", 3, hsKeys(), k) == JwtResult::Malformed);
+	CHECK(jwtVerify("aaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbb", 37, hsKeys(), k) == JwtResult::Malformed);
 	char huge[2000];
 	memset(huge, 'a', sizeof(huge) - 1);
 	huge[sizeof(huge) - 1] = 0;
-	CHECK(jwtVerify(huge, strlen(huge), (const uint8_t*)SECRET, secretLen, k) == JwtResult::Malformed);
+	CHECK(jwtVerify(huge, strlen(huge), hsKeys(), k) == JwtResult::Malformed);
 
 	uint8_t b[8];
 	CHECK(base64UrlDecode("aGk", 3, b, sizeof(b)) == 2 && !memcmp(b, "hi", 2));
@@ -364,6 +413,18 @@ static void testNdef() {
 	tag = {end, 0};
 	CHECK(ndefFindToken(area, fakeFill, &tag, tok, len) && len == sizeof(big) - 1 && !memcmp(tok, big, len));
 
+	// What the door writes reads back as the same token: short and long records, and a refusal when it cannot fit.
+	for (const char* t : {GOOD, (const char*)big}) {
+		uint8_t enc[1024];
+		size_t n = ndefEncodeToken(t, strlen(t), enc, sizeof(enc));
+		CHECK(n > strlen(t) && enc[n - 1] == 0xFE);
+		memset(area, 0, sizeof(area));
+		memcpy(area, enc, n);
+		tag = {n, 0};
+		CHECK(ndefFindToken(area, fakeFill, &tag, tok, len) && len == strlen(t) && !memcmp(tok, t, len));
+		CHECK(ndefEncodeToken(t, strlen(t), enc, n - 1) == 0);
+	}
+
 	// Not found: terminator first, empty tag, no JWT in the record, message cut off by the tag.
 	memset(area, 0, sizeof(area));
 	area[0] = 0xFE;
@@ -402,11 +463,268 @@ static void testPn532Frame() {
 	CHECK(!pn532::headerValid(pn532::kAckFrame));  // LEN 00 / LCS FF marks an ACK, never a data frame
 }
 
+// An unmasked frame as a server sends it.
+static std::vector<uint8_t> serverFrame(bool fin, uint8_t op, const std::string& payload) {
+	std::vector<uint8_t> f = {(uint8_t)((fin ? 0x80 : 0) | op)};
+	size_t n = payload.size();
+	if (n < 126) f.push_back((uint8_t)n);
+	else { f.push_back(126); f.push_back((uint8_t)(n >> 8)); f.push_back((uint8_t)n); }
+	f.insert(f.end(), payload.begin(), payload.end());
+	return f;
+}
+
+using WsEvent = ws::Parser::Event;
+
+// Feeds everything, collecting message texts and the other events in order.
+static std::vector<std::string> wsRun(ws::Parser& p, const std::vector<uint8_t>& bytes, size_t step = 0) {
+	std::vector<std::string> log;
+	size_t at = 0;
+	while (at < bytes.size()) {
+		size_t n = step ? std::min(step, bytes.size() - at) : bytes.size() - at;
+		size_t used = 0;
+		WsEvent e = p.feed(bytes.data() + at, n, &used);
+		at += used;
+		switch (e) {
+			case WsEvent::None: break;
+			case WsEvent::Message: log.push_back("M"); break;
+			case WsEvent::Dropped: log.push_back("D"); break;
+			case WsEvent::Ping: log.push_back("P:" + std::string((const char*)p.control(), p.controlLength())); break;
+			case WsEvent::Pong: log.push_back("O"); break;
+			case WsEvent::Close: log.push_back("C"); break;
+			case WsEvent::Error: log.push_back("E"); return log;
+		}
+	}
+	return log;
+}
+
+static void testWsBuild() {
+	const uint8_t key[4] = {0x01, 0x02, 0x03, 0x04};
+	uint8_t h[ws::kMaxHeader];
+	CHECK(ws::buildHeader(h, ws::kText, 5, key) == 6);
+	CHECK(h[0] == 0x81 && h[1] == 0x85 && !memcmp(h + 2, key, 4));
+	CHECK(ws::buildHeader(h, ws::kText, 300, key) == 8);
+	CHECK(h[0] == 0x81 && h[1] == 0xFE && h[2] == 0x01 && h[3] == 0x2C && !memcmp(h + 4, key, 4));
+	CHECK(ws::buildHeader(h, ws::kPong, 0, key) == 6 && h[0] == 0x8A && h[1] == 0x80);
+	CHECK(ws::buildHeader(h, ws::kText, 65535, key) == 8);
+	CHECK(ws::buildHeader(h, ws::kText, 65536, key) == 0);
+
+	uint8_t data[7] = {'p', 'a', 'y', 'l', 'o', 'a', 'd'};
+	ws::mask(data, sizeof(data), key);
+	CHECK(data[0] == ('p' ^ 1) && data[4] == ('o' ^ 1) && data[3] == ('l' ^ 4));
+	ws::mask(data, sizeof(data), key);
+	CHECK(!memcmp(data, "payload", 7));
+}
+
+static void testWsParse() {
+	uint8_t buf[64];
+	ws::Parser p;
+
+	// One message, whole and one byte at a time.
+	for (size_t step : {(size_t)0, (size_t)1, (size_t)3}) {
+		p.reset(buf, sizeof(buf));
+		auto log = wsRun(p, serverFrame(true, 0x1, "hello"), step);
+		CHECK(log.size() == 1 && log[0] == "M" && p.length() == 5 && !strcmp((const char*)buf, "hello"));
+	}
+
+	// The extended 16-bit length.
+	{
+		uint8_t big[400];
+		ws::Parser q;
+		q.reset(big, sizeof(big));
+		std::string text(200, 'x');
+		auto log = wsRun(q, serverFrame(true, 0x1, text), 7);
+		CHECK(log.size() == 1 && log[0] == "M" && q.length() == 200 && big[199] == 'x' && big[200] == 0);
+	}
+
+	// Two messages in one read: the first call stops after the first.
+	{
+		p.reset(buf, sizeof(buf));
+		std::vector<uint8_t> two = serverFrame(true, 0x1, "one");
+		std::vector<uint8_t> second = serverFrame(true, 0x1, "second");
+		two.insert(two.end(), second.begin(), second.end());
+		size_t used = 0;
+		CHECK(p.feed(two.data(), two.size(), &used) == WsEvent::Message && used == 5 && !strcmp((const char*)buf, "one"));
+		CHECK(p.feed(two.data() + used, two.size() - used, &used) == WsEvent::Message && !strcmp((const char*)buf, "second"));
+	}
+
+	// Empty message.
+	p.reset(buf, sizeof(buf));
+	{
+		size_t used = 0;
+		auto f = serverFrame(true, 0x1, "");
+		CHECK(p.feed(f.data(), f.size(), &used) == WsEvent::Message && p.length() == 0 && buf[0] == 0 && used == 2);
+	}
+
+	// A fragmented message with a ping in the middle: the ping is answered, the message survives.
+	{
+		p.reset(buf, sizeof(buf));
+		std::vector<uint8_t> all = serverFrame(false, 0x1, "hel");
+		for (auto& part : {serverFrame(true, 0x9, "p"), serverFrame(true, 0x0, "lo")}) all.insert(all.end(), part.begin(), part.end());
+		auto log = wsRun(p, all, 2);
+		CHECK(log.size() == 2 && log[0] == "P:p" && log[1] == "M" && !strcmp((const char*)buf, "hello"));
+	}
+
+	// Pong, close.
+	{
+		p.reset(buf, sizeof(buf));
+		auto f = serverFrame(true, 0xA, "");
+		auto c = serverFrame(true, 0x8, std::string("\x03\xE8", 2));
+		f.insert(f.end(), c.begin(), c.end());
+		auto log = wsRun(p, f);
+		CHECK(log.size() == 2 && log[0] == "O" && log[1] == "C" && p.controlLength() == 2 && p.control()[0] == 0x03);
+	}
+
+	// A message larger than the buffer is skipped, and the next one still arrives.
+	{
+		uint8_t small[16];
+		ws::Parser q;
+		q.reset(small, sizeof(small));
+		std::vector<uint8_t> all = serverFrame(true, 0x1, std::string(40, 'z'));
+		auto next = serverFrame(true, 0x1, "ok");
+		all.insert(all.end(), next.begin(), next.end());
+		auto log = wsRun(q, all, 5);
+		CHECK(log.size() == 2 && log[0] == "D" && log[1] == "M" && !strcmp((const char*)small, "ok"));
+		// 15 bytes fit (the 16th holds the terminator), 16 do not.
+		q.reset(small, sizeof(small));
+		CHECK(wsRun(q, serverFrame(true, 0x1, std::string(15, 'a')))[0] == "M");
+		q.reset(small, sizeof(small));
+		CHECK(wsRun(q, serverFrame(true, 0x1, std::string(16, 'a')))[0] == "D");
+	}
+
+	// Protocol violations end in an error that stays.
+	{
+		size_t used;
+		p.reset(buf, sizeof(buf));
+		auto masked = serverFrame(true, 0x1, "x");
+		masked[1] |= 0x80;
+		CHECK(p.feed(masked.data(), masked.size(), &used) == WsEvent::Error);
+		auto fine = serverFrame(true, 0x1, "x");
+		CHECK(p.feed(fine.data(), fine.size(), &used) == WsEvent::Error);  // sticky
+
+		p.reset(buf, sizeof(buf));
+		auto rsv = serverFrame(true, 0x1, "x");
+		rsv[0] |= 0x40;
+		CHECK(p.feed(rsv.data(), rsv.size(), &used) == WsEvent::Error);
+
+		p.reset(buf, sizeof(buf));
+		auto orphan = serverFrame(true, 0x0, "x");  // continuation of nothing
+		CHECK(p.feed(orphan.data(), orphan.size(), &used) == WsEvent::Error);
+
+		p.reset(buf, sizeof(buf));
+		auto unfinished = serverFrame(false, 0x1, "a");
+		auto again = serverFrame(true, 0x1, "b");  // new message while one is open
+		unfinished.insert(unfinished.end(), again.begin(), again.end());
+		CHECK(wsRun(p, unfinished).back() == "E");
+
+		p.reset(buf, sizeof(buf));
+		auto fragmentedControl = serverFrame(false, 0x9, "x");
+		CHECK(p.feed(fragmentedControl.data(), fragmentedControl.size(), &used) == WsEvent::Error);
+
+		p.reset(buf, sizeof(buf));
+		auto longControl = serverFrame(true, 0x9, std::string(126, 'x'));
+		CHECK(p.feed(longControl.data(), longControl.size(), &used) == WsEvent::Error);
+
+		p.reset(buf, sizeof(buf));
+		auto reservedOp = serverFrame(true, 0x3, "x");
+		CHECK(p.feed(reservedOp.data(), reservedOp.size(), &used) == WsEvent::Error);
+
+		p.reset(buf, sizeof(buf));
+		const uint8_t huge[] = {0x81, 127, 0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+		CHECK(p.feed(huge, sizeof(huge), &used) == WsEvent::Error);
+	}
+}
+
+static void testBackoff() {
+	Backoff b(1000, 8000);
+	CHECK(b.due(0) && b.due(123456));  // never failed: always due
+	CHECK(b.fail(100, 0) == 1000 && !b.due(1099) && b.due(1100));
+	CHECK(b.fail(2000, 0) == 2000);
+	CHECK(b.fail(5000, 0) == 4000);
+	CHECK(b.fail(10000, 0) == 8000);
+	CHECK(b.fail(20000, 0) == 8000 && b.failures() == 5);  // capped
+	// Jitter stays within a quarter on top of the delay.
+	Backoff j(1000, 8000);
+	uint32_t w = j.fail(0, 0xFFFFFFFFu);
+	CHECK(w >= 1000 && w <= 1250);
+	b.succeed();
+	CHECK(b.due(0) && b.failures() == 0 && b.fail(0, 0) == 1000);
+	// A fixed hold, across the 32-bit wrap of millis().
+	Backoff h(1000, 8000);
+	h.hold(0xFFFFFF00u, 1000);
+	CHECK(!h.due(0xFFFFFF00u) && !h.due(0xFFFFFFFFu) && !h.due(0x000002E7u) && h.due(0x000002E8u) && h.due(5000));
+}
+
+static void testAccessToken() {
+	AccessToken t;
+	char out[64];
+	CHECK(!t.present() && !t.copyTo(out, sizeof(out)));
+	uint32_t g0 = t.generation();
+	CHECK(t.set("aaa.bbb.ccc") && t.present() && t.generation() != g0);
+	uint32_t g = 0;
+	CHECK(t.copyTo(out, sizeof(out), &g) && !strcmp(out, "aaa.bbb.ccc") && g == t.generation());
+	CHECK(!t.copyTo(out, 11));   // needs room for the NUL
+	CHECK(t.copyTo(out, 12));
+	uint32_t g1 = t.generation();
+	CHECK(t.set("ddd") && t.generation() != g1 && t.copyTo(out, sizeof(out)) && !strcmp(out, "ddd"));
+	std::string tooLong(AccessToken::kMax, 'x');
+	CHECK(!t.set(tooLong.c_str()) && !t.set("") && t.copyTo(out, sizeof(out)) && !strcmp(out, "ddd"));  // unchanged
+	std::string longest(AccessToken::kMax - 1, 'y');
+	CHECK(t.set(longest.c_str()));
+	uint32_t g2 = t.generation();
+	t.clear();
+	CHECK(!t.present() && t.generation() != g2 && !t.copyTo(out, sizeof(out)));
+}
+
+static void testBlacklistReplace() {
+	BlacklistSet a, b;
+	a.upsert("old1", 2000);
+	a.upsert("old2", 2000);
+	a.upsert("shared", 2000);
+	b.upsert("shared", 3000);
+	b.upsert("new1", 3000);
+	a.replaceWith(b);
+	CHECK(a.size() == 2 && a.contains("shared") && a.contains("new1") && !a.contains("old1") && !a.contains("old2"));
+	CHECK(b.size() == 2);  // the source is untouched
+	a.replaceWith(a);
+	CHECK(a.size() == 2 && a.contains("new1"));
+	// The copy is independent of its source.
+	b.remove("new1");
+	CHECK(a.contains("new1") && !b.contains("new1"));
+	// An empty source empties the target, and the sorted order survives for later inserts.
+	BlacklistSet empty;
+	a.replaceWith(empty);
+	CHECK(a.size() == 0 && !a.contains("shared"));
+	a.upsert("later", 5);
+	CHECK(a.contains("later") && a.size() == 1);
+}
+
+static void testChimes() {
+	// 130 bpm sixteenths, rolling C E G C G E; a short silence ends each step.
+	CHECK(Chimes::unlocked(0) == 880 && Chimes::unlocked(100) == 1175 && Chimes::unlocked(200) == 0);
+	CHECK(Chimes::unlocked(300) == 880);  // loops
+
+	CHECK(Chimes::denied(0) == 659 && Chimes::denied(150) == 523 && Chimes::denied(300) == 440);
+	CHECK(Chimes::denied(450) == 220 && Chimes::denied(Chimes::kDeniedMs - 1) == 220);
+	CHECK(Chimes::denied(Chimes::kDeniedMs) == 0 && Chimes::denied(100000) == 0);
+
+	// The countdown alert repeats for the whole delay.
+	CHECK(Chimes::attention(0) == 880 && Chimes::attention(200) == 1175 && Chimes::attention(400) == 0);
+	CHECK(Chimes::attention(600) == 880);
+	CHECK(Chimes::kForceOpenDelayMs == 3000);
+}
+
 int main() {
+	testChimes();
+	testWsBuild();
+	testWsParse();
+	testBackoff();
+	testAccessToken();
+	testBlacklistReplace();
 	testNdef();
 	testPn532Frame();
 	testHash();
 	testJwt();
+	testRsaJwt();
 	testAccess();
 	testBlacklist();
 	testSyncParser();

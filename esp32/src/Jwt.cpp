@@ -1,6 +1,7 @@
 #include "Jwt.h"
 #include <stdlib.h>
 #include <string.h>
+#include "Rsa.h"
 #include "Sha256.h"
 #include "TimeUtil.h"
 
@@ -69,7 +70,7 @@ static bool readUint(const char* json, const char* key, uint32_t& out) {
 	return true;
 }
 
-JwtResult jwtVerify(const char* token, size_t len, const uint8_t* secret, size_t secretLen, KeyClaims& out) {
+JwtResult jwtVerify(const char* token, size_t len, const VerifyKeys& keys, KeyClaims& out) {
 	if (len < 16 || len > kMaxTokenLen) return JwtResult::Malformed;
 	const char* dot1 = (const char*)memchr(token, '.', len);
 	if (!dot1) return JwtResult::Malformed;
@@ -81,21 +82,33 @@ JwtResult jwtVerify(const char* token, size_t len, const uint8_t* secret, size_t
 	size_t sigLen = len - (size_t)(dot2 - token) - 1;
 	if (headerLen > 64 || payloadLen > 760) return JwtResult::Malformed;
 
-	uint8_t sig[32];
-	uint8_t tmp[33];
-	if (sigLen != 43 || base64UrlDecode(dot2 + 1, sigLen, tmp, sizeof(tmp)) != 32) return JwtResult::Malformed;
-	memcpy(sig, tmp, 32);
-
-	uint8_t expected[32];
-	hmacSha256(secret, secretLen, (const uint8_t*)token, (size_t)(dot2 - token), expected);
-	if (!constantTimeEqual(sig, expected, 32)) return JwtResult::BadSignature;
-
-	// A correct HMAC proves who signed it; the header only has to say HS256.
 	char header[48];
 	int h = base64UrlDecode(token, headerLen, (uint8_t*)header, sizeof(header) - 1);
 	if (h < 0) return JwtResult::Malformed;
 	header[h] = 0;
-	if (!strstr(header, "HS256")) return JwtResult::BadClaims;
+
+	// The signature is checked before anything else is read. The algorithm named in the header
+	// only selects between the two schemes; each has its own key.
+	const size_t signedLen = (size_t)(dot2 - token);
+	if (strstr(header, "RS256")) {
+		uint8_t sig[kRsaBytes + 1];
+		if (sigLen != 342 || base64UrlDecode(dot2 + 1, sigLen, sig, sizeof(sig)) != (int)kRsaBytes)
+			return JwtResult::Malformed;
+		if (!keys.rsaModulus) return JwtResult::NoPublicKey;
+		uint8_t digest[32];
+		Sha256 sha;
+		sha.update((const uint8_t*)token, signedLen);
+		sha.final(digest);
+		if (!rsaVerifySha256(keys.rsaModulus, sig, digest)) return JwtResult::BadSignature;
+	} else if (strstr(header, "HS256")) {
+		uint8_t sig[33];
+		if (sigLen != 43 || base64UrlDecode(dot2 + 1, sigLen, sig, sizeof(sig)) != 32) return JwtResult::Malformed;
+		uint8_t expected[32];
+		hmacSha256(keys.hmacSecret, keys.hmacSecretLen, (const uint8_t*)token, signedLen, expected);
+		if (!constantTimeEqual(sig, expected, 32)) return JwtResult::BadSignature;
+	} else {
+		return JwtResult::BadClaims;
+	}
 
 	char payload[576];
 	int p = base64UrlDecode(dot1 + 1, payloadLen, (uint8_t*)payload, sizeof(payload) - 1);

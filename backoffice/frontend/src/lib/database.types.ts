@@ -27,6 +27,7 @@ export type Database = {
 					id: number;
 					key_id: string | null;
 					metadata: Json;
+					opened_by: string | null;
 					reason: string | null;
 					serial_number: string | null;
 					type: string;
@@ -37,6 +38,7 @@ export type Database = {
 					id?: never;
 					key_id?: string | null;
 					metadata?: Json;
+					opened_by?: string | null;
 					reason?: string | null;
 					serial_number?: string | null;
 					type: string;
@@ -47,11 +49,20 @@ export type Database = {
 					id?: never;
 					key_id?: string | null;
 					metadata?: Json;
+					opened_by?: string | null;
 					reason?: string | null;
 					serial_number?: string | null;
 					type?: string;
 				};
-				Relationships: [];
+				Relationships: [
+					{
+						foreignKeyName: 'entries_opened_by_fkey';
+						columns: ['opened_by'];
+						isOneToOne: false;
+						referencedRelation: 'profiles';
+						referencedColumns: ['id'];
+					}
+				];
 			};
 			keys: {
 				Row: {
@@ -63,7 +74,8 @@ export type Database = {
 					jwt: string | null;
 					legacy_id: string | null;
 					not_before: string;
-					serial_number: string;
+					serial_number: string | null;
+					serial_released: boolean;
 					user_id: string;
 				};
 				Insert: {
@@ -75,7 +87,8 @@ export type Database = {
 					jwt?: string | null;
 					legacy_id?: string | null;
 					not_before: string;
-					serial_number: string;
+					serial_number?: string | null;
+					serial_released?: boolean;
 					user_id: string;
 				};
 				Update: {
@@ -87,7 +100,8 @@ export type Database = {
 					jwt?: string | null;
 					legacy_id?: string | null;
 					not_before?: string;
-					serial_number?: string;
+					serial_number?: string | null;
+					serial_released?: boolean;
 					user_id?: string;
 				};
 				Relationships: [
@@ -142,7 +156,16 @@ export type Database = {
 			};
 		};
 		Views: { [_ in never]: never };
-		Functions: { [_ in never]: never };
+		Functions: {
+			can_unlock: {
+				Args: Record<string, never>;
+				Returns: boolean;
+			};
+			log_web_open: {
+				Args: { door: string; command_id: string; latency_ms: number };
+				Returns: number;
+			};
+		};
 		Enums: { [_ in never]: never };
 		CompositeTypes: { [_ in never]: never };
 	};

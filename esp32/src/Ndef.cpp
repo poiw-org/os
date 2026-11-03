@@ -62,3 +62,39 @@ bool ndefFindToken(const uint8_t* area, NdefFill fill, void* ctx, const uint8_t*
 		return payload && locateToken(payload, payloadLen, token, len);
 	}
 }
+
+size_t ndefEncodeToken(const char* token, size_t len, uint8_t* out, size_t cap) {
+	size_t payload = len + 3;                  // status byte, "en", token
+	bool shortRecord = payload <= 0xFF;
+	size_t record = (shortRecord ? 4 : 7) + payload;  // flags, type length, length field, type "T"
+	size_t tlvHeader = record < 0xFF ? 2 : 4;
+	size_t total = 1 + tlvHeader + record + 1;  // tag byte, length, message, terminator
+	if (total > cap) return 0;
+
+	size_t i = 0;
+	out[i++] = 0x03;
+	if (tlvHeader == 2) {
+		out[i++] = (uint8_t)record;
+	} else {
+		out[i++] = 0xFF;
+		out[i++] = (uint8_t)(record >> 8);
+		out[i++] = (uint8_t)record;
+	}
+	out[i++] = shortRecord ? 0xD1 : 0xC1;  // MB | ME | (SR) | well-known type
+	out[i++] = 0x01;
+	if (shortRecord) {
+		out[i++] = (uint8_t)payload;
+	} else {
+		out[i++] = 0;
+		out[i++] = 0;
+		out[i++] = (uint8_t)(payload >> 8);
+		out[i++] = (uint8_t)payload;
+	}
+	out[i++] = 'T';
+	out[i++] = 0x02;  // UTF-8, two-letter language code
+	out[i++] = 'e';
+	out[i++] = 'n';
+	for (size_t k = 0; k < len; k++) out[i++] = (uint8_t)token[k];
+	out[i++] = 0xFE;
+	return i;
+}

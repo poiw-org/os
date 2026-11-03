@@ -5,11 +5,12 @@
 	import { onMount } from 'svelte';
 	import { fade, fly } from 'svelte/transition';
 	import Fa from 'svelte-fa';
-	import { faArrowRight, faKey, faWifi } from '@fortawesome/free-solid-svg-icons';
+	import { faArrowRight, faKey, faMicrochip, faWifi } from '@fortawesome/free-solid-svg-icons';
 	import { DateInput } from 'date-picker-svelte';
 	import { issueKey, listUsers } from '#lib/api.ts';
 	import { scanTag } from '#lib/nfc.ts';
 	import { toast } from '#lib/notify.svelte.ts';
+	import WriteCardModal from '#lib/header/WriteCardModal.svelte';
 	import Loading from '#lib/loading.svelte';
 	import type { UserOption } from '#lib/types.ts';
 	import Avatar from '#lib/ui/Avatar.svelte';
@@ -41,6 +42,7 @@
 	let expiresAt = $state(addMonths(new Date(), 12));
 	let scanning = $state(false);
 	let processing = $state(false);
+	let doorScan = $state(false);
 	let stopScan: (() => void) | undefined;
 
 	// Whole calendar days, so the time of day on "now" does not skew the count.
@@ -175,6 +177,9 @@
 									<Fa icon={faWifi} />Scan tag
 								{/if}
 							</button>
+							<button type="button" onclick={() => (doorScan = true)} class="btn py-3">
+								<Fa icon={faMicrochip} />Scan at door
+							</button>
 						</div>
 					</div>
 				</section>
@@ -266,3 +271,13 @@
 		<span class="flex pb-20"><Loading /></span>
 	{/if}
 </div>
+
+{#if doorScan}
+	<WriteCardModal
+		onclose={() => (doorScan = false)}
+		onscanned={(serial) => {
+			serialNumber = serial;
+			toast.success('Tag read at the door.');
+		}}
+	/>
+{/if}

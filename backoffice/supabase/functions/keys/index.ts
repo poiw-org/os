@@ -1,62 +1,28 @@
-// Issues and renews door keys. A key is a row in public.keys plus an HS256 JWT that is written
-// to the NFC tag; the door verifies it offline with the same secret (JWT_SIGNING_KEY).
+// Issues and renews door keys. A key is a row in public.keys plus an RS256 JWT (a "v2" key) that is
+// written to the NFC tag. The door verifies it offline with the public key it fetches from the
+// `door-key` function. The key pair is derived from the RSA_KEY_SEED secret on every signature.
+// Older HS256 keys stay valid on the door; nothing here issues them any more.
 //
 // POST { action: "issue", user_id, serial_number, not_before, expires_at } -> { id }
+// POST { action: "issue", user_id, virtual: true, not_before, expires_at }  -> { id }   (no tag)
 // POST { action: "renew", id, not_before, expires_at }                      -> { id }
 //
 // Auth: the caller's Supabase access token, which must belong to a row in public.admins.
 // verify_jwt is off at the gateway because that check is done here.
-import { createClient } from 'npm:@supabase/supabase-js@2';
-import { SignJWT } from 'npm:jose@5';
+import { Buffer } from 'node:buffer';
+import { signRs256 } from '../_shared/rsa.ts';
+import { accessToken, callerId, env, HttpError, handlePost, serviceClient } from '../_shared/http.ts';
 
-const corsHeaders = {
-	'Access-Control-Allow-Origin': '*',
-	'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-	'Access-Control-Allow-Methods': 'POST, OPTIONS'
-};
+type Db = ReturnType<typeof serviceClient>;
 
-class HttpError extends Error {
-	constructor(
-		public status: number,
-		message: string
-	) {
-		super(message);
-	}
-}
+async function requireAdmin(req: Request, db: Db) {
+	const id = await callerId(db, accessToken(req));
 
-const json = (body: unknown, status = 200) =>
-	new Response(JSON.stringify(body), {
-		status,
-		headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-	});
-
-const env = (name: string) => {
-	const value = Deno.env.get(name);
-	if (!value) throw new HttpError(500, `${name} is not configured`);
-	return value;
-};
-
-const admin = () =>
-	createClient(env('SUPABASE_URL'), env('SUPABASE_SERVICE_ROLE_KEY'), {
-		auth: { persistSession: false }
-	});
-
-async function requireAdmin(req: Request, db: ReturnType<typeof admin>) {
-	const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '');
-	if (!token) throw new HttpError(401, 'Missing access token');
-
-	const { data, error } = await db.auth.getUser(token);
-	if (error || !data.user) throw new HttpError(401, 'Invalid access token');
-
-	const { data: row, error: adminError } = await db
-		.from('admins')
-		.select('user_id')
-		.eq('user_id', data.user.id)
-		.maybeSingle();
-	if (adminError) throw new HttpError(500, 'Could not check permissions');
+	const { data: row, error } = await db.from('admins').select('user_id').eq('user_id', id).maybeSingle();
+	if (error) throw new HttpError(500, 'Could not check permissions');
 	if (!row) throw new HttpError(403, 'Not an admin');
 
-	return data.user.id;
+	return id;
 }
 
 function parseDate(value: unknown, field: string) {
@@ -74,31 +40,36 @@ function parseRange(body: Record<string, unknown>) {
 
 const seconds = (date: Date) => Math.floor(date.getTime() / 1000);
 
+const base64Url = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+
 // Claims are what the door firmware reads: sub = user, jti = key id, aud = tag serial number.
+// A virtual key has no tag; its audience matches no serial number, so no tag can ever carry it.
 async function signKey(key: {
 	id: string;
 	userId: string;
-	serialNumber: string;
+	serialNumber: string | null;
 	issuedAt: Date;
 	notBefore: Date;
 	expiresAt: Date;
 }) {
-	return await new SignJWT({})
-		.setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
-		.setSubject(key.userId)
-		.setJti(key.id)
-		.setAudience(key.serialNumber)
-		.setIssuedAt(seconds(key.issuedAt))
-		.setNotBefore(seconds(key.notBefore))
-		.setExpirationTime(seconds(key.expiresAt))
-		.sign(new TextEncoder().encode(env('JWT_SIGNING_KEY')));
+	const signed = `${base64Url({ alg: 'RS256', typ: 'JWT' })}.${base64Url({
+		sub: key.userId,
+		jti: key.id,
+		aud: key.serialNumber ?? 'virtual',
+		iat: seconds(key.issuedAt),
+		nbf: seconds(key.notBefore),
+		exp: seconds(key.expiresAt)
+	})}`;
+	return `${signed}.${await signRs256(env('RSA_KEY_SEED'), signed)}`;
 }
 
-async function issue(db: ReturnType<typeof admin>, callerId: string, body: Record<string, unknown>) {
+async function issue(db: Db, callerId: string, body: Record<string, unknown>) {
 	const userId = typeof body.user_id === 'string' ? body.user_id : '';
-	const serialNumber = typeof body.serial_number === 'string' ? body.serial_number.trim() : '';
+	const serialNumber =
+		body.virtual === true ? null : typeof body.serial_number === 'string' ? body.serial_number.trim() : '';
 	if (!userId) throw new HttpError(400, 'user_id is required');
-	if (!serialNumber || serialNumber.length > 64) throw new HttpError(400, 'serial_number is invalid');
+	if (serialNumber !== null && (!serialNumber || serialNumber.length > 64))
+		throw new HttpError(400, 'serial_number is invalid');
 	const { notBefore, expiresAt } = parseRange(body);
 
 	const { data: profile } = await db
@@ -131,7 +102,7 @@ async function issue(db: ReturnType<typeof admin>, callerId: string, body: Recor
 	return { id };
 }
 
-async function renew(db: ReturnType<typeof admin>, body: Record<string, unknown>) {
+async function renew(db: Db, body: Record<string, unknown>) {
 	const id = typeof body.id === 'string' ? body.id : '';
 	if (!id) throw new HttpError(400, 'id is required');
 	const { notBefore, expiresAt } = parseRange(body);
@@ -161,27 +132,13 @@ async function renew(db: ReturnType<typeof admin>, body: Record<string, unknown>
 	return { id };
 }
 
-Deno.serve(async (req) => {
-	if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
-	if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
-
-	try {
-		const db = admin();
+Deno.serve((req) =>
+	handlePost(req, async (body) => {
+		const db = serviceClient();
 		const callerId = await requireAdmin(req, db);
 
-		let body: Record<string, unknown>;
-		try {
-			body = await req.json();
-		} catch {
-			throw new HttpError(400, 'Body must be JSON');
-		}
-
-		if (body.action === 'issue') return json(await issue(db, callerId, body));
-		if (body.action === 'renew') return json(await renew(db, body));
+		if (body.action === 'issue') return await issue(db, callerId, body);
+		if (body.action === 'renew') return await renew(db, body);
 		throw new HttpError(400, 'Unknown action');
-	} catch (e) {
-		if (e instanceof HttpError) return json({ error: e.message }, e.status);
-		console.error(e);
-		return json({ error: 'Internal error' }, 500);
-	}
-});
+	})
+);

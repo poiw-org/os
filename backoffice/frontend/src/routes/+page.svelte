@@ -188,7 +188,9 @@
 					<ActivityRow
 						{entry}
 						{now}
-						label={(entry.keyId && emailByKey.get(entry.keyId)) || 'Deleted key'}
+						label={entry.openedBy
+							? (users.items?.find((user) => user.id === entry.openedBy)?.email ?? 'An admin')
+							: (entry.keyId && emailByKey.get(entry.keyId)) || 'Deleted key'}
 					/>
 				</div>
 			{:else}

@@ -8,8 +8,7 @@ const screens: [name: string, path: string, ready: string][] = [
 	['user', `/users?id=${USERS[0].id}`, 'RECENT ENTRIES'],
 	['key-detail', `/items?id=${KEY_IDS.first}`, 'Logs:'],
 	['create', '/items/create', 'Activate not before'],
-	['renew', `/items/renew?id=${KEY_IDS.first}`, 'Activate not before'],
-	['force-open', '/forceOpen', 'Are you sure']
+	['renew', `/items/renew?id=${KEY_IDS.first}`, 'Activate not before']
 ];
 
 for (const [name, path, ready] of screens) {

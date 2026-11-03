@@ -1,4 +1,4 @@
-import { test, expect, KEY_IDS, PASSWORD, USERS } from './fixtures';
+import { test, expect, KEY_IDS, KEYS, PASSWORD, USERS } from './fixtures';
 
 const firstId = KEY_IDS.first;
 const secondId = KEY_IDS.second;
@@ -9,9 +9,9 @@ test.describe('signed in', () => {
 		await page.goto('/');
 		await page.getByRole('button', { name: 'Settings' }).locator('visible=true').click();
 		const dialog = page.getByRole('dialog');
-		await expect(dialog.getByText('SETTINGS')).toBeVisible();
+		await expect(dialog.getByRole('tab', { name: 'Profile' })).toBeVisible();
 		await dialog.getByLabel('Display name').fill('boss');
-		await dialog.getByRole('button', { name: 'SAVE' }).click();
+		await dialog.getByRole('button', { name: 'Save' }).click();
 		await expect
 			.poll(() => api.bodies.find((b) => b.call === 'PATCH /rest/v1/profiles')?.body)
 			.toEqual({ nickname: 'boss' });
@@ -211,31 +211,94 @@ test.describe('signed in', () => {
 		expect(renew).toMatchObject({ action: 'renew', id: firstId });
 	});
 
-	test('force open is broadcast to the door and confirmed', async ({ page, api }) => {
-		await page.goto('/forceOpen');
-		await page.getByRole('button', { name: 'YES' }).click();
-		await expect(page).toHaveURL(/\/$/);
-		await expect(page.getByRole('status').filter({ hasText: 'The door unlocked.' })).toBeVisible();
+	test('force open is broadcast to the door, confirmed and logged as the admin', async ({
+		page,
+		api
+	}) => {
+		await page.goto('/');
+		await page.getByRole('button', { name: 'OPEN DOOR' }).locator('visible=true').click();
+		const dialog = page.getByRole('dialog');
+		await dialog.getByRole('button', { name: 'OPEN DOOR' }).click();
+		await expect(
+			dialog.getByRole('status').filter({ hasText: 'The door unlocked.' })
+		).toBeVisible();
+		await expect(dialog.getByRole('log')).toContainText('force_open_ack');
+		await expect(dialog.getByRole('log')).toContainText('Unlocking in 1 s');
+		await expect(dialog.getByRole('log')).toContainText('Entry recorded under your name');
 		expect(api.broadcasts).toHaveLength(1);
 		expect(api.broadcasts[0]).toMatchObject({
-			topic: 'realtime:door:main',
+			topic: 'realtime:door:front',
 			event: 'force_open',
 			payload: { id: expect.any(String), ts: expect.any(Number) }
 		});
-		// Nothing is written to the database: a stored command could fire after an outage.
+		const log = api.bodies.find((b) => b.call === 'POST /rest/v1/rpc/log_web_open')?.body;
+		expect(log).toMatchObject({
+			door: 'front',
+			command_id: api.broadcasts[0].payload.id,
+			latency_ms: expect.any(Number)
+		});
+		// Nothing is written to the doors table: a stored command could fire after an outage.
 		expect(api.calls.filter((c) => c.startsWith('PATCH /rest/v1/doors'))).toEqual([]);
+	});
+
+	test('the door writes a key to a tag and the modal follows it', async ({ page, api }) => {
+		await page.goto(`/items?id=${KEY_IDS.first}`);
+		await page.getByRole('button', { name: 'WRITE AT DOOR' }).click();
+		const dialog = page.getByRole('dialog');
+		await dialog.getByRole('button', { name: 'START WRITER MODE' }).click();
+		await expect(dialog.getByText('Hold the tag to the reader')).toBeVisible();
+		await expect(dialog.getByText('Writing. Keep it still')).toBeVisible();
+		await expect(dialog.getByText('Key written')).toBeVisible();
+		const sent = api.broadcasts.find((b) => b.event === 'write_card');
+		expect(sent?.payload).toMatchObject({
+			id: expect.any(String),
+			token: KEYS[0].jwt
+		});
+		await dialog.getByRole('button', { name: 'DONE' }).click();
+		await expect(dialog).toBeHidden();
+	});
+
+	test('the door scans a tag and fills in its serial number', async ({ page, api }) => {
+		await page.goto('/items/create');
+		await page.getByRole('button', { name: 'Scan at door' }).click();
+		const dialog = page.getByRole('dialog');
+		await dialog.getByRole('button', { name: 'START SCANNING' }).click();
+		await expect(dialog.getByText('Tag read', { exact: true })).toBeVisible();
+		expect(api.broadcasts.some((b) => b.event === 'scan_card')).toBe(true);
+		expect(api.broadcasts.some((b) => b.event === 'write_card')).toBe(false);
+		await dialog.getByRole('button', { name: 'DONE' }).click();
+		await expect(page.getByLabel('Tag S/N')).toHaveValue('04:aa:bb:cc:dd:ee:ff');
 	});
 
 	test('force open reports an offline door instead of pretending', async ({ page, api }) => {
 		api.doorAnswers = false;
-		await page.goto('/forceOpen');
-		await page.getByRole('button', { name: 'YES' }).click();
-		await expect(page.getByRole('alert').filter({ hasText: 'did not answer' })).toBeVisible({
+		await page.goto('/');
+		await page.getByRole('button', { name: 'OPEN DOOR' }).locator('visible=true').click();
+		const dialog = page.getByRole('dialog');
+		await dialog.getByRole('button', { name: 'OPEN DOOR' }).click();
+		await expect(dialog.getByRole('alert').filter({ hasText: 'did not answer' })).toBeVisible({
 			timeout: 15_000
 		});
-		// Still on the page, and the user can try again.
-		await expect(page).toHaveURL(/forceOpen/);
-		await expect(page.getByRole('button', { name: 'YES' })).toBeEnabled();
+		// Nothing was logged, and the user can try again.
+		expect(api.calls).not.toContain('POST /rest/v1/rpc/log_web_open');
+		await expect(dialog.getByRole('button', { name: 'TRY AGAIN' })).toBeEnabled();
+	});
+
+	test('settings changes the email and signs out everywhere', async ({ page, api }) => {
+		await page.goto('/');
+		await page.getByRole('button', { name: 'Settings' }).locator('visible=true').click();
+		const dialog = page.getByRole('dialog');
+		await dialog.getByRole('tab', { name: 'Security' }).click();
+		await dialog.getByLabel('Email').fill('new@example.test');
+		await dialog.getByRole('button', { name: 'Update' }).click();
+		await expect(dialog.getByText('Confirmation sent to new@example.test')).toBeVisible();
+		const update = api.bodies.find((b) => b.call === 'PUT /auth/v1/user')?.body;
+		expect(update).toMatchObject({ email: 'new@example.test' });
+
+		await dialog.getByRole('tab', { name: 'Sessions' }).click();
+		await dialog.getByRole('button', { name: 'Sign out all' }).click();
+		await expect(page).toHaveURL(/\/login$/);
+		expect(api.calls).toContain('POST /auth/v1/logout');
 	});
 
 	test('log out returns to the sign-in page', async ({ page, api }) => {
@@ -263,56 +326,68 @@ test.describe('signed out', () => {
 
 	test('wrong password shows the error and stays', async ({ page }) => {
 		await page.goto('/login');
-		await page.getByPlaceholder('Email').fill('tester@example.test');
-		await page.getByPlaceholder('Password').fill('nope');
-		await page.getByRole('button', { name: 'SIGN IN' }).click();
+		await page.getByLabel('Email').fill('tester@example.test');
+		await page.getByLabel('Password', { exact: true }).fill('nope');
+		await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 		await expect(page.getByText('Invalid login credentials')).toBeVisible();
 		await expect(page).toHaveURL(/\/login$/);
 	});
 
 	test('admin signs in', async ({ page }) => {
 		await page.goto('/login');
-		await page.getByPlaceholder('Email').fill('tester@example.test');
-		await page.getByPlaceholder('Password').fill(PASSWORD);
-		await page.getByRole('button', { name: 'SIGN IN' }).click();
+		await page.getByLabel('Email').fill('tester@example.test');
+		await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
+		await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 		await expect(page).toHaveURL(/\/$/);
 		await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible();
 	});
 
 	test('a non-admin account is turned away and signed out', async ({ page, api }) => {
 		await page.goto('/login');
-		await page.getByPlaceholder('Email').fill('nobody@example.test');
-		await page.getByPlaceholder('Password').fill(PASSWORD);
-		await page.getByRole('button', { name: 'SIGN IN' }).click();
+		await page.getByLabel('Email').fill('nobody@example.test');
+		await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
+		await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 		await expect(page.getByText('does not have access')).toBeVisible();
 		await expect(page).toHaveURL(/\/login$/);
 		expect(api.calls).toContain('POST /auth/v1/logout');
 	});
 
-	test('forgot password asks for an email first, then sends a reset link', async ({
-		page,
-		api
-	}) => {
+	test('forgot password sends a reset link', async ({ page, api }) => {
 		await page.goto('/login');
 		await page.getByRole('button', { name: 'Forgot password?' }).click();
-		await expect(page.getByText('Enter your email first.')).toBeVisible();
-		await page.getByPlaceholder('Email').fill('tester@example.test');
-		await page.getByRole('button', { name: 'Forgot password?' }).click();
-		await expect(page.getByText('password reset link is on its way')).toBeVisible();
+		await page.getByLabel('Email').fill('tester@example.test');
+		await page.getByRole('button', { name: 'Send reset link' }).click();
+		await expect(page.getByText('reset link is on its way')).toBeVisible();
 		expect(api.calls).toContain('POST /auth/v1/recover');
+	});
+
+	test('register checks the passwords, then asks to confirm the email', async ({ page, api }) => {
+		await page.goto('/login');
+		await page.getByRole('tab', { name: 'Register' }).click();
+		await page.getByLabel('Email').fill('new@example.test');
+		await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
+		await page.getByLabel('Confirm password').fill('something-else');
+		await page.getByRole('button', { name: 'Create account' }).click();
+		await expect(page.getByText('The passwords do not match.')).toBeVisible();
+
+		await page.getByLabel('Confirm password').fill(PASSWORD);
+		await page.getByRole('button', { name: 'Create account' }).click();
+		await expect(page.getByText('Check your inbox')).toBeVisible();
+		expect(api.calls).toContain('POST /auth/v1/signup');
 	});
 
 	test('reset page without a session says the link is invalid', async ({ page }) => {
 		await page.goto('/reset-password');
-		await expect(page.getByText('invalid or has expired')).toBeVisible();
+		await expect(page.getByText('invalid or has already been used')).toBeVisible();
 	});
 });
 
 test.describe('reset link opened (session present)', () => {
 	test('sets the new password and goes home', async ({ page, api }) => {
 		await page.goto('/reset-password');
-		await page.getByPlaceholder('New password').fill('a-brand-new-password');
-		await page.getByRole('button', { name: 'SAVE PASSWORD' }).click();
+		await page.getByLabel('New password').fill('a-brand-new-password');
+		await page.getByLabel('Confirm password').fill('a-brand-new-password');
+		await page.getByRole('button', { name: 'Save password' }).click();
 		await expect(page).toHaveURL(/\/$/);
 		const update = api.bodies.find((b) => b.call === 'PUT /auth/v1/user')?.body;
 		expect(update).toMatchObject({ password: 'a-brand-new-password' });
@@ -323,6 +398,6 @@ test.describe('reset link opened (session present)', () => {
 			'/#access_token=x&refresh_token=y&expires_in=3600&token_type=bearer&type=recovery'
 		);
 		await expect(page).toHaveURL(/\/reset-password/);
-		await expect(page.getByText('SET A NEW PASSWORD')).toBeVisible();
+		await expect(page.getByText('Choose a new password')).toBeVisible();
 	});
 });

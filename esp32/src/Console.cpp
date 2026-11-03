@@ -134,7 +134,7 @@ bool wizard(Settings& s) {
 	          ask("Door account password", "", draft.password, sizeof(draft.password), vPassword, true) &&
 	          ask("Door id", "The id of this door in public.doors; 'main' unless you run several.", draft.doorId,
 	              sizeof(draft.doorId), vDoorId, false) &&
-	          ask("Key signing secret", "Equal to the keys edge function's JWT_SIGNING_KEY secret.", draft.jwtSecret,
+	          ask("Key signing secret (v1 keys)", "The old JWT_SIGNING_KEY, for HS256 keys issued before v2. v2 keys need no secret here.", draft.jwtSecret,
 	              sizeof(draft.jwtSecret), vSecret, true) &&
 	          ask("NTP server", "", draft.ntpServer, sizeof(draft.ntpServer), vNtp, false);
 	if (!ok) { Serial.println(F("\nSetup cancelled, nothing was changed.")); return false; }

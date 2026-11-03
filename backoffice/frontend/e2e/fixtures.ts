@@ -142,6 +142,7 @@ async function mockRealtime(page: Page, state: ApiState) {
 		ws: { send: (data: string) => void };
 		ids: Record<string, number[]>;
 	}[] = [];
+	const arming = new Set<string>(); // the door arms once per command id, however often it is resent
 	await page.routeWebSocket(/\/realtime\/v1\/websocket/, (ws) => {
 		ws.onMessage((raw) => {
 			const [joinRef, ref, topic, event, payload] =
@@ -160,9 +161,48 @@ async function mockRealtime(page: Page, state: ApiState) {
 							null,
 							topic,
 							'broadcast',
-							{ type: 'broadcast', event: 'force_open_ack', payload: { id: payload.payload.id } }
+							{
+								type: 'broadcast',
+								event: 'force_open_ack',
+								payload: { id: payload.payload.id, delay_ms: 1000 }
+							}
 						])
 					);
+				}
+				// The door enters writer mode (or scan mode), then reports the tag, as the firmware does.
+				const isScan = payload.event === 'scan_card';
+				if (
+					(payload.event === 'write_card' || isScan) &&
+					state.doorAnswers &&
+					!arming.has(payload.payload.id)
+				) {
+					arming.add(payload.payload.id);
+					const report = (status: string, after: number) =>
+						setTimeout(
+							() =>
+								ws.send(
+									JSON.stringify([
+										null,
+										null,
+										topic,
+										'broadcast',
+										{
+											type: 'broadcast',
+											event: 'write_card_status',
+											payload: {
+												id: payload.payload.id,
+												state: status,
+												timeout_ms: 60000,
+												serial: status === 'done' && isScan ? '04:aa:bb:cc:dd:ee:ff' : ''
+											}
+										}
+									])
+								),
+							after
+						);
+					report('ready', 0);
+					if (!isScan) report('writing', 1500);
+					report('done', 2000);
 				}
 			} else if (event === 'phx_join') {
 				const changes = (payload.config?.postgres_changes ?? []) as { table: string }[];
@@ -251,6 +291,8 @@ async function mockSupabase(page: Page, state: ApiState) {
 				: json(sessionFor(ADMIN_TOKEN, body.email));
 		}
 		if (path === '/auth/v1/recover') return json({});
+		// Email confirmation on: a new account gets no session until the link is opened.
+		if (path === '/auth/v1/signup') return json({ id: 'new-user', email: body.email });
 		if (path === '/auth/v1/logout') return empty();
 		if (path === '/auth/v1/user') return json(adminUser());
 
@@ -290,9 +332,10 @@ async function mockSupabase(page: Page, state: ApiState) {
 			}
 		}
 		if (path === '/rest/v1/doors' && req.method() === 'PATCH') return empty();
+		if (path === '/rest/v1/rpc/log_web_open') return json(1);
 		if (path === '/rest/v1/entries') {
-			// key_id is `eq.<id>` on the key page and `in.(<ids>)` on the user page.
-			const keyFilter = url.searchParams.get('key_id');
+			// key_id is `eq.<id>` on the key page; the user page asks `or=(opened_by.eq.<user>,key_id.in.(<ids>))`.
+			const keyFilter = url.searchParams.get('key_id') ?? url.searchParams.get('or');
 			if (!keyFilter) return json(ENTRIES);
 			return json(keyFilter.includes(KEY_IDS.first) ? ENTRIES : []);
 		}

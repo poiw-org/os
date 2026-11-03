@@ -8,12 +8,16 @@
 		faHandSparkles,
 		faFire,
 		faStopCircle,
+		faMicrochip,
 		faTrash,
-		faCheckCircle
+		faCheckCircle,
+		faUnlink
 	} from '@fortawesome/free-solid-svg-icons';
 	import {
 		deleteKey as removeKey,
 		getKey,
+		getKeyBySerialNumber,
+		setSerialReleased,
 		listEntries,
 		setKeyDisabled,
 		toEntry
@@ -29,6 +33,8 @@
 	import Breadcrumb from '#lib/ui/Breadcrumb.svelte';
 	import KeyStatusBadge from '#lib/ui/KeyStatusBadge.svelte';
 	import V1Badge from '#lib/ui/V1Badge.svelte';
+	import V2Badge from '#lib/ui/V2Badge.svelte';
+	import WriteCardModal from '#lib/header/WriteCardModal.svelte';
 
 	const PREVIEW = 50;
 	const keyId = page.url.searchParams.get('id') ?? '';
@@ -36,6 +42,19 @@
 	let key = $state.raw<Key>();
 	let selectedId = $state<number>();
 	let showAllEntries = $state(false);
+	let writerOpen = $state(false);
+	// Only meaningful while the key has released its serial: the key that holds it now.
+	let serialHolder = $state.raw<Key>();
+	$effect(() => {
+		const current = key;
+		serialHolder = undefined;
+		if (!current?.serialReleased) return;
+		getKeyBySerialNumber(current.serialNumber)
+			.then((holder) => {
+				if (key === current) serialHolder = holder?.id === current.id ? undefined : holder;
+			})
+			.catch(() => {});
+	});
 
 	// Entries stream in for this key only (server-side filter, further limited by RLS).
 	const entries = liveRows({
@@ -108,6 +127,24 @@
 		);
 	};
 
+	const releaseSerial = async () => {
+		if (!key) return;
+		const accepted = await ask({
+			title: 'Release the tag number?',
+			message: `Another key can then be issued on tag ${key.serialNumber}. This key stays disabled, and can only be enabled again while no other key uses that tag.`,
+			confirmLabel: 'Release tag'
+		});
+		if (!accepted) return;
+		const { id } = key;
+		await act(
+			() => setSerialReleased(id, true),
+			() => {
+				key = key && { ...key, serialReleased: true };
+				toast.success('Tag number released.');
+			}
+		);
+	};
+
 	const enableKey = async () => {
 		if (!key) return;
 		const accepted = await ask({
@@ -120,7 +157,7 @@
 		await act(
 			() => setKeyDisabled(id, false),
 			() => {
-				key = key && { ...key, disabled: false };
+				key = key && { ...key, disabled: false, serialReleased: false };
 				toast.success('Key enabled.');
 			}
 		);
@@ -211,13 +248,25 @@
 					>{shortId(key.id)}</span
 				>
 				{#if keyState}<KeyStatusBadge status={keyState} large />{/if}
-				{#if key.v1}<V1Badge large />{/if}
+				{#if key.v1}<V1Badge large />{:else if key.v2}<V2Badge large />{/if}
 			</span>
 			<span class="flex flex-wrap items-center gap-2">
 				<button onclick={goToRenew} class="btn"><Fa icon={faHandSparkles} />RENEW</button>
 				<button onclick={checkOut} class="btn"><Fa icon={faFire} />WRITE TO TAG</button>
+				<button onclick={() => (writerOpen = true)} class="btn"
+					><Fa icon={faMicrochip} />WRITE AT DOOR</button
+				>
 				{#if key.disabled}
-					<button onclick={enableKey} class="btn"><Fa icon={faCheckCircle} />ENABLE</button>
+					{#if !key.serialReleased}
+						<button onclick={releaseSerial} class="btn"><Fa icon={faUnlink} />RELEASE TAG</button>
+					{/if}
+					<button
+						onclick={enableKey}
+						disabled={!!serialHolder}
+						title={serialHolder ? 'Its tag now belongs to another key' : undefined}
+						class="btn disabled:cursor-not-allowed disabled:opacity-40"
+						><Fa icon={faCheckCircle} />ENABLE</button
+					>
 				{:else}
 					<button onclick={disableKey} class="btn"><Fa icon={faStopCircle} />DISABLE</button>
 				{/if}
@@ -225,8 +274,23 @@
 			</span>
 		</div>
 
+		{#if key.serialReleased}
+			<div class="panel border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-500">
+				{#if serialHolder}
+					Tag {key.serialNumber} was released and now belongs to
+					<a
+						href={resolve(`/items?id=${serialHolder.id}`)}
+						class="font-mono underline underline-offset-4">{shortId(serialHolder.id)}</a
+					>. This key cannot be enabled unless that key is removed.
+				{:else}
+					Tag {key.serialNumber} was released for reuse. Enabling this key will claim it again, if
+					no other key has taken it by then.
+				{/if}
+			</div>
+		{/if}
+
 		<dl class="panel text-sm">
-			{#each [['User', key.user.email], ['Tag S/N', key.serialNumber || '-'], ['Valid not before', formatDate(key.notBefore)], ['Expires at', formatDate(key.expiresAt)], ['Issued at', formatDate(key.issuedAt)], ['Issued by', key.issuedBy || '-']] as [label, value] (label)}
+			{#each [['User', key.user.email], ['Tag S/N', key.serialNumber ? key.serialNumber + (key.serialReleased ? ' (released)' : '') : '-'], ['Valid not before', formatDate(key.notBefore)], ['Expires at', formatDate(key.expiresAt)], ['Issued at', formatDate(key.issuedAt)], ['Issued by', key.issuedBy || '-']] as [label, value] (label)}
 				<div class="row">
 					<dt class="text-gray-400">{label}</dt>
 					<dd class="min-w-0 text-right break-all {label === 'Tag S/N' ? 'font-mono' : ''}">
@@ -303,3 +367,11 @@
 		</div>
 	{/if}
 </div>
+
+{#if writerOpen && key}
+	<WriteCardModal
+		token={key.jwt}
+		serialNumber={key.serialNumber}
+		onclose={() => (writerOpen = false)}
+	/>
+{/if}

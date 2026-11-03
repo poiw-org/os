@@ -13,6 +13,14 @@ void BlacklistSet::hashId(const char* id, uint8_t out[16]) {
 	memcpy(out, full, 16);
 }
 
+void BlacklistSet::replaceWith(const BlacklistSet& other) {
+	if (this == &other) return;
+	std::scoped_lock hold(lock_, other.lock_);
+	memcpy(items_, other.items_, other.count_ * sizeof(BlockedKey));
+	count_ = other.count_;
+	overflowed_ = other.overflowed_;
+}
+
 // Index of the entry, or where it would be inserted.
 int BlacklistSet::find(const uint8_t* hash, bool* found) const {
 	int lo = 0, hi = (int)count_ - 1;
@@ -29,6 +37,7 @@ int BlacklistSet::find(const uint8_t* hash, bool* found) const {
 bool BlacklistSet::contains(const char* id) const {
 	uint8_t h[16];
 	hashId(id, h);
+	std::lock_guard<std::mutex> hold(lock_);
 	bool found;
 	find(h, &found);
 	return found;
@@ -38,6 +47,7 @@ void BlacklistSet::upsert(const char* id, uint32_t exp) {
 	BlockedKey k;
 	hashId(id, k.hash);
 	k.exp = exp;
+	std::lock_guard<std::mutex> hold(lock_);
 	bool found;
 	int at = find(k.hash, &found);
 	if (found) { items_[at].exp = exp; return; }
@@ -59,6 +69,7 @@ void BlacklistSet::upsert(const char* id, uint32_t exp) {
 void BlacklistSet::remove(const char* id) {
 	uint8_t h[16];
 	hashId(id, h);
+	std::lock_guard<std::mutex> hold(lock_);
 	bool found;
 	int at = find(h, &found);
 	if (!found) return;
@@ -67,6 +78,7 @@ void BlacklistSet::remove(const char* id) {
 }
 
 size_t BlacklistSet::prune(uint32_t now) {
+	std::lock_guard<std::mutex> hold(lock_);
 	size_t kept = 0;
 	for (size_t i = 0; i < count_; i++)
 		if (items_[i].exp > now) items_[kept++] = items_[i];
@@ -77,6 +89,7 @@ size_t BlacklistSet::prune(uint32_t now) {
 
 // magic(4) count(4) | entries | crc32(4) over everything before it.
 size_t BlacklistSet::serialize(uint8_t* out, size_t cap) const {
+	std::lock_guard<std::mutex> hold(lock_);
 	size_t need = 8 + count_ * sizeof(BlockedKey) + 4;
 	if (cap < need) return 0;
 	memcpy(out, &kMagic, 4);
@@ -93,6 +106,7 @@ size_t BlacklistSet::serialize(uint8_t* out, size_t cap) const {
 
 bool BlacklistSet::deserialize(const uint8_t* data, size_t len) {
 	if (len < 12) return false;
+	std::lock_guard<std::mutex> hold(lock_);
 	uint32_t magic, n, crc;
 	memcpy(&magic, data, 4);
 	memcpy(&n, data + 4, 4);

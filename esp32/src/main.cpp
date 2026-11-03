@@ -2,7 +2,9 @@
 //
 // Door controller. Taps are decided locally from the signed token on the tag, the clock and a
 // persisted blacklist, so the door keeps working through Wi-Fi, internet and power outages.
-// Supabase is used to keep that local state fresh and to report what happened. See README.md.
+// Supabase is used to keep that local state fresh and to report what happened. Network work runs
+// in tasks of its own (Cloud.h), so this loop only handles taps, the relay and the console.
+// See README.md.
 #include <Arduino.h>
 #include "Access.h"
 #include "Actuators.h"
@@ -17,11 +19,13 @@
 #include "Pins.h"
 #include "Reader.h"
 #include "Settings.h"
+#include "SigningKey.h"
 
 namespace {
 Settings settings;
 Clock clock_;
 BlacklistSet blacklist;
+SigningKey signingKey;
 Actuators actuators;
 Reader reader;
 Cloud cloud;
@@ -31,7 +35,6 @@ uint32_t lastFailureLogMs = 0;
 uint32_t lastHousekeepingMs = 0;
 uint8_t lowHeapStrikes = 0;
 
-constexpr uint32_t kQuietAfterTapMs = 4000;     // network maintenance waits this long after a tap
 constexpr uint32_t kFailureLogGapMs = 3000;     // rate limit for logging denied taps
 constexpr uint32_t kMaxUptimeMs = 7UL * 24 * 3600 * 1000;
 constexpr uint32_t kLowHeapBytes = 7000;
@@ -50,14 +53,65 @@ void record(const JournalRecord& r) {
 	if (!Persist::journalAppend(r)) LOG("Could not store the event; it is lost.");
 }
 
-void onForceOpen() {
-	actuators.grant();
+// Called once the force-open countdown ended and the relay is already energised.
+// v1 tokens are checked against the shared secret, v2 tokens against the backoffice's public key.
+JwtResult verifyToken(const char* token, size_t len, KeyClaims& key) {
+	uint8_t n[kRsaBytes];
+	VerifyKeys keys{(const uint8_t*)settings.jwtSecret, strlen(settings.jwtSecret), signingKey.copyTo(n) ? n : nullptr};
+	return jwtVerify(token, len, keys, key);
+}
+
+void onForcedOpened() {
 	lastTapMs = millis();
 	JournalRecord r = newRecord();
 	r.allowed = 1;
 	r.flags |= kForced;
 	record(r);
 	LOG("Door opened (force open).");
+}
+
+// Writer mode: the backoffice asks the door to write a key to a tag. The token must carry the
+// door's own signature, so the reader can never be used to write anything else. The tag it is
+// written to is the one named in the token's audience.
+void serviceWriter() {
+	static WriteState reported = WriteState::Idle;
+	static bool scanning = false;  // the session reads a serial number instead of writing
+	if (const auto* req = cloud.writeRequest()) {
+		KeyClaims key;
+		size_t len = strlen(req->token);
+		scanning = len == 0;
+		bool ok = scanning ? reader.armScan(kWriteWindowMs)
+		                   : verifyToken(req->token, len, key) == JwtResult::Ok &&
+		                         reader.arm(req->token, len, key.aud, key.audLen, kWriteWindowMs);
+		if (ok) {
+			lastTapMs = millis();
+			reported = WriteState::Armed;
+			cloud.reportWrite(WriteState::Armed);
+			LOG("Writer mode: present the tag within %lu s.", (unsigned long)(kWriteWindowMs / 1000));
+		} else {
+			cloud.reportWrite(WriteState::Rejected);
+			LOG("Writer mode refused: the token is not one this door signed.");
+		}
+		cloud.releaseWriteRequest();
+	}
+	if (cloud.takeWriteCancel()) reader.cancelWrite();
+
+	WriteState now = reader.writeState();
+	if (now != reported) {
+		reported = now;
+		if (now == WriteState::Done && scanning) {
+			uint8_t uid[10];
+			uint8_t n = reader.scannedUid(uid);
+			char text[32] = {0};
+			size_t at = 0;
+			for (uint8_t i = 0; i < n; i++) at += snprintf(text + at, sizeof(text) - at, i ? ":%02x" : "%02x", uid[i]);
+			cloud.setScanSerial(text);
+			LOG("Scan: tag %s.", text);
+		}
+		if (now != WriteState::Idle) cloud.reportWrite(now);
+	}
+	actuators.writer(now);
+	actuators.reading(writeActive(now));
 }
 
 void handleTag(const TagRead& tag) {
@@ -67,15 +121,13 @@ void handleTag(const TagRead& tag) {
 	memcpy(r.uid, tag.uid, tag.uidLen);
 
 	KeyClaims key;
-	JwtResult parsed = tag.token ? jwtVerify(tag.token, tag.tokenLen, (const uint8_t*)settings.jwtSecret,
-	                                            strlen(settings.jwtSecret), key)
-	                                : JwtResult::Malformed;
+	JwtResult parsed = tag.token ? verifyToken(tag.token, tag.tokenLen, key) : JwtResult::Malformed;
 	if (parsed != JwtResult::Ok) {
 		actuators.deny();
 		actuators.service();
 		r.verdict = 255;  // no Verdict applies; stored as reason "Unknown"
 		r.flags |= kInvalidToken;
-		static const char* const kWhy[] = {"ok", "malformed token", "bad signature (check the signing secret)", "missing or bad claims"};
+		static const char* const kWhy[] = {"ok", "malformed token", "bad signature (check the signing secret)", "missing or bad claims", "v2 key but the door has not received the public key yet"};
 		LOG("Denied: the tag carries no valid key (%s).", tag.token ? kWhy[(int)parsed] : "no token found on the tag");
 		if (millis() - lastFailureLogMs >= kFailureLogGapMs || !lastFailureLogMs) {
 			lastFailureLogMs = millis();
@@ -108,8 +160,8 @@ void handleTag(const TagRead& tag) {
 
 void printStatus() {
 	LOG("--- status ---");
-	LOG("uptime    : %lu s, free heap %u, largest block %u", (unsigned long)(millis() / 1000), ESP.getFreeHeap(),
-	    ESP.getMaxAllocHeap());
+	LOG("uptime    : %lu s, free heap %u (lowest %u), largest block %u", (unsigned long)(millis() / 1000),
+	    ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
 	LOG("clock     : %lu (%s)", (unsigned long)clock_.now(), clock_.synced() ? "synced" : "estimated");
 	LOG("blacklist : %u disabled keys", (unsigned)blacklist.size());
 	LOG("journal   : %u events waiting, %lu dropped", (unsigned)Persist::journalCount(),
@@ -125,7 +177,7 @@ void housekeeping(uint32_t ms) {
 
 	blacklist.prune(clock_.now());
 
-	bool idle = !actuators.busy() && ms - lastTapMs > 60000;
+	bool idle = !actuators.busy() && !writeActive(reader.writeState()) && ms - lastTapMs > 60000;
 	// A leak or fragmentation would eventually stop TLS from working. Everything that matters is
 	// persisted, so a restart in an idle moment costs nothing.
 	lowHeapStrikes = ESP.getFreeHeap() < kLowHeapBytes ? lowHeapStrikes + 1 : 0;
@@ -153,6 +205,11 @@ void setup() {
 	LOG("Door \"%s\". Type `help` for console commands.", settings.doorId);
 
 	clock_.begin(settings.ntpServer);
+	{
+		uint8_t n[kRsaBytes];
+		if (Persist::loadSigningKey(n) && signingKey.set(n)) LOG("Public key restored from flash.");
+		else LOG("No public key in flash yet; v2 keys work once it is fetched.");
+	}
 	if (Persist::loadBlacklist(blacklist)) {
 		blacklist.prune(clock_.now());
 		LOG("Blacklist restored from flash: %u disabled keys.", (unsigned)blacklist.size());
@@ -162,8 +219,7 @@ void setup() {
 	LOG("%u events waiting to be uploaded.", (unsigned)Persist::journalCount());
 
 	reader.begin(NFC_SDA, NFC_SCL);
-	Cloud::Hooks hooks = {onForceOpen};
-	cloud.begin(settings, clock_, blacklist, hooks);
+	cloud.begin(settings, clock_, blacklist, signingKey);
 }
 
 void loop() {
@@ -175,11 +231,13 @@ void loop() {
 		actuators.reading(false);
 		reader.release();
 	}
+	serviceWriter();
+	if (cloud.takeForceOpen()) actuators.forceOpen();
 	actuators.setOnline(cloud.online());
 	actuators.service();
+	if (actuators.takeForcedOpen()) onForcedOpened();
 
-	bool quiet = !actuators.busy() && millis() - lastTapMs > kQuietAfterTapMs;
-	cloud.service(quiet);
+	cloud.service();
 	clock_.service();
 	housekeeping(ms);
 	if (Console::poll(settings, printStatus)) {
@@ -187,4 +245,5 @@ void loop() {
 		delay(200);
 		ESP.restart();
 	}
+	delay(1);  // lets the idle task run; the tasks that wake this loop's work run on their own
 }
