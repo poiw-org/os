@@ -1,64 +1,55 @@
 <script lang="ts">
-	import Fa from 'svelte-fa'
-	import { faCog, faArrowRight, faSearch, faDoorOpen } from '@fortawesome/free-solid-svg-icons'
-    import auth from "../auth/authService"
-    import { onMount } from 'svelte';
+	import Fa from 'svelte-fa';
+	import { faArrowRight, faDoorOpen } from '@fortawesome/free-solid-svg-icons';
+	import { signOut } from '#lib/auth.ts';
+	import type { CurrentUser } from '#lib/types.ts';
+	import Avatar from '#lib/ui/Avatar.svelte';
+	import SettingsModal from './SettingsModal.svelte';
 
-    let isAuthenticated: boolean = false;
-    let user: object;
-    let logout;
+	let { user }: { user: CurrentUser | null } = $props();
 
-    let goToHome = () => window.location = "/";
-    let createKey = () => window.location = "/items/create";
-    let openDoor = () => window.location = "/forceOpen";
+	let settingsOpen = $state(false);
 
-
-    onMount(async ()=>{
-        isAuthenticated = await auth.isAuthenticated();
-        if(isAuthenticated) user = await auth.getUser();
-
-
-        logout = async () => {
-            await auth.logout();
-        }
-    })
-
-    export const prerender = false
+	const goToHome = () => (window.location.href = '/');
+	const createKey = () => (window.location.href = '/items/create');
+	const openDoor = () => (window.location.href = '/forceOpen');
+	const logout = async () => {
+		await signOut();
+		window.location.href = '/login';
+	};
 </script>
-<span id="menu" class="px-4 md:px-10 py-10 flex md:justify-between md:items-center flex-col md:flex-row gap-4">
-    <span class="flex justify-between">
-    <a on:click={goToHome} ><span class="flex items-center gap-3 cursor-pointer"><span class="text-xl tracking-widest font-light hidden md:inline">doora</span> <span class="font-bold p-2 border text-green-700 border-green-700 md:border-none md:bg-green-700 md:text-white rounded text-xl">backoffice</span></span></a>
-    {#if isAuthenticated}
 
-    <span class="flex md:hidden ">
-        <span><img src={user?.picture} class="inline w-10 h-10 rounded-full mr-2"/><span class="hidden md:inline">{user?.nickname}</span></span>
-        <a class="flex items-center gap-2 cursor-pointer" on:click={logout}>LOG OUT<Fa icon={faArrowRight}/></a>
-    </span>
-    {/if}
-</span>
-    <span class="flex gap-10 flex-col-reverse md:flex-row mt-5 md:mt-0">
+<header
+	id="menu"
+	class="sticky top-0 z-20 flex items-center justify-between gap-4 border-b bg-void/70 px-4 py-2.5 backdrop-blur-xl md:px-6 print:hidden"
+>
+	<a onclick={goToHome} class="flex cursor-pointer items-center gap-2.5">
+		<span
+			class="flex h-6 w-6 items-center justify-center rounded-md bg-ink font-mono text-[13px] leading-none font-bold text-void"
+			aria-hidden="true">d</span
+		>
+		<span class="text-sm font-medium">doora</span>
+		<span class="hidden text-gray-300 sm:inline" aria-hidden="true">/</span>
+		<span class="hidden text-sm text-gray-400 sm:inline">backoffice</span>
+	</a>
+	{#if user}
+		<span class="flex items-center gap-1.5 md:gap-2">
+			<a onclick={openDoor} class="btn"><Fa icon={faDoorOpen} />OPEN DOOR</a>
+			<a onclick={createKey} class="btn btn-primary">+ ISSUE KEY</a>
+			<button
+				type="button"
+				onclick={() => (settingsOpen = true)}
+				aria-label="Settings"
+				class="ml-1 rounded-full ring-offset-2 ring-offset-void transition-shadow hover:ring-2 hover:ring-gray-300"
+				><Avatar email={user.email} size={28} /></button
+			>
+			<a class="btn border-transparent" onclick={logout} title="Log out"
+				><span class="sr-only md:not-sr-only">LOG OUT</span><Fa icon={faArrowRight} /></a
+			>
+		</span>
+	{/if}
+</header>
 
-            {#if isAuthenticated}
-            <span class="flex md:items-center gap-4 flex-col md:flex-row">
-                <a on:click={openDoor}  class="flex items-center gap-1 cursor-pointer"><Fa icon={faDoorOpen}/>OPEN DOOR</a>
-                <a on:click={createKey} class="items-center p-3 md:p-2 bg-green-700 cursor-pointer text-white md:border md:bg-white md:text-green-700 md:border-green-700">+ ISSUE KEY</a>
-            </span>
-
-
-                <span class="hidden md:flex gap-6 ">
-                    <span><img src={user?.picture} class="inline w-10 h-10 rounded-full mr-2"/><span class="hidden md:inline">{user?.nickname}</span></span>
-                    <a class="flex items-center gap-2" on:click={logout}>LOG OUT<Fa icon={faArrowRight}/></a>
-                </span>
-
-            {/if}
-        </span>
-</span>
-
-<style>
-@media print {
-    #menu{
-        display: none;
-    }
-}
-
-</style>
+{#if user && settingsOpen}
+	<SettingsModal {user} onclose={() => (settingsOpen = false)} />
+{/if}

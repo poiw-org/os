@@ -1,0 +1,279 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
+
+/* Quiet dark: layered neutrals, hairlines instead of boxes, white primary action, and a single
+   restrained accent that only ever means "live / ok". The Tailwind 2 palette names the markup
+   already uses are re-pointed at these tokens. See design.md. */
+@theme {
+	--font-sans: 'Geist Variable', system-ui, sans-serif;
+	--font-mono: 'Geist Mono Variable', ui-monospace, monospace;
+
+	--color-void: oklch(11.5% 0.004 250);
+	--color-paper: oklch(14.5% 0.004 250);
+	--color-paper-2: oklch(17.5% 0.005 250);
+	--color-ink: oklch(97% 0.003 250);
+
+	/* surface, hairline, strong hairline, muted, secondary ink */
+	--color-gray-50: oklch(17% 0.005 250);
+	--color-gray-200: oklch(24% 0.006 250);
+	--color-gray-300: oklch(33% 0.008 250);
+	--color-gray-400: oklch(60% 0.008 250);
+	--color-gray-600: oklch(75% 0.006 250);
+
+	--color-green-700: oklch(80% 0.15 162); /* accent */
+	--color-green-500: oklch(76% 0.14 162);
+	--color-green-400: oklch(76% 0.14 162);
+	--color-red-400: oklch(70% 0.16 22);
+	--color-red-500: oklch(68% 0.17 22);
+	--color-red-700: oklch(68% 0.17 22);
+	--color-yellow-500: oklch(80% 0.12 85);
+	--color-blue-500: oklch(72% 0.11 250);
+	--color-purple-500: oklch(72% 0.12 295);
+
+	/* Tailwind 2 had no teal; the markup's old teal classes were dead. */
+	--color-teal-*: initial;
+
+	--ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+	*,
+	::after,
+	::before,
+	::backdrop,
+	::file-selector-button {
+		border-color: var(--color-gray-200);
+	}
+
+	html {
+		color-scheme: dark;
+	}
+
+	body {
+		background-color: var(--color-void);
+		color: var(--color-ink);
+		font-size: 0.875rem;
+		line-height: 1.45;
+		-webkit-font-smoothing: antialiased;
+		letter-spacing: -0.011em;
+		font-feature-settings: 'tnum' on;
+	}
+
+	button:not(:disabled),
+	[role='button']:not(:disabled) {
+		cursor: pointer;
+	}
+
+	input::placeholder,
+	textarea::placeholder {
+		color: var(--color-gray-400);
+	}
+
+	input:not([type='checkbox']),
+	textarea,
+	select {
+		background-color: var(--color-paper-2);
+		border: 1px solid var(--color-gray-200);
+		border-radius: 0.5rem;
+		color: var(--color-ink);
+		transition:
+			border-color 120ms var(--ease-out),
+			box-shadow 120ms var(--ease-out);
+	}
+
+	input:not([type='checkbox']):hover,
+	textarea:hover {
+		border-color: var(--color-gray-300);
+	}
+
+	:focus-visible {
+		outline: 2px solid var(--color-gray-400);
+		outline-offset: 2px;
+	}
+
+	input:focus-visible,
+	textarea:focus-visible {
+		outline: none;
+		border-color: var(--color-gray-400);
+		box-shadow: 0 0 0 3px oklch(100% 0 0 / 0.08);
+	}
+
+	::selection {
+		background: oklch(100% 0 0 / 0.18);
+	}
+
+	/* date-picker-svelte reads these. */
+	:root {
+		--date-picker-background: var(--color-paper-2);
+		--date-picker-foreground: var(--color-ink);
+		--date-picker-highlight-border: var(--color-gray-400);
+		--date-picker-highlight-shadow: oklch(100% 0 0 / 0.1);
+		--date-picker-selected-color: var(--color-paper);
+		--date-picker-selected-background: var(--color-ink);
+	}
+}
+
+@layer components {
+	/* Small section label. */
+	.eyebrow {
+		font-size: 0.75rem;
+		font-weight: 500;
+		letter-spacing: 0.02em;
+		color: var(--color-gray-400);
+	}
+
+	/* A bordered panel whose children are separated by hairlines, not boxes. */
+	.panel {
+		border: 1px solid var(--color-gray-200);
+		border-radius: 0.75rem;
+		background: var(--color-paper);
+		box-shadow: inset 0 1px 0 oklch(100% 0 0 / 0.03);
+		overflow: hidden;
+	}
+	.panel > .row + .row,
+	.panel > * + .row,
+	.panel > .row + * {
+		border-top: 1px solid var(--color-gray-200);
+	}
+
+	/* Ghost button; --tone only colours destructive actions. */
+	.btn {
+		--tone: var(--color-gray-600);
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		border: 1px solid var(--color-gray-200);
+		border-radius: 0.5rem;
+		background: transparent;
+		padding: 0.4375rem 0.75rem;
+		color: var(--tone);
+		font-size: 0.75rem;
+		font-weight: 500;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		transition:
+			background-color 120ms var(--ease-out),
+			border-color 120ms var(--ease-out),
+			color 120ms var(--ease-out),
+			transform 100ms var(--ease-out);
+	}
+	.btn:hover:not(:disabled) {
+		background: var(--color-paper-2);
+		border-color: var(--color-gray-300);
+		color: var(--color-ink);
+	}
+	.btn:active:not(:disabled) {
+		transform: scale(0.97);
+	}
+	.btn:disabled {
+		opacity: 0.45;
+	}
+	.btn.tone-red:hover:not(:disabled) {
+		background: oklch(68% 0.17 22 / 0.1);
+		border-color: oklch(68% 0.17 22 / 0.5);
+		color: var(--color-red-500);
+	}
+	.btn-primary {
+		background: var(--color-ink);
+		border-color: var(--color-ink);
+		color: var(--color-void);
+	}
+	.btn-primary:hover:not(:disabled) {
+		background: oklch(88% 0.003 250);
+		border-color: oklch(88% 0.003 250);
+		color: var(--color-void);
+	}
+
+	.tone-red {
+		--tone: var(--color-red-500);
+	}
+
+	/* Numbered step marker in multi-part forms. */
+	.step {
+		display: inline-flex;
+		height: 1.5rem;
+		width: 1.5rem;
+		flex-shrink: 0;
+		align-items: center;
+		justify-content: center;
+		border: 1px solid var(--color-gray-300);
+		border-radius: 9999px;
+		color: var(--color-gray-600);
+		font-size: 0.75rem;
+		font-weight: 500;
+	}
+
+	/* Toggle pill, e.g. date presets. */
+	.chip {
+		border: 1px solid var(--color-gray-200);
+		border-radius: 9999px;
+		padding: 0.25rem 0.75rem;
+		color: var(--color-gray-600);
+		font-size: 0.75rem;
+		transition:
+			background-color 120ms var(--ease-out),
+			border-color 120ms var(--ease-out),
+			color 120ms var(--ease-out),
+			transform 100ms var(--ease-out);
+	}
+	.chip:hover {
+		border-color: var(--color-gray-300);
+		color: var(--color-ink);
+	}
+	.chip:active {
+		transform: scale(0.96);
+	}
+	.chip[aria-pressed='true'] {
+		background: var(--color-ink);
+		border-color: var(--color-ink);
+		color: var(--color-void);
+	}
+
+	/* List row inside a .panel, or a standalone data card. */
+	.row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		padding: 0.625rem 1rem;
+		transition: background-color 120ms var(--ease-out);
+	}
+	a.row:hover {
+		background: oklch(100% 0 0 / 0.025);
+	}
+}
+
+/* Modal dialogs: the surface rises in while the scrim fades. */
+dialog.sheet[open] {
+	animation: sheet-in 220ms var(--ease-out);
+}
+dialog.sheet[open]::backdrop {
+	animation: scrim-in 220ms var(--ease-out);
+}
+@keyframes sheet-in {
+	from {
+		opacity: 0;
+		transform: translateY(10px) scale(0.98);
+	}
+}
+@keyframes scrim-in {
+	from {
+		opacity: 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	dialog.sheet[open],
+	dialog.sheet[open]::backdrop {
+		animation: none;
+	}
+	.btn,
+	.row {
+		transition: none;
+	}
+	.btn:active:not(:disabled) {
+		transform: none;
+	}
+}

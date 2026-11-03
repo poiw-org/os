@@ -1,348 +1,190 @@
-// Load config
-#include "config.h"
+// Doora | po/iw hackerspace | https://github.com/poiw-org/doora
+//
+// Door controller. Taps are decided locally from the signed token on the tag, the clock and a
+// persisted blacklist, so the door keeps working through Wi-Fi, internet and power outages.
+// Supabase is used to keep that local state fresh and to report what happened. See README.md.
+#include <Arduino.h>
+#include "src/Access.h"
+#include "src/Actuators.h"
+#include "src/BlacklistSet.h"
+#include "src/Clock.h"
+#include "src/Cloud.h"
+#include "src/Console.h"
+#include "src/Journal.h"
+#include "src/Jwt.h"
+#include "src/Log.h"
+#include "src/Persist.h"
+#include "src/Reader.h"
+#include "src/Settings.h"
 
-// Libraries
-#include <Wire.h>
-#include <PN532_I2C.h>
-#include <PN532.h>
-#include <NfcAdapter.h>
-#include <CustomJWT.h>
-#include <ArduinoJson.h>
-#include <ESP8266WiFi.h>
-#include <Firebase_ESP_Client.h>
-#include <addons/TokenHelper.h>
-#include <addons/RTDBHelper.h>
-#include <NTPClient.h>
-#include <WiFiUdp.h>
+namespace {
+Settings settings;
+Clock clock_;
+BlacklistSet blacklist;
+Actuators actuators;
+Reader reader;
+Cloud cloud;
+TagRead tag;
 
+uint32_t lastTapMs = 0;
+uint32_t lastFailureLogMs = 0;
+uint32_t lastHousekeepingMs = 0;
+uint8_t lowHeapStrikes = 0;
 
-#include "key.h"
+constexpr uint32_t kQuietAfterTapMs = 4000;     // network maintenance waits this long after a tap
+constexpr uint32_t kFailureLogGapMs = 3000;     // rate limit for logging denied taps
+constexpr uint32_t kMaxUptimeMs = 7UL * 24 * 3600 * 1000;
+constexpr uint32_t kLowHeapBytes = 7000;
 
-
-FirebaseData fbdo;
-FirebaseAuth auth;
-FirebaseConfig config;
-
-const char* ssid     = STASSID;
-const char* password = STAPSK;
-
-
-PN532_I2C pn532_i2c(Wire);
-NfcAdapter nfc = NfcAdapter(pn532_i2c);
-CustomJWT jwt(JWTDecryptioPass, 256);
-
-// This function returns the UNIX epoch time. 
-// It is used to validate the keys based on their expiresAtiry/issue date.
-WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, NTPServer);
-unsigned long epochTime; 
-unsigned long getTime() {
-  timeClient.update();
-  unsigned long now = timeClient.getEpochTime();
-  return now;
+// A new journal record for "now".
+JournalRecord newRecord() {
+	JournalRecord r;
+	memset(&r, 0, sizeof(r));
+	r.ts = clock_.now();
+	if (!clock_.synced()) r.flags |= kClockEstimated;
+	if (!cloud.online()) r.flags |= kOffline;
+	return r;
 }
 
-FirebaseJsonArray blacklistedKeys;
-bool connected = false;
-bool forceOpen = false;
-void connect(){
-  if(WiFi.status() != WL_CONNECTED){
-    connected = false;
-    digitalWrite(ERROR_LED, HIGH);
-    return;
-  }else if(!connected){
-    Serial.println("Got new IP address: ");
-    Serial.println(WiFi.localIP());
-
-    timeClient.begin();
-    config.api_key = API_KEY;
-    auth.user.email = USER_EMAIL;
-    auth.user.password = USER_PASSWORD;
-    config.database_url = DATABASE_URL;
-    fbdo.setResponseSize(4096);
-
-    Firebase.reconnectWiFi(true);
-    config.token_status_callback = tokenStatusCallback; // see addons/TokenHelper.h
-
-    connected = true;
-  }
-
-  Firebase.reset(&config);
-  Firebase.begin(&config, &auth);
-
-  epochTime = getTime();
-  String forceOpenURI = "/admin/forceOpen/";
-  forceOpenURI.concat(doorId);
-
-  Firebase.RTDB.getBool(&fbdo, forceOpenURI, &forceOpen);
-
+void record(const JournalRecord& r) {
+	if (!Persist::journalAppend(r)) LOG("Could not store the event; it is lost.");
 }
 
-void setup(void) {
-  Serial.begin(9600);
-  Serial.println("Doora | po/iw hackerspace | https://github.com/poiw-org/doora");
-
-  delay(1000);
-
-  nfc.begin();
-
-  Serial.print("The device will try to connect to ");
-  Serial.println(ssid);
-
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-  
-  pinMode(DOOR_PIN, OUTPUT);
-  pinMode(SPEAKER, OUTPUT);
-  pinMode(BUSY_LED, OUTPUT);
-  pinMode(ERROR_LED, OUTPUT);
-  pinMode(SUCCESS_LED, OUTPUT);
-
-  digitalWrite(DOOR_PIN, LOW);
-  digitalWrite(SPEAKER, LOW);
-  digitalWrite(BUSY_LED, LOW);
-  digitalWrite(ERROR_LED, LOW);
-  digitalWrite(SUCCESS_LED, LOW);
-
-
-
+void onForceOpen() {
+	actuators.grant();
+	lastTapMs = millis();
+	JournalRecord r = newRecord();
+	r.allowed = 1;
+	r.flags |= kForced;
+	record(r);
+	LOG("Door opened (force open).");
 }
 
+void handleTag() {
+	lastTapMs = millis();
+	JournalRecord r = newRecord();
+	r.uidLen = tag.uidLen;
+	memcpy(r.uid, tag.uid, tag.uidLen);
 
-char card[1024];
-int cardPayloadLength;
-String snFromTag;
-bool readCard(){
-  if (nfc.tagPresent())
-    {
-      digitalWrite(BUSY_LED, HIGH);
+	KeyClaims key;
+	JwtResult parsed = tag.hasToken ? jwtVerify(tag.token, tag.tokenLen, (const uint8_t*)settings.jwtSecret,
+	                                            strlen(settings.jwtSecret), key)
+	                                : JwtResult::Malformed;
+	if (parsed != JwtResult::Ok) {
+		actuators.deny();
+		r.verdict = (uint8_t)Verdict::SerialMismatch;  // overwritten below; any failure value works
+		r.verdict = 255;                               // "Unknown" in the database
+		r.flags |= kInvalidToken;
+		LOG("Denied: the tag carries no valid key (%s).", tag.hasToken ? "bad signature or claims" : "no token");
+		if (millis() - lastFailureLogMs >= kFailureLogGapMs || !lastFailureLogMs) {
+			lastFailureLogMs = millis();
+			record(r);
+		}
+		return;
+	}
 
-      NfcTag tag = nfc.read();
+	r.keyLen = (uint8_t)strnlen(key.jti, sizeof(r.key));
+	memcpy(r.key, key.jti, r.keyLen);
 
-      if (tag.hasNdefMessage()) // every tag won't have a message
-      {
-
-        NdefMessage message = tag.getNdefMessage();
-
-        NdefRecord record = message.getRecord(0);
-
-        cardPayloadLength = record.getPayloadLength();
-        byte payload[cardPayloadLength];
-        record.getPayload(payload);
-
-        // Force the data into a String (might work depending on the content)
-        // Real code should use smarter processing
-        String payloadAsString = "";
-        for (int c = 3; c < cardPayloadLength; c++) {
-          payloadAsString += (char)payload[c];
-        }
-        payloadAsString.toCharArray(card, cardPayloadLength-2);
-
-        snFromTag = tag.getUidString();
-          snFromTag.replace("0x","");
-          snFromTag.replace(" ",":");
-          snFromTag.toLowerCase();
-        return true;
-      }
-
-      return false;
-    }
-
-    return false;
+	Verdict v = decide(key, tag.uid, tag.uidLen, r.ts, clock_.synced(), blacklist.contains(key.jti));
+	if (v == Verdict::Allow) {
+		actuators.grant();
+		r.allowed = 1;
+		LOG("Door opened for key %s.", key.jti);
+		record(r);
+	} else {
+		actuators.deny();
+		r.verdict = (uint8_t)v;
+		LOG("Denied key %s: %s.", key.jti, reasonName(v));
+		if (millis() - lastFailureLogMs >= kFailureLogGapMs || !lastFailureLogMs) {
+			lastFailureLogMs = millis();
+			record(r);
+		}
+	}
 }
 
-String sub; 
-String id;
-String sn;
-unsigned long issuedAt;
-unsigned long expiresAt;
-unsigned long notBefore;
-// Key *key;
-bool decodeJWT(){
-  jwt.allocateJWTMemory();
-
-  int result = jwt.decodeJWT(card);
-  
-  if(result == 0){
-      DynamicJsonDocument doc(cardPayloadLength);
-        // Deserialize the JSON document
-      DeserializationError error = deserializeJson(doc, jwt.payload);
-
-      // Test if parsing succeeds.
-      if (error) {
-        Serial.print(F("deserializeJson() failed: "));
-        Serial.println(error.f_str());
-        return false;
-      }
-
-      String _sub(doc["sub"]);
-      String _key(doc["jti"]);
-      String _sn(doc["aud"]);
-          _sn.replace("0x","");
-          _sn.replace(" ",":");
-      issuedAt = doc["iat"];
-      notBefore = doc["nbf"];
-      expiresAt = doc["exp"];
-
-      sub = _sub;
-      id = _key;
-      sn = _sn;
-
-      return true;
-  }
-  else return false;
+void printStatus() {
+	LOG("--- status ---");
+	LOG("uptime    : %lu s, free heap %u, largest block %u", (unsigned long)(millis() / 1000), ESP.getFreeHeap(),
+	    ESP.getMaxFreeBlockSize());
+	LOG("clock     : %lu (%s)", (unsigned long)clock_.now(), clock_.synced() ? "synced" : "estimated");
+	LOG("blacklist : %u disabled keys", (unsigned)blacklist.size());
+	LOG("journal   : %u events waiting, %lu dropped", (unsigned)Persist::journalCount(),
+	    (unsigned long)Persist::journalDropped());
+	cloud.printStatus();
 }
 
-bool isBlacklisted;
-bool allowedToEnter(){
-      if(connected){        
-        String blackListedURI = "/admin/blacklistedKeys/";
-        blackListedURI.concat(id);
-        Firebase.RTDB.getBool(&fbdo, blackListedURI, &isBlacklisted);
+// Periodic upkeep that never matters to a tap.
+void housekeeping(uint32_t ms) {
+	if (ms - lastHousekeepingMs < 60000) return;
+	lastHousekeepingMs = ms;
 
-        if(sn == snFromTag && expiresAt > epochTime && notBefore < epochTime && (isBlacklisted == NULL || isBlacklisted == false)) return true;
-        else return false;
-      }
-      else{
-        if(sn == snFromTag) return true;
-        else return false;
-      }
+	blacklist.prune(clock_.now());
+
+	bool idle = !actuators.busy() && ms - lastTapMs > 60000;
+	if (!reader.healthy() && idle) {
+		LOG("The NFC reader stopped answering; restarting.");
+		delay(100);
+		ESP.restart();
+	}
+	// A leak or fragmentation would eventually stop TLS from working. Everything that matters is
+	// persisted, so a restart in an idle moment costs nothing.
+	lowHeapStrikes = ESP.getFreeHeap() < kLowHeapBytes ? lowHeapStrikes + 1 : 0;
+	if (idle && (lowHeapStrikes >= 3 || ms > kMaxUptimeMs)) {
+		LOG("Restarting for maintenance (heap %u, uptime %lu s).", ESP.getFreeHeap(), (unsigned long)(ms / 1000));
+		delay(100);
+		ESP.restart();
+	}
+}
+}  // namespace
+
+void setup() {
+	actuators.begin();  // outputs low before anything else
+	Serial.begin(115200);
+	delay(200);
+	LOG("\nDoora | po/iw hackerspace | https://github.com/poiw-org/doora");
+
+	Persist::begin();
+	if (!SettingsStore::load(settings)) {
+		Console::firstRunSetup(settings);
+		LOG("Restarting with the new settings.");
+		delay(200);
+		ESP.restart();
+	}
+	LOG("Door \"%s\". Type `help` for console commands.", settings.doorId);
+
+	clock_.begin(settings.ntpServer);
+	if (Persist::loadBlacklist(blacklist)) {
+		blacklist.prune(clock_.now());
+		LOG("Blacklist restored from flash: %u disabled keys.", (unsigned)blacklist.size());
+	} else {
+		LOG("No usable blacklist in flash; it will be fetched when the network is up.");
+	}
+	LOG("%u events waiting to be uploaded.", (unsigned)Persist::journalCount());
+
+	reader.begin();
+	Cloud::Hooks hooks = {onForceOpen};
+	cloud.begin(settings, clock_, blacklist, hooks);
 }
 
-void logEntry(){
-  if(!connected) return;
+void loop() {
+	uint32_t ms = millis();
 
-  String entryURI = "/entries/";
-  entryURI.concat(doorId);
+	if (reader.poll(tag)) {
+		actuators.reading(true);
+		handleTag();
+		actuators.reading(false);
+	}
+	actuators.setOnline(cloud.online());
+	actuators.service();
 
-  FirebaseJson entry;
-
-  entry.set("user", sub);
-  entry.set("id", id);
-  entry.set("serialNumber", sn);
-  entry.set("issuedAt", issuedAt);
-  entry.set("expiresAt", expiresAt);
-  entry.set("notBefore", notBefore);
-  entry.set("timestamp", epochTime);
-
-  Serial.printf("Writing entry to DB... %s\n", Firebase.RTDB.pushJSON(&fbdo, entryURI, &entry) ? "ok" : fbdo.errorReason().c_str());
-}
-
-void logUnauthorizedAttempt(){
-  if(!connected) return;
-
-  String failedAuthURI = "/failedAuthorizations/";
-  failedAuthURI.concat(doorId);
-
-  FirebaseJson failedAuthorization;
-
-  failedAuthorization.set("user", sub);
-  failedAuthorization.set("id", id);
-  failedAuthorization.set("serialNumber", sn);
-  failedAuthorization.set("issuedAt", issuedAt);
-  failedAuthorization.set("notBefore", notBefore);
-  failedAuthorization.set("expiresAt", expiresAt);
-  failedAuthorization.set("timestamp", epochTime);
-
-  if(sn != snFromTag){
-      failedAuthorization.set("serialNumberFromTag", snFromTag);
-      failedAuthorization.set("reason", "SerialNumberMismatch");
-  }else if(isBlacklisted == true){
-      failedAuthorization.set("reason", "KeyBlacklisted");
-  }else if(expiresAt <= epochTime){
-      failedAuthorization.set("reason", "KeyExpired");
-  }else if(notBefore > epochTime){
-      failedAuthorization.set("reason", "KeyNotYetActivated");
-  }else if(notBefore > epochTime){
-      failedAuthorization.set("reason", "IssuingDateInTheFuture");
-  }else{
-      failedAuthorization.set("reason", "Unknown");
-  }
-
-  Serial.printf("Writing failed auth to DB... %s\n", Firebase.RTDB.pushJSON(&fbdo, failedAuthURI, &failedAuthorization) ? "ok" : fbdo.errorReason().c_str());
-}
-
-void openTheDoor(){
-  digitalWrite(BUSY_LED, LOW);
-  Serial.println("Door Opened");
-  digitalWrite(SUCCESS_LED, HIGH);
-  digitalWrite(DOOR_PIN, HIGH);
-  digitalWrite(SPEAKER, HIGH);
-  delay(300);
-  digitalWrite(SPEAKER, LOW);
-  delay(1000);
-  digitalWrite(DOOR_PIN, LOW);
-  digitalWrite(SUCCESS_LED, LOW);
-}
-
-void forceOpenTheDoor(){
-  forceOpen = false;
-  
-  String forceOpenURI = "/admin/forceOpen/";
-  forceOpenURI.concat(doorId);
-  Firebase.RTDB.setBool(&fbdo, forceOpenURI, false);
-
-  digitalWrite(BUSY_LED, LOW);
-  Serial.println("Door Opened");
-  digitalWrite(SUCCESS_LED, HIGH);
-  digitalWrite(DOOR_PIN, HIGH);
-  digitalWrite(SPEAKER, HIGH);
-  delay(300);
-  digitalWrite(SPEAKER, LOW);
-  delay(1000);
-  digitalWrite(DOOR_PIN, LOW);
-  digitalWrite(SUCCESS_LED, LOW);
-}
-
-void denyEntry(){
-  digitalWrite(BUSY_LED, LOW);
-  Serial.println("Authorization failed.");
-  digitalWrite(ERROR_LED, HIGH);
-
-  for(int i=0; i<3; i++){
-    digitalWrite(SPEAKER, HIGH);
-    delay(300);
-    digitalWrite(SPEAKER, LOW);
-    delay(200);
-  }
-
-  delay(3000);
-  digitalWrite(ERROR_LED, LOW);
-}
-
-void loop(void) {
-  digitalWrite(BUSY_LED, LOW);
-  digitalWrite(ERROR_LED, LOW);
-  digitalWrite(SUCCESS_LED, LOW);
-
-
-  connect();
-
-  if(forceOpen) forceOpenTheDoor();
-  else if(readCard()){
-     digitalWrite(BUSY_LED, HIGH);
-    // Successfuly read the card, proceeding to parse/validate the JWT token.
-    if(decodeJWT()){
-      // Successfuly decoded the JWT token, proceeding to determine if the door can open with the given key.
-      if(allowedToEnter()){
-          // The door can open.
-          openTheDoor();
-          logEntry();
-      }
-      else{
-        // Door opening was blocked due to the rules specified in allowedToEnter()
-        denyEntry();
-        logUnauthorizedAttempt();
-      }
-    }
-    else{ 
-      // The card was read successfully, but the token could not be authenticated. That probably means that the card did not have a JWT token written on it
-      // or that the JWT token has been forged.
-      denyEntry();
-      Serial.println("Failed to decode JWT.");
-    }
-  }
-
-  delay(150);
-  digitalWrite(IDLE_LED, LOW);
+	bool quiet = !actuators.busy() && millis() - lastTapMs > kQuietAfterTapMs;
+	cloud.service(quiet);
+	clock_.service();
+	housekeeping(ms);
+	if (Console::poll(settings, printStatus)) {
+		LOG("Settings changed; restarting.");
+		delay(200);
+		ESP.restart();
+	}
 }
