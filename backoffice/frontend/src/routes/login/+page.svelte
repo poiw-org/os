@@ -1,15 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { unlockDoor } from '#lib/api.ts';
 	import {
 		passkeysSupported,
 		sendPasswordReset,
 		signIn,
 		signInWithPasskey,
-		signOut,
 		signUp
 	} from '#lib/auth.ts';
 	import AuthShell from '#lib/auth/AuthShell.svelte';
+	import QuickUnlock from '#lib/auth/QuickUnlock.svelte';
 
 	type Mode = 'signin' | 'register' | 'reset';
 	const copy: Record<Mode, { title: string; subtitle: string; action: string }> = {
@@ -56,23 +55,6 @@
 
 	const enter = () => (window.location.href = '/');
 
-	// Asks for a passkey and, once it is given, remotely unlocks the door. The session is dropped
-	// right after: this is a shortcut at the door, not a sign-in.
-	const quickUnlock = async () => {
-		busy = true;
-		message = '';
-		try {
-			await signInWithPasskey();
-			await unlockDoor();
-			report('The door is unlocking.', false);
-		} catch (e) {
-			if (!(e instanceof Error && e.name === 'NotAllowedError'))
-				report(e instanceof Error ? e.message : 'Could not unlock the door.');
-		}
-		await signOut();
-		busy = false;
-	};
-
 	const passkey = async () => {
 		busy = true;
 		message = '';
@@ -115,6 +97,14 @@
 </svelte:head>
 
 <AuthShell title={copy[mode].title} subtitle={copy[mode].subtitle}>
+	{#if mode === 'signin' && canUsePasskey}
+		<QuickUnlock />
+		<div class="flex items-center gap-3 text-xs text-gray-400">
+			<span class="h-px flex-1 bg-gray-200"></span>or sign in<span class="h-px flex-1 bg-gray-200"
+			></span>
+		</div>
+	{/if}
+
 	{#if mode !== 'reset'}
 		<div role="tablist" class="grid grid-cols-2 gap-1 rounded-lg border bg-paper p-1">
 			{#each [['signin', 'Sign in'], ['register', 'Register']] as const as [value, label] (value)}
@@ -221,9 +211,6 @@
 				/><path d="M18 15.5V21l1.5-1.5L18 18" /></svg
 			>
 			Sign in with a passkey
-		</button>
-		<button type="button" onclick={quickUnlock} disabled={busy} class="btn py-2.5 text-[0.8125rem]">
-			Quick unlock
 		</button>
 	{/if}
 
