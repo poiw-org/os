@@ -4,9 +4,8 @@ backend/functions/dist/
 
 backend/functions/firestore.creds.json
 
-esp8266/config.h
-esp8266/arduino/
-esp8266/build/
+esp32/config.h
+esp32/.pio/
 
 backoffice/frontend/build/
 

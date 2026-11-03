@@ -79,7 +79,7 @@ JwtResult jwtVerify(const char* token, size_t len, const uint8_t* secret, size_t
 	size_t headerLen = (size_t)(dot1 - token);
 	size_t payloadLen = (size_t)(dot2 - dot1 - 1);
 	size_t sigLen = len - (size_t)(dot2 - token) - 1;
-	if (headerLen > 64 || payloadLen > 480) return JwtResult::Malformed;
+	if (headerLen > 64 || payloadLen > 760) return JwtResult::Malformed;
 
 	uint8_t sig[32];
 	uint8_t tmp[33];
@@ -97,16 +97,19 @@ JwtResult jwtVerify(const char* token, size_t len, const uint8_t* secret, size_t
 	header[h] = 0;
 	if (!strstr(header, "HS256")) return JwtResult::BadClaims;
 
-	char payload[368];
+	char payload[576];
 	int p = base64UrlDecode(dot1 + 1, payloadLen, (uint8_t*)payload, sizeof(payload) - 1);
 	if (p < 0) return JwtResult::Malformed;
 	payload[p] = 0;
 
-	char aud[32];
+	// Legacy (pre-Supabase) tokens may write aud as "0x04 0xa1 ..." and leave out jti or nbf, which
+	// the old firmware accepted, so only aud and exp are required.
+	char aud[64];
 	memset(&out, 0, sizeof(out));
-	if (!readString(payload, "jti", out.jti, sizeof(out.jti)) || !readString(payload, "aud", aud, sizeof(aud)) ||
-	    !readUint(payload, "nbf", out.nbf) || !readUint(payload, "exp", out.exp))
+	if (!readString(payload, "aud", aud, sizeof(aud)) || !readUint(payload, "exp", out.exp))
 		return JwtResult::BadClaims;
+	readString(payload, "jti", out.jti, sizeof(out.jti));
+	readUint(payload, "nbf", out.nbf);
 	readString(payload, "sub", out.sub, sizeof(out.sub));
 	readUint(payload, "iat", out.iat);
 

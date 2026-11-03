@@ -1,5 +1,5 @@
 // PN532 NFC reader. Hands out each presented tag once, with its UID and the key token stored in
-// its first NDEF record.
+// its first NDEF record. NTAG/Ultralight tags are read directly, 16 bytes per exchange.
 #pragma once
 #include <PN532.h>
 #include <PN532_I2C.h>
@@ -21,9 +21,9 @@ class Reader {
 	void begin();
 	// True when a tag that was not on the reader before has been read into `out`.
 	bool poll(TagRead& out);
-	// Checks the PN532 still answers and re-initialises it if not. False if it keeps failing, which
-	// the caller should treat as "restart".
-	bool healthy();
+	// False while the PN532 is missing or unresponsive. The door keeps running without it; the reader
+	// re-probes on its own, so other unlock methods are never blocked by the NFC hardware.
+	bool available() const { return ready_; }
 
  private:
 	PN532_I2C i2c_;
@@ -32,5 +32,8 @@ class Reader {
 	bool present_ = false;
 	uint32_t lastSeenMs_ = 0;
 	uint32_t lastCheckMs_ = 0;
-	uint8_t failures_ = 0;
+	bool ready_ = false;
+	bool probe();
+	bool readPages(uint8_t page, uint8_t* out);
+	void readType2(TagRead& out);
 };

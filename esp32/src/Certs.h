@@ -1,12 +1,11 @@
 // Trust anchors for the Supabase endpoint. TLS is always verified (see Cloud.cpp).
 // Supabase is currently served from a Google Trust Services chain (GTS Root R4). The other roots
 // are kept so a CA change does not cut the door off from the cloud.
-// Source: Mozilla CA bundle. To add a root, paste its PEM here and reflash.
+// Source: Mozilla CA bundle (ISRG Root X1, GTS Root R1, GTS Root R4). To add a root, append its PEM.
 #pragma once
-#include <pgmspace.h>
 
-// ISRG Root X1
-static const char kRootISRGRootX1[] PROGMEM = R"EOF(-----BEGIN CERTIFICATE-----
+static const char kRootCerts[] = R"EOF(
+-----BEGIN CERTIFICATE-----
 MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw
 TzELMAkGA1UEBhMCVVMxKTAnBgNVBAoTIEludGVybmV0IFNlY3VyaXR5IFJlc2Vh
 cmNoIEdyb3VwMRUwEwYDVQQDEwxJU1JHIFJvb3QgWDEwHhcNMTUwNjA0MTEwNDM4
@@ -37,10 +36,7 @@ oyi3B43njTOQ5yOf+1CceWxG1bQVs5ZufpsMljq4Ui0/1lvh+wjChP4kqKOJ2qxq
 mRGunUHBcnWEvgJBQl9nJEiU0Zsnvgc/ubhPgXRR4Xq37Z0j4r7g1SgEEzwxA57d
 emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
 -----END CERTIFICATE-----
-)EOF";
-
-// GTS Root R1
-static const char kRootGTSRootR1[] PROGMEM = R"EOF(-----BEGIN CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
 MIIFVzCCAz+gAwIBAgINAgPlk28xsBNJiGuiFzANBgkqhkiG9w0BAQwFADBHMQsw
 CQYDVQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2VzIExMQzEU
 MBIGA1UEAxMLR1RTIFJvb3QgUjEwHhcNMTYwNjIyMDAwMDAwWhcNMzYwNjIyMDAw
@@ -71,10 +67,7 @@ Z6tGn6D/Qqc6f1zLXbBwHSs09dR2CQzreExZBfMzQsNhFRAbd03OIozUhfJFfbdT
 2tIMPNuzjsmhDYAPexZ3FL//2wmUspO8IFgV6dtxQ/PeEMMA3KgqlbbC1j+Qa3bb
 bP6MvPJwNQzcmRk13NfIRmPVNnGuV/u3gm3c
 -----END CERTIFICATE-----
-)EOF";
-
-// GTS Root R4
-static const char kRootGTSRootR4[] PROGMEM = R"EOF(-----BEGIN CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
 MIICCTCCAY6gAwIBAgINAgPlwGjvYxqccpBQUjAKBggqhkjOPQQDAzBHMQswCQYD
 VQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2VzIExMQzEUMBIG
 A1UEAxMLR1RTIFJvb3QgUjQwHhcNMTYwNjIyMDAwMDAwWhcNMzYwNjIyMDAwMDAw
@@ -88,5 +81,3 @@ BBSATNbrdP9JNqPV2Py1PsVq8JQdjDAKBggqhkjOPQQDAwNpADBmAjEA6ED/g94D
 p/SgguMh1YQdc4acLa/KNJvxn7kjNuK8YAOdgLOaVsjh4rsUecrNIdSUtUlD
 -----END CERTIFICATE-----
 )EOF";
-
-static const char* const kRoots[] = {kRootISRGRootX1, kRootGTSRootR1, kRootGTSRootR4};

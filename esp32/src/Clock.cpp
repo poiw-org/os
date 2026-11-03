@@ -1,5 +1,6 @@
 #include "Clock.h"
 #include <Arduino.h>
+#include <esp_sntp.h>
 #include <time.h>
 #include <sys/time.h>
 #include "Log.h"
@@ -10,8 +11,8 @@ namespace {
 volatile bool gSynced = false;
 constexpr uint32_t kCheckpointMs = 600000;
 
-// Called by the core whenever the system time is set (SNTP or settimeofday()).
-void onTimeSet(bool) { gSynced = true; }
+// Called by the SNTP client when it has set the system time.
+void onTimeSet(timeval*) { gSynced = true; }
 }  // namespace
 
 void Clock::begin(const char* ntpServer) {
@@ -24,7 +25,11 @@ void Clock::begin(const char* ntpServer) {
 	LOG("Clock: estimated start %lu (checkpoint %lu, build %lu)", (unsigned long)baseEpoch_, (unsigned long)saved,
 	    (unsigned long)built);
 
-	settimeofday_cb(onTimeSet);
+	// TLS checks certificate validity against the system time, so give it the estimate until a
+	// real sync arrives (certificates last months; a lagging estimate is fine).
+	timeval estimate = {(time_t)baseEpoch_, 0};
+	settimeofday(&estimate, nullptr);
+	sntp_set_time_sync_notification_cb(onTimeSet);
 	configTime(0, 0, ntpServer);
 }
 
@@ -38,7 +43,8 @@ uint32_t Clock::now() const {
 void Clock::adoptServerTime(uint32_t epoch) {
 	if (gSynced || !epoch) return;
 	timeval tv = {(time_t)epoch, 0};
-	settimeofday(&tv, nullptr);  // triggers onTimeSet
+	settimeofday(&tv, nullptr);
+	gSynced = true;
 	LOG("Clock: set from the Supabase server time.");
 }
 

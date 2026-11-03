@@ -14,14 +14,14 @@
 #error "SPEAKER is not defined. Copy config.example.h to config.h and set your wiring."
 #endif
 #ifndef IDLE_LED
-#define IDLE_LED D5
+#define IDLE_LED 27
 #endif
 #ifndef BUSY_LED
-#define BUSY_LED D6
+#define BUSY_LED 32
 #endif
 #ifndef ERROR_LED
-#define ERROR_LED D7
+#define ERROR_LED 33
 #endif
 #ifndef SUCCESS_LED
-#define SUCCESS_LED D8
+#define SUCCESS_LED 23
 #endif

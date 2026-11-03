@@ -4,18 +4,18 @@
 // persisted blacklist, so the door keeps working through Wi-Fi, internet and power outages.
 // Supabase is used to keep that local state fresh and to report what happened. See README.md.
 #include <Arduino.h>
-#include "src/Access.h"
-#include "src/Actuators.h"
-#include "src/BlacklistSet.h"
-#include "src/Clock.h"
-#include "src/Cloud.h"
-#include "src/Console.h"
-#include "src/Journal.h"
-#include "src/Jwt.h"
-#include "src/Log.h"
-#include "src/Persist.h"
-#include "src/Reader.h"
-#include "src/Settings.h"
+#include "Access.h"
+#include "Actuators.h"
+#include "BlacklistSet.h"
+#include "Clock.h"
+#include "Cloud.h"
+#include "Console.h"
+#include "Journal.h"
+#include "Jwt.h"
+#include "Log.h"
+#include "Persist.h"
+#include "Reader.h"
+#include "Settings.h"
 
 namespace {
 Settings settings;
@@ -25,6 +25,17 @@ Actuators actuators;
 Reader reader;
 Cloud cloud;
 TagRead tag;
+// The reader runs on core 0 and hands finished reads to loop(), so tag reads and network work
+// (TLS, websocket) never wait for each other. Only the reader task touches the I2C bus.
+QueueHandle_t tagQueue;
+
+void readerTask(void*) {
+	static TagRead read;
+	for (;;) {
+		if (reader.poll(read)) xQueueSend(tagQueue, &read, 0);
+		vTaskDelay(1);
+	}
+}
 
 uint32_t lastTapMs = 0;
 uint32_t lastFailureLogMs = 0;
@@ -72,9 +83,11 @@ void handleTag() {
 	                                : JwtResult::Malformed;
 	if (parsed != JwtResult::Ok) {
 		actuators.deny();
+		actuators.service();
 		r.verdict = 255;  // no Verdict applies; stored as reason "Unknown"
 		r.flags |= kInvalidToken;
-		LOG("Denied: the tag carries no valid key (%s).", tag.hasToken ? "bad signature or claims" : "no token");
+		static const char* const kWhy[] = {"ok", "malformed token", "bad signature (check the signing secret)", "missing or bad claims"};
+		LOG("Denied: the tag carries no valid key (%s).", tag.hasToken ? kWhy[(int)parsed] : "no token found on the tag");
 		if (millis() - lastFailureLogMs >= kFailureLogGapMs || !lastFailureLogMs) {
 			lastFailureLogMs = millis();
 			record(r);
@@ -88,11 +101,13 @@ void handleTag() {
 	Verdict v = decide(key, tag.uid, tag.uidLen, r.ts, clock_.synced(), blacklist.contains(key.jti));
 	if (v == Verdict::Allow) {
 		actuators.grant();
+		actuators.service();  // energize the relay now, before the flash write in record()
 		r.allowed = 1;
 		LOG("Door opened for key %s.", key.jti);
 		record(r);
 	} else {
 		actuators.deny();
+		actuators.service();
 		r.verdict = (uint8_t)v;
 		LOG("Denied key %s: %s.", key.jti, reasonName(v));
 		if (millis() - lastFailureLogMs >= kFailureLogGapMs || !lastFailureLogMs) {
@@ -105,7 +120,7 @@ void handleTag() {
 void printStatus() {
 	LOG("--- status ---");
 	LOG("uptime    : %lu s, free heap %u, largest block %u", (unsigned long)(millis() / 1000), ESP.getFreeHeap(),
-	    ESP.getMaxFreeBlockSize());
+	    ESP.getMaxAllocHeap());
 	LOG("clock     : %lu (%s)", (unsigned long)clock_.now(), clock_.synced() ? "synced" : "estimated");
 	LOG("blacklist : %u disabled keys", (unsigned)blacklist.size());
 	LOG("journal   : %u events waiting, %lu dropped", (unsigned)Persist::journalCount(),
@@ -121,11 +136,6 @@ void housekeeping(uint32_t ms) {
 	blacklist.prune(clock_.now());
 
 	bool idle = !actuators.busy() && ms - lastTapMs > 60000;
-	if (!reader.healthy() && idle) {
-		LOG("The NFC reader stopped answering; restarting.");
-		delay(100);
-		ESP.restart();
-	}
 	// A leak or fragmentation would eventually stop TLS from working. Everything that matters is
 	// persisted, so a restart in an idle moment costs nothing.
 	lowHeapStrikes = ESP.getFreeHeap() < kLowHeapBytes ? lowHeapStrikes + 1 : 0;
@@ -162,6 +172,8 @@ void setup() {
 	LOG("%u events waiting to be uploaded.", (unsigned)Persist::journalCount());
 
 	reader.begin();
+	tagQueue = xQueueCreate(2, sizeof(TagRead));
+	xTaskCreatePinnedToCore(readerTask, "nfc", 8192, nullptr, 1, nullptr, 0);
 	Cloud::Hooks hooks = {onForceOpen};
 	cloud.begin(settings, clock_, blacklist, hooks);
 }
@@ -169,7 +181,7 @@ void setup() {
 void loop() {
 	uint32_t ms = millis();
 
-	if (reader.poll(tag)) {
+	if (xQueueReceive(tagQueue, &tag, 0) == pdTRUE) {
 		actuators.reading(true);
 		handleTag();
 		actuators.reading(false);

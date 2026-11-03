@@ -1,4 +1,4 @@
-# Doora door controller (ESP8266)
+# Doora door controller (ESP32)
 
 Firmware for the door lock: a PN532 NFC reader, a relay, a buzzer and a few LEDs. A tap is decided
 **on the device**, so the door keeps working through Wi-Fi, internet and power outages. Supabase is
@@ -54,9 +54,9 @@ Known limits, by design of the hardware or the protocol:
 - **A deleted key is not blocked.** Disable it first, then delete it (the backoffice warns about this).
 - **Estimated clock.** After a long blackout without network the clock lags: an expired key can
   still work and a freshly activated one can be refused until the first sync.
-- An ESP8266 has room for one TLS session, so uploads and token refreshes happen in short maintenance
-  windows (a few seconds, only when nobody has used the door for 4 s) during which the websocket is
-  closed and reopened.
+- One TLS session is used at a time to keep memory use flat, so uploads and token refreshes happen in
+  short maintenance windows (a few seconds, only when nobody has used the door for 4 s) during which
+  the websocket is closed and reopened.
 
 ## Set up
 
@@ -78,22 +78,27 @@ Revoke a door at any time with `delete from public.door_users where ...` or by b
 ### 2. Wiring
 
 ```sh
-cp config.example.h config.h   # then edit the pins
+cp config.example.h config.h   # then edit the pins (GPIO numbers)
 ```
 
 `config.h` holds wiring only and is git-ignored. The build stops if `DOOR_PIN` or `SPEAKER` is missing,
-because guessing a relay pin could fire the lock.
+because guessing a relay pin could fire the lock. The PN532 reader is wired to the default I2C pins
+(SDA 21, SCL 22).
 
 ### 3. Build and flash
 
-The [nix package manager](https://nixos.org/download.html) provides `arduino-cli`.
+Install [PlatformIO Core](https://docs.platformio.org/en/latest/core/installation/) (or use the VS Code
+extension). The first build downloads the ESP32 toolchain and ArduinoJson, and fetches the PN532
+libraries (not in the PlatformIO registry) at a pinned commit into `.pio/vendor/`; `git` must be available.
 
 ```sh
-make install   # board package and libraries, once
-make compile
-make upload    # PORT=/dev/ttyUSB0 by default
-make monitor   # 115200 baud
+pio run                # build
+pio run -t upload      # flash
+pio device monitor     # console, 115200 baud
 ```
+
+`make build|upload|monitor|test` are shortcuts for the same commands. The board is `esp32dev`; change
+`board` in `platformio.ini` for other ESP32 modules.
 
 ### 4. First boot
 
@@ -113,7 +118,7 @@ EEPROM. It restarts when you save.
 ### Console commands
 
 Type these in the serial monitor at any time: `status`, `show` (secrets are hidden), `config` (change
-settings; Enter keeps the current value), `erase`, `reboot`.
+settings; Enter keeps the current value), `erase [wifi|supabase|door|ntp|all]` (partial erase keeps the rest), `reboot`.
 
 TLS to Supabase is always verified against the roots in `src/Certs.h`. If Supabase ever changes
 certificate authority, add the new root there and reflash; until then the door runs offline.
@@ -124,5 +129,5 @@ The access decision, token verification, blacklist, sync parser, journal format 
 portable C++ and are tested on the workstation:
 
 ```sh
-make test
+make test   # builds host_test/ with the system C++ compiler
 ```

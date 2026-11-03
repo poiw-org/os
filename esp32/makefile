@@ -1,0 +1,17 @@
+# Thin wrappers; PlatformIO (`pio`) does the real work. See platformio.ini.
+.PHONY: build upload monitor test
+
+build:
+	@test -f config.h || (echo "config.h is missing: copy config.example.h and set your wiring" && exit 1)
+	pio run
+
+upload: build
+	pio run -t upload
+
+# The setup wizard and console run at 115200 baud.
+monitor:
+	pio device monitor
+
+# Host-side unit tests of the portable core (no board or toolchain needed).
+test:
+	$(MAKE) -C host_test test

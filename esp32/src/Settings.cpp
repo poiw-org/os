@@ -23,7 +23,7 @@ bool complete(const Settings& s) {
 	       s.jwtSecret[0] && s.ntpServer[0];
 }
 
-bool load(Settings& out) {
+bool loadRaw(Settings& out) {
 	EEPROM.begin(kTotal);
 	Header h;
 	EEPROM.get(0, h);
@@ -43,9 +43,29 @@ bool load(Settings& out) {
 	s.doorId[sizeof(s.doorId) - 1] = 0;
 	s.jwtSecret[sizeof(s.jwtSecret) - 1] = 0;
 	s.ntpServer[sizeof(s.ntpServer) - 1] = 0;
-	if (!complete(s)) return false;
 	out = s;
 	return true;
+}
+
+bool load(Settings& out) {
+	Settings s;
+	if (!loadRaw(s) || !complete(s)) return false;
+	out = s;
+	return true;
+}
+
+void clear(Settings& s, Category c) {
+	switch (c) {
+		case Category::Wifi: memset(s.wifiSsid, 0, sizeof(s.wifiSsid)); memset(s.wifiPass, 0, sizeof(s.wifiPass)); break;
+		case Category::Supabase:
+			memset(s.supabaseHost, 0, sizeof(s.supabaseHost));
+			memset(s.anonKey, 0, sizeof(s.anonKey));
+			memset(s.email, 0, sizeof(s.email));
+			memset(s.password, 0, sizeof(s.password));
+			break;
+		case Category::Door: memset(s.doorId, 0, sizeof(s.doorId)); memset(s.jwtSecret, 0, sizeof(s.jwtSecret)); break;
+		case Category::Time: memset(s.ntpServer, 0, sizeof(s.ntpServer)); break;
+	}
 }
 
 bool save(const Settings& s) {
@@ -57,7 +77,7 @@ bool save(const Settings& s) {
 	EEPROM.end();
 	// Read it back: a failed or partial commit must not be reported as saved.
 	Settings check;
-	return committed && load(check) && memcmp(&check, &s, sizeof(s)) == 0;
+	return committed && loadRaw(check) && memcmp(&check, &s, sizeof(s)) == 0;
 }
 
 void erase() {

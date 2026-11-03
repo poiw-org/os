@@ -14,7 +14,7 @@ struct KeyClaims {
 
 enum class JwtResult : uint8_t { Ok, Malformed, BadSignature, BadClaims };
 
-constexpr size_t kMaxTokenLen = 640;
+constexpr size_t kMaxTokenLen = 860;  // fills an NTAG216
 
 // Verifies the signature first and only then reads the claims.
 JwtResult jwtVerify(const char* token, size_t len, const uint8_t* secret, size_t secretLen,

@@ -29,13 +29,15 @@ bool WsClient::open(const char* host, const char* path, uint32_t timeoutMs, size
 	cap_ = maxMessage;
 
 	if (!tls_.connect(host, 443)) {
-		LOG("WS: TLS connect failed (error %d).", tls_.getLastSSLError());
+		char err[80] = "";
+		tls_.lastError(err, sizeof(err));
+		LOG("WS: TLS connect failed (%s).", err);
 		close();
 		return false;
 	}
 
 	uint8_t raw[16];
-	for (auto& b : raw) b = (uint8_t)ESP.random();
+	for (auto& b : raw) b = (uint8_t)esp_random();
 	char key[25];
 	for (int i = 0; i < 5; i++) {
 		uint32_t v = (uint32_t)raw[i * 3] << 16 | (uint32_t)raw[i * 3 + 1] << 8 | raw[i * 3 + 2];
@@ -92,7 +94,7 @@ bool WsClient::sendFrame(uint8_t opcode, uint8_t* data, size_t len) {
 	if (len < 126) head[h++] = 0x80 | (uint8_t)len;
 	else { head[h++] = 0x80 | 126; head[h++] = (uint8_t)(len >> 8); head[h++] = (uint8_t)len; }
 	uint8_t mask[4];
-	uint32_t r = ESP.random();
+	uint32_t r = esp_random();
 	memcpy(mask, &r, 4);
 	for (size_t i = 0; i < len; i++) data[i] ^= mask[i & 3];
 	return tls_.write(head, h) == h && tls_.write(mask, 4) == 4 && (len == 0 || tls_.write(data, len) == len) &&

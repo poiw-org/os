@@ -8,8 +8,9 @@ namespace {
 constexpr uint32_t kWizardIdleMs = 180000;
 
 // Reads one line from serial, echoing it. Returns its length, or -1 after `timeoutMs` without input
-// (0 = wait forever). Keeps the watchdog fed while waiting.
-int readLine(char* out, size_t cap, uint32_t timeoutMs, bool echo) {
+// (0 = wait forever). Keeps the watchdog fed while waiting. `idleSubmitMs` > 0 also accepts the text
+// after that long a pause, for monitors set to "no line ending" (short answers only).
+int readLine(char* out, size_t cap, uint32_t timeoutMs, bool echo, uint32_t idleSubmitMs = 0) {
 	size_t n = 0;
 	uint32_t last = millis();
 	for (;;) {
@@ -29,6 +30,11 @@ int readLine(char* out, size_t cap, uint32_t timeoutMs, bool echo) {
 			if (c < 0x20 || n + 1 >= cap) continue;
 			out[n++] = (char)c;
 			if (echo) Serial.write((uint8_t)c);
+		}
+		if (idleSubmitMs && n && millis() - last > idleSubmitMs) {
+			out[n] = 0;
+			Serial.println();
+			return (int)n;
 		}
 		if (timeoutMs && millis() - last > timeoutMs) return -1;
 		delay(5);
@@ -62,7 +68,8 @@ const char* vDoorId(const char* v) {
 		if (!isalnum((unsigned char)v[i]) && v[i] != '_' && v[i] != '-') return "only letters, digits, '_' and '-'";
 	return nullptr;
 }
-const char* vSecret(const char* v) { return (strlen(v) < 16 || strlen(v) > 64) ? "16 to 64 characters" : nullptr; }
+// Legacy tags were signed with whatever passphrase the old config.h had, so any length is accepted.
+const char* vSecret(const char* v) { return (!*v || strlen(v) > 128) ? "1 to 128 characters" : nullptr; }
 const char* vNtp(const char* v) { return (strlen(v) < 3 || strlen(v) > 39) ? "a host name" : nullptr; }
 
 // Cleans a pasted URL down to a bare host.
@@ -122,7 +129,7 @@ bool wizard(Settings& s) {
 	              sizeof(draft.supabaseHost), vHost, false, false, true) &&
 	          ask("Supabase publishable (anon) key", "Dashboard > Project Settings > API Keys.", draft.anonKey,
 	              sizeof(draft.anonKey), vAnon, true) &&
-	          ask("Door account email", "A Supabase user listed in public.door_users (see esp8266/README.md).",
+	          ask("Door account email", "A Supabase user listed in public.door_users (see esp32/README.md).",
 	              draft.email, sizeof(draft.email), vEmail, false) &&
 	          ask("Door account password", "", draft.password, sizeof(draft.password), vPassword, true) &&
 	          ask("Door id", "The id of this door in public.doors; 'main' unless you run several.", draft.doorId,
@@ -148,10 +155,51 @@ bool wizard(Settings& s) {
 }
 
 void showSettings(const Settings& s) {
-	Serial.printf_P(PSTR("wifi ssid : %s\nwifi pass : %s\nsupabase  : %s\nanon key  : hidden (%u chars)\n"
-	                     "door user : %s\ndoor pass : hidden\ndoor id   : %s\nsecret    : hidden (%u chars)\nntp       : %s\n"),
+	Serial.printf("wifi ssid : %s\nwifi pass : %s\nsupabase  : %s\nanon key  : hidden (%u chars)\n"
+	                     "door user : %s\ndoor pass : hidden\ndoor id   : %s\nsecret    : hidden (%u chars)\nntp       : %s\n",
 	                s.wifiSsid, s.wifiPass[0] ? "hidden" : "(open network)", s.supabaseHost, (unsigned)strlen(s.anonKey),
 	                s.email, s.doorId, (unsigned)strlen(s.jwtSecret), s.ntpServer);
+}
+
+struct EraseTarget { const char* name; const char* what; Category cat; };
+const EraseTarget kEraseTargets[] = {
+	{"wifi", "Wi-Fi network and password", Category::Wifi},
+	{"supabase", "Supabase host, key and door account", Category::Supabase},
+	{"door", "door id and key signing secret", Category::Door},
+	{"ntp", "NTP server", Category::Time},
+};
+
+// `erase [category|all]`. Returns true if settings changed (the caller restarts, and the setup
+// wizard then asks only for what was erased).
+bool eraseSettings(Settings& s, const char* arg) {
+	while (*arg == ' ') arg++;
+	bool all = !strcmp(arg, "all");
+	const EraseTarget* target = nullptr;
+	for (const EraseTarget& t : kEraseTargets) if (!strcmp(arg, t.name)) target = &t;
+	if (!all && !target) {
+		Serial.println(F("Usage: erase <category>, one of:"));
+		for (const EraseTarget& t : kEraseTargets) Serial.printf("  %-9s %s\n", t.name, t.what);
+		Serial.println(F("  all       everything above"));
+		return false;
+	}
+	Serial.printf("Erase %s? Type 'yes' to confirm: ", all ? "ALL settings" : target->what);
+	char answer[8];
+	if (readLine(answer, sizeof(answer), 30000, true, 600) < 0 || strcmp(answer, "yes")) {
+		Serial.println(F("Nothing was changed."));
+		return false;
+	}
+	if (all) {
+		SettingsStore::erase();
+	} else {
+		Settings next = s;
+		SettingsStore::clear(next, target->cat);
+		if (!SettingsStore::save(next)) {
+			Serial.println(F("Could not write the settings to EEPROM. Nothing was changed."));
+			return false;
+		}
+	}
+	Serial.println(F("Erased. Restarting into setup."));
+	return true;
 }
 
 }  // namespace
@@ -159,7 +207,7 @@ void showSettings(const Settings& s) {
 namespace Console {
 
 void firstRunSetup(Settings& s) {
-	memset(&s, 0, sizeof(s));
+	if (!SettingsStore::loadRaw(s)) memset(&s, 0, sizeof(s));  // keep what survived a partial erase
 	Serial.println(F("\nThis door is not configured yet."));
 	// wizard() only returns true once the settings are validated and saved.
 	while (!wizard(s)) {
@@ -172,31 +220,33 @@ void firstRunSetup(Settings& s) {
 bool poll(Settings& s, void (*printStatus)()) {
 	static char line[24];
 	static size_t n = 0;
-	while (Serial.available()) {
-		int c = Serial.read();
+	static uint32_t lastByteMs = 0;
+	// Monitors set to "no line ending" never send \r or \n; treat a pause after typing as Enter.
+	bool idleFlush = n && !Serial.available() && millis() - lastByteMs > 400;
+	while (idleFlush || Serial.available()) {
+		int c = idleFlush ? '\n' : Serial.read();
+		idleFlush = false;
+		lastByteMs = millis();
 		if (c != '\r' && c != '\n') {
 			if (c >= 0x20 && n + 1 < sizeof(line)) line[n++] = (char)c;
 			continue;
 		}
 		line[n] = 0;
 		n = 0;
+		// Tolerate monitors that add spaces or send upper case.
+		char* cmd = line;
+		while (*cmd == ' ') cmd++;
+		for (char* e = cmd + strlen(cmd); e > cmd && e[-1] == ' ';) *--e = 0;
+		for (char* p = cmd; *p; p++) if (*p >= 'A' && *p <= 'Z') *p += 32;
+		if (cmd != line) memmove(line, cmd, strlen(cmd) + 1);
 		if (!line[0]) continue;
 		if (!strcmp(line, "config") || !strcmp(line, "setup")) return wizard(s);
 		if (!strcmp(line, "status")) printStatus();
 		else if (!strcmp(line, "show")) showSettings(s);
 		else if (!strcmp(line, "reboot")) { Serial.println(F("Restarting.")); delay(100); ESP.restart(); }
-		else if (!strcmp(line, "erase")) {
-			Serial.println(F("Erase all settings? Type 'yes' to confirm: "));
-			char answer[8];
-			if (readLine(answer, sizeof(answer), 30000, true) >= 0 && !strcmp(answer, "yes")) {
-				SettingsStore::erase();
-				Serial.println(F("Erased. Restarting into setup."));
-				delay(100);
-				ESP.restart();
-			}
-			Serial.println(F("Nothing was changed."));
-		} else
-			Serial.println(F("Commands: status | show | config | erase | reboot"));
+		else if (!strncmp(line, "erase", 5)) return eraseSettings(s, line + 5);
+		else
+			Serial.println(F("Commands:\n  status  network, clock, blacklist and journal state\n  show    current settings (secrets hidden)\n  config  run the setup wizard again\n  erase   wipe settings: erase [wifi|supabase|door|ntp|all]\n  reboot  restart the door"));
 	}
 	return false;
 }

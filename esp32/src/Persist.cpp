@@ -29,16 +29,10 @@ bool replaceFile(const char* path, const uint8_t* data, size_t len) {
 namespace Persist {
 
 bool begin() {
-	LittleFSConfig cfg;
-	cfg.setAutoFormat(false);
-	LittleFS.setConfig(cfg);
-	if (!LittleFS.begin()) {
-		// First boot or a damaged filesystem. Formatting takes a few seconds, longer than the soft
-		// watchdog allows.
+	if (!LittleFS.begin(false)) {
+		// First boot or a damaged filesystem.
 		LOG("Formatting flash storage...");
-		ESP.wdtDisable();
-		bool ok = LittleFS.format() && LittleFS.begin();
-		ESP.wdtEnable(0);
+		bool ok = LittleFS.format() && LittleFS.begin(false);
 		if (!ok) { LOG("Flash storage is unusable; running without persistence."); return false; }
 	}
 	LittleFS.remove(kTmp);  // leftover of an interrupted replace

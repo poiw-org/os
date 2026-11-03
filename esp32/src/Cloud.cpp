@@ -16,8 +16,7 @@ constexpr uint32_t kRetryAfterFailureMs = 60000;
 constexpr size_t kMaxMessage = 3072;        // larger realtime messages are dropped and trigger a resync
 constexpr size_t kFlushBatch = 8;
 constexpr size_t kRecordJson = 400;
-constexpr uint32_t kMinBlockMfln = 10000;   // free heap block needed per TLS session
-constexpr uint32_t kMinBlockFull = 24000;
+constexpr uint32_t kMinTlsBlock = 50000;    // largest free heap block needed for a TLS session
 constexpr uint32_t kCommandMaxAgeMs = 120000;
 
 bool readLine(Client& c, char* out, size_t cap, uint32_t deadline) {
@@ -50,18 +49,16 @@ void Cloud::begin(const Settings& settings, Clock& clock, BlacklistSet& blacklis
 	blacklist_ = &blacklist;
 	hooks_ = hooks;
 
-	for (const char* pem : kRoots) anchors_.append(pem);
-	tls_.setTrustAnchors(&anchors_);
-	tls_.setSession(&session_);
-	tls_.setTimeout(kHttpTimeoutMs);
+	tls_.setCACert(kRootCerts);
+	tls_.setTimeout(kHttpTimeoutMs / 1000);  // seconds on this core
 
-	WiFi.persistent(false);
-	WiFi.mode(WIFI_STA);
-	WiFi.setAutoReconnect(true);
-	WiFi.setSleepMode(WIFI_NONE_SLEEP);  // mains powered; sleeping only adds latency to commands
 	char name[48];
 	snprintf(name, sizeof(name), "doora-%s", settings.doorId);
-	WiFi.hostname(name);
+	WiFi.persistent(false);
+	WiFi.setHostname(name);  // must precede mode()
+	WiFi.mode(WIFI_STA);
+	WiFi.setAutoReconnect(true);
+	WiFi.setSleep(false);  // mains powered; sleeping only adds latency to commands
 	WiFi.begin(settings.wifiSsid, settings.wifiPass[0] ? settings.wifiPass : nullptr);
 	wifiBeginMs_ = wifiKickMs_ = millis();
 	LOG("Connecting to Wi-Fi \"%s\"...", settings.wifiSsid);
@@ -93,33 +90,24 @@ void Cloud::manageWifi(uint32_t ms) {
 // ---------------------------------------------------------------------------------------- REST
 
 bool Cloud::prepareTls() {
-	if (!mflnTried_) {
-		mflnTried_ = true;
-		// Smaller TLS buffers (if the server agrees) leave room for the rest of the firmware.
-		if (tls_.probeMaxFragmentLength(cfg_->supabaseHost, 443, 1024)) {
-			tls_.setBufferSizes(1024, 1024);
-			mflnOk_ = true;
-		}
-		LOG("TLS buffers: %s.", mflnOk_ ? "1 KB (server supports it)" : "16 KB");
-	}
-	uint32_t block = ESP.getMaxFreeBlockSize();
-	if (block < (mflnOk_ ? kMinBlockMfln : kMinBlockFull)) {
+	uint32_t block = ESP.getMaxAllocHeap();
+	if (block < kMinTlsBlock) {
 		lowMemory_++;
 		LOG("Not enough contiguous memory for TLS (%lu bytes, %lu times).", (unsigned long)block,
 		    (unsigned long)lowMemory_);
 		return false;
 	}
 	tls_.stop();
-	// Certificate validity is checked against this; an estimate is fine (certificates last months).
-	tls_.setX509Time(clock_->now());
-	return true;
+	return true;  // certificate validity is checked against the system time, which Clock keeps set
 }
 
 int Cloud::request(const char* method, const char* path, const char* body, size_t bodyLen, const char* prefer,
                    bool authed) {
 	if (!prepareTls()) return -1;
 	if (!tls_.connect(cfg_->supabaseHost, 443)) {
-		LOG("TLS connect failed (error %d).", tls_.getLastSSLError());
+		char err[80] = "";
+		tls_.lastError(err, sizeof(err));
+		LOG("TLS connect failed (%s).", err);
 		return -1;
 	}
 	tls_.print(method);
@@ -523,7 +511,7 @@ void Cloud::backoff(bool permanent) {
 	uint32_t base = 3000UL << (failures_ > 8 ? 7 : failures_ - 1);
 	if (base > 300000) base = 300000;
 	if (permanent || authRejected_) base = 300000;
-	uint32_t wait = base + ESP.random() % (base / 4 + 1);  // jitter keeps several doors from syncing in step
+	uint32_t wait = base + esp_random() % (base / 4 + 1);  // jitter keeps several doors from syncing in step
 	nextAttemptMs_ = millis() + wait;
 	LOG("Cloud unavailable; retrying in %lu s.", (unsigned long)(wait / 1000));
 }
@@ -562,6 +550,6 @@ void Cloud::printStatus() {
 	LOG("wifi      : %s (%d dBm)", WiFi.status() == WL_CONNECTED ? WiFi.SSID().c_str() : "down", WiFi.RSSI());
 	LOG("realtime  : %s", joined_ ? "connected" : "offline");
 	LOG("token     : %s", access_[0] ? "valid" : "none");
-	LOG("tls       : %s buffers, %lu low-memory refusals", mflnOk_ ? "1 KB" : "16 KB", (unsigned long)lowMemory_);
+	LOG("tls       : %lu low-memory refusals", (unsigned long)lowMemory_);
 	LOG("last sync : %s", lastSyncMs_ ? "done" : "never");
 }

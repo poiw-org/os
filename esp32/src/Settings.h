@@ -12,11 +12,18 @@ struct Settings {
 	char email[64];         // the door's Supabase user
 	char password[64];
 	char doorId[32];        // row id in public.doors; also the realtime channel name
-	char jwtSecret[65];     // must equal the edge function's JWT_SIGNING_KEY
+	char jwtSecret[129];     // must equal the edge function's JWT_SIGNING_KEY
 	char ntpServer[40];
 };
 
+enum class Category : uint8_t { Wifi, Supabase, Door, Time };
+
 namespace SettingsStore {
+// Like load() but accepts an incomplete image (after a partial erase), so the wizard can prefill
+// the fields that were kept.
+bool loadRaw(Settings& out);
+// Blanks one category's fields in `s`; the caller saves the result.
+void clear(Settings& s, Category c);
 // False when nothing valid is stored (blank flash, bad checksum, other version) or a required
 // field is empty.
 bool load(Settings& out);

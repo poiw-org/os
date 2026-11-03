@@ -1,11 +1,11 @@
 // Minimal RFC 6455 websocket client on top of an already configured TLS client. Only what the
 // Supabase realtime protocol needs: text messages, ping/pong and close. Non-blocking after open().
 #pragma once
-#include <WiFiClientSecureBearSSL.h>
+#include <WiFiClientSecure.h>
 
 class WsClient {
  public:
-	explicit WsClient(BearSSL::WiFiClientSecure& tls) : tls_(tls) {}
+	explicit WsClient(WiFiClientSecure& tls) : tls_(tls) {}
 	~WsClient() { close(); }
 
 	// Connects, upgrades and allocates the receive buffer.
@@ -27,7 +27,7 @@ class WsClient {
  private:
 	bool sendFrame(uint8_t opcode, uint8_t* data, size_t len);
 	bool readHeaderLine(char* out, size_t cap, uint32_t deadline);
-	BearSSL::WiFiClientSecure& tls_;
+	WiFiClientSecure& tls_;
 	bool open_ = false;
 
 	uint8_t* rx_ = nullptr;

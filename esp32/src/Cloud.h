@@ -2,15 +2,15 @@
 //
 // While healthy the door holds one realtime websocket (a Phoenix channel, `door:<id>`) on which it
 // receives key changes (postgres_changes on public.keys) and force-open commands (broadcast).
-// An ESP8266 has room for one TLS session, so REST work (token refresh, uploading the event
+// To keep memory use flat, one TLS session is used at a time, so REST work (token refresh, uploading the event
 // journal, resyncing the blacklist) happens in short maintenance windows when no one is using the
 // door: the websocket is closed, the REST calls run, and the websocket is reopened. A tap never
 // waits for the network; all access decisions are local.
 //
 // Every failure ends in a backoff and a retry, and the door keeps working from its local state.
 #pragma once
-#include <ESP8266WiFi.h>
-#include <WiFiClientSecureBearSSL.h>
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include "BlacklistSet.h"
 #include "Clock.h"
 #include "Settings.h"
@@ -64,11 +64,8 @@ class Cloud {
 	BlacklistSet* blacklist_ = nullptr;
 	Hooks hooks_ = {nullptr};
 
-	BearSSL::WiFiClientSecure tls_;
-	BearSSL::X509List anchors_;
-	BearSSL::Session session_;
+	WiFiClientSecure tls_;
 	WsClient ws_;
-	bool mflnTried_ = false, mflnOk_ = false;
 
 	char access_[1400] = {0};
 	char refresh_[160] = {0};
