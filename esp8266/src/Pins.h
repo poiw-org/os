@@ -3,8 +3,8 @@
 #pragma once
 #include <Arduino.h>
 
-#if __has_include("config.h")
-#include "config.h"
+#if __has_include("../config.h")
+#include "../config.h"
 #endif
 
 #ifndef DOOR_PIN

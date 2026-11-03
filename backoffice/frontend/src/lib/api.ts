@@ -189,7 +189,50 @@ export const renewKey = (key: { id: string; notBefore: Date; expiresAt: Date }) 
 		expires_at: key.expiresAt.toISOString()
 	});
 
+const COMMAND_TIMEOUT_MS = 6000;
+
+const withTimeout = <T>(promise: Promise<T>, message: string) =>
+	new Promise<T>((resolve, reject) => {
+		const timer = setTimeout(() => reject(new Error(message)), COMMAND_TIMEOUT_MS);
+		promise.then(resolve, reject).finally(() => clearTimeout(timer));
+	});
+
+// Sends "force open" to the door over its private realtime channel and waits for the door to
+// confirm. Broadcasts are never stored, so a command that finds the door offline is lost instead
+// of unlocking it hours later; the caller learns that from the missing confirmation.
 export async function forceOpenDoor() {
-	const { error } = await supabase.from('doors').update({ force_open: true }).eq('id', DOOR_ID);
-	if (error) throw error;
+	const id = crypto.randomUUID();
+	const channel = supabase.channel(`door:${DOOR_ID}`, { config: { private: true } });
+
+	let confirm!: () => void;
+	const confirmed = new Promise<void>((resolve) => (confirm = resolve));
+	channel.on('broadcast', { event: 'force_open_ack' }, ({ payload }) => {
+		if (payload?.id === id) confirm();
+	});
+
+	try {
+		await supabase.realtime.setAuth();
+		await withTimeout(
+			new Promise<void>((resolve, reject) =>
+				channel.subscribe((status) => {
+					if (status === 'SUBSCRIBED') resolve();
+					else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED')
+						reject(new Error('Could not reach the realtime service.'));
+				})
+			),
+			'Could not reach the realtime service.'
+		);
+		const sent = await channel.send({
+			type: 'broadcast',
+			event: 'force_open',
+			payload: { id, ts: Date.now() }
+		});
+		if (sent !== 'ok') throw new Error('The command could not be sent.');
+		await withTimeout(
+			confirmed,
+			'The door did not answer, so nothing was unlocked. It may be offline.'
+		);
+	} finally {
+		void supabase.removeChannel(channel);
+	}
 }

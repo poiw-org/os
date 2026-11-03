@@ -72,8 +72,7 @@ void handleTag() {
 	                                : JwtResult::Malformed;
 	if (parsed != JwtResult::Ok) {
 		actuators.deny();
-		r.verdict = (uint8_t)Verdict::SerialMismatch;  // overwritten below; any failure value works
-		r.verdict = 255;                               // "Unknown" in the database
+		r.verdict = 255;  // no Verdict applies; stored as reason "Unknown"
 		r.flags |= kInvalidToken;
 		LOG("Denied: the tag carries no valid key (%s).", tag.hasToken ? "bad signature or claims" : "no token");
 		if (millis() - lastFailureLogMs >= kFailureLogGapMs || !lastFailureLogMs) {

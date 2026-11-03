@@ -258,8 +258,8 @@ bool Cloud::syncBlacklist() {
 		if (parser.complete()) {
 			clock_->adoptServerTime(parser.now());
 			uint32_t now = clock_->now();
-			if (clock_->synced() && now > parser.now() + 60 || now + 60 < parser.now())
-				LOG("Clock differs from the server by %ld s.", (long)now - (long)parser.now());
+			long skew = (long)now - (long)parser.now();
+			if (clock_->synced() && (skew > 60 || skew < -60)) LOG("Clock differs from the server by %ld s.", skew);
 			staging->prune(now);
 			*blacklist_ = *staging;
 			blacklistDirty_ = true;
@@ -286,10 +286,11 @@ bool Cloud::syncBlacklist() {
 	return ok;
 }
 
-// Uploads queued door events in small batches. Events leave the queue only after the server
-// accepted them; the unique index on entries makes a repeated upload harmless.
+// Uploads queued door events in small batches through the door_log function. Events leave the
+// queue only after the server accepted them; the function ignores events it already stored, so a
+// batch whose reply was lost can simply be sent again.
 bool Cloud::flushJournal() {
-	char* body = (char*)malloc(kFlushBatch * kRecordJson + 4);
+	char* body = (char*)malloc(kFlushBatch * kRecordJson + 20);
 	if (!body) return false;
 	bool ok = true;
 	while (ok && Persist::journalCount()) {
@@ -298,7 +299,7 @@ bool Cloud::flushJournal() {
 		if (!n) break;
 
 		size_t len = 0, valid = 0;
-		body[len++] = '[';
+		len += snprintf(body, 16, "{\"entries\":[");
 		for (size_t i = 0; i < n; i++) {
 			if (!journalValid(records[i])) continue;  // damaged by flash corruption; dropped below
 			if (valid) body[len++] = ',';
@@ -308,12 +309,12 @@ bool Cloud::flushJournal() {
 			valid++;
 		}
 		body[len++] = ']';
+		body[len++] = '}';
 		body[len] = 0;
 
 		int code = 204;
 		if (valid)
-			code = request("POST", "/rest/v1/entries?on_conflict=door_id,created_at,key_id,serial_number", body, len,
-			               "resolution=ignore-duplicates,return=minimal", true);
+			code = request("POST", "/rest/v1/rpc/door_log", body, len, nullptr, true);
 		if (valid) { noteStatus(code); finish(); }
 
 		bool accepted = code >= 200 && code < 300;

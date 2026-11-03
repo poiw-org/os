@@ -101,6 +101,10 @@ export type ApiState = {
 	calls: string[];
 	/** Bodies of requests, in order, as "METHOD path" -> parsed JSON. */
 	bodies: { call: string; body: unknown }[];
+	/** Broadcast messages clients sent, in order. */
+	broadcasts: { topic: string; event: string; payload: Record<string, unknown> }[];
+	/** Whether the (mock) door answers force-open commands. */
+	doorAnswers: boolean;
 	/** Emits a Realtime change to every channel subscribed to `table` (as the server would). */
 	push: (
 		table: string,
@@ -109,9 +113,30 @@ export type ApiState = {
 	) => void;
 };
 
+// supabase-js sends broadcasts as binary frames (realtime-js serializer, kind 3):
+// [kind, joinRefLen, refLen, topicLen, eventLen, metaLen, encoding] + joinRef, ref, topic, event, meta, payload.
+function decodeBroadcastPush(buf: Buffer): [string | null, string | null, string, string, unknown] {
+	const [, joinRefLen, refLen, topicLen, eventLen, metaLen] = buf;
+	let offset = 7;
+	const take = (n: number) => buf.subarray(offset, (offset += n)).toString('utf8');
+	const joinRef = take(joinRefLen);
+	const ref = take(refLen);
+	const topic = take(topicLen);
+	const userEvent = take(eventLen);
+	take(metaLen);
+	const payload = JSON.parse(buf.subarray(offset).toString('utf8'));
+	return [
+		joinRef || null,
+		ref || null,
+		topic,
+		'broadcast',
+		{ type: 'broadcast', event: userEvent, payload }
+	];
+}
+
 // A minimal Phoenix/Realtime server: acknowledges joins and heartbeats, and can push changes.
 // Frames use the v2 array format: [join_ref, ref, topic, event, payload].
-async function mockRealtime(page: Page) {
+async function mockRealtime(page: Page, state: ApiState) {
 	const channels: {
 		topic: string;
 		ws: { send: (data: string) => void };
@@ -119,11 +144,26 @@ async function mockRealtime(page: Page) {
 	}[] = [];
 	await page.routeWebSocket(/\/realtime\/v1\/websocket/, (ws) => {
 		ws.onMessage((raw) => {
-			const [joinRef, ref, topic, event, payload] = JSON.parse(String(raw));
+			const [joinRef, ref, topic, event, payload] =
+				typeof raw === 'string' ? JSON.parse(raw) : decodeBroadcastPush(raw);
 			if (event === 'heartbeat') {
 				ws.send(
 					JSON.stringify([null, ref, 'phoenix', 'phx_reply', { status: 'ok', response: {} }])
 				);
+			} else if (event === 'broadcast') {
+				state.broadcasts.push({ topic, event: payload.event, payload: payload.payload });
+				// The door confirms a force-open command, as the firmware does.
+				if (payload.event === 'force_open' && state.doorAnswers) {
+					ws.send(
+						JSON.stringify([
+							null,
+							null,
+							topic,
+							'broadcast',
+							{ type: 'broadcast', event: 'force_open_ack', payload: { id: payload.payload.id } }
+						])
+					);
+				}
 			} else if (event === 'phx_join') {
 				const changes = (payload.config?.postgres_changes ?? []) as { table: string }[];
 				const withIds = changes.map((c, i) => ({ ...c, id: i + 1 }));
@@ -294,8 +334,11 @@ export const test = base.extend<{ api: ApiState; signedIn: boolean }>({
 				keys: structuredClone(KEYS),
 				calls: [],
 				bodies: [],
-				push: await mockRealtime(page)
+				broadcasts: [],
+				doorAnswers: true,
+				push: () => {}
 			};
+			state.push = await mockRealtime(page, state);
 			await mockSupabase(page, state);
 			// Avatars fall back to the generated one; never hit Gravatar from tests.
 			await page.route(/gravatar\.com/, (route) => route.fulfill({ status: 404 }));

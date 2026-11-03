@@ -161,8 +161,8 @@ namespace Console {
 void firstRunSetup(Settings& s) {
 	memset(&s, 0, sizeof(s));
 	Serial.println(F("\nThis door is not configured yet."));
-	while (!SettingsStore::complete(s) || !wizard(s)) {
-		if (SettingsStore::complete(s)) break;
+	// wizard() only returns true once the settings are validated and saved.
+	while (!wizard(s)) {
 		Serial.println(F("\nPress Enter to start the setup again."));
 		char line[8];
 		readLine(line, sizeof(line), 0, false);

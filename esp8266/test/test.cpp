@@ -203,6 +203,15 @@ static void testSyncParser() {
 	m.feed(trunc, strlen(trunc));
 	CHECK(m.complete() && m.truncated());
 
+	// A download that stops before the closing brace is not complete, wherever it stops.
+	const char* whole = "{\"now\":5,\"total\":1,\"blocked\":[[\"a\",10]]}";
+	for (size_t cutAt = 0; cutAt < strlen(whole); cutAt++) {
+		BlacklistSet part;
+		SyncParser q(part);
+		q.feed(whole, cutAt);
+		CHECK(!q.complete());
+	}
+
 	// Keys may arrive in any order.
 	BlacklistSet reordered;
 	SyncParser r(reordered);

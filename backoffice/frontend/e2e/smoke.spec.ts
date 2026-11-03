@@ -211,12 +211,31 @@ test.describe('signed in', () => {
 		expect(renew).toMatchObject({ action: 'renew', id: firstId });
 	});
 
-	test('force open sends the command', async ({ page, api }) => {
+	test('force open is broadcast to the door and confirmed', async ({ page, api }) => {
 		await page.goto('/forceOpen');
 		await page.getByRole('button', { name: 'YES' }).click();
 		await expect(page).toHaveURL(/\/$/);
-		const update = api.bodies.find((b) => b.call === 'PATCH /rest/v1/doors')?.body;
-		expect(update).toEqual({ force_open: true });
+		await expect(page.getByRole('status').filter({ hasText: 'The door unlocked.' })).toBeVisible();
+		expect(api.broadcasts).toHaveLength(1);
+		expect(api.broadcasts[0]).toMatchObject({
+			topic: 'realtime:door:main',
+			event: 'force_open',
+			payload: { id: expect.any(String), ts: expect.any(Number) }
+		});
+		// Nothing is written to the database: a stored command could fire after an outage.
+		expect(api.calls.filter((c) => c.startsWith('PATCH /rest/v1/doors'))).toEqual([]);
+	});
+
+	test('force open reports an offline door instead of pretending', async ({ page, api }) => {
+		api.doorAnswers = false;
+		await page.goto('/forceOpen');
+		await page.getByRole('button', { name: 'YES' }).click();
+		await expect(page.getByRole('alert').filter({ hasText: 'did not answer' })).toBeVisible({
+			timeout: 15_000
+		});
+		// Still on the page, and the user can try again.
+		await expect(page).toHaveURL(/forceOpen/);
+		await expect(page.getByRole('button', { name: 'YES' })).toBeEnabled();
 	});
 
 	test('log out returns to the sign-in page', async ({ page, api }) => {
