@@ -1,25 +1,35 @@
 @import 'tailwindcss';
-@import '@fontsource-variable/geist';
-@import '@fontsource-variable/geist-mono';
+@import '@fontsource/space-mono/400.css';
+@import '@fontsource/space-mono/700.css';
+@import '@fontsource-variable/space-grotesk';
 
-/* Quiet dark: layered neutrals, hairlines instead of boxes, white primary action, and a single
-   restrained accent that only ever means "live / ok". The Tailwind 2 palette names the markup
-   already uses are re-pointed at these tokens. See design.md. */
+/* po/iw: midnight navy, a dot grid, monospace headings over a grotesk body, one electric purple that means "act".
+   The Tailwind 2 palette names the markup already uses are re-pointed at these tokens. See
+   design.md. */
 @theme {
-	--font-sans: 'Geist Variable', system-ui, sans-serif;
-	--font-mono: 'Geist Mono Variable', ui-monospace, monospace;
+	--font-sans: 'Space Grotesk Variable', system-ui, sans-serif;
+	--font-mono: 'Space Mono', ui-monospace, monospace;
 
-	--color-void: oklch(11.5% 0.004 250);
-	--color-paper: oklch(14.5% 0.004 250);
-	--color-paper-2: oklch(17.5% 0.005 250);
-	--color-ink: oklch(97% 0.003 250);
+	--radius-md: 0.1875rem;
+	--radius-lg: 0.25rem;
+	--radius-xl: 0.25rem;
+
+	--color-void: oklch(10.5% 0.03 285);
+	--color-paper: oklch(14% 0.035 285);
+	--color-paper-2: oklch(18% 0.04 285);
+	--color-ink: oklch(97% 0.008 285);
+
+	/* the brand purple and its lighter text-safe companion */
+	--color-brand: oklch(47% 0.17 295);
+	--color-brand-hover: oklch(53% 0.18 295);
+	--color-brand-text: oklch(74% 0.14 295);
 
 	/* surface, hairline, strong hairline, muted, secondary ink */
-	--color-gray-50: oklch(17% 0.005 250);
-	--color-gray-200: oklch(24% 0.006 250);
-	--color-gray-300: oklch(33% 0.008 250);
-	--color-gray-400: oklch(60% 0.008 250);
-	--color-gray-600: oklch(75% 0.006 250);
+	--color-gray-50: oklch(17% 0.04 285);
+	--color-gray-200: oklch(26% 0.045 285);
+	--color-gray-300: oklch(36% 0.06 285);
+	--color-gray-400: oklch(65% 0.035 285);
+	--color-gray-600: oklch(78% 0.025 285);
 
 	--color-green-700: oklch(80% 0.15 162); /* accent */
 	--color-green-500: oklch(76% 0.14 162);
@@ -54,10 +64,23 @@
 		background-color: var(--color-void);
 		color: var(--color-ink);
 		font-size: 0.875rem;
-		line-height: 1.45;
+		line-height: 1.5;
 		-webkit-font-smoothing: antialiased;
-		letter-spacing: -0.011em;
-		font-feature-settings: 'tnum' on;
+		background-image: radial-gradient(oklch(100% 0 0 / 0.07) 1px, transparent 1px);
+		background-size: 24px 24px;
+		background-attachment: fixed;
+	}
+
+	h1,
+	h2,
+	h3 {
+		font-family: var(--font-mono);
+		font-weight: 700;
+		letter-spacing: -0.02em;
+	}
+
+	a:not(.btn):not(.row) {
+		text-underline-offset: 3px;
 	}
 
 	button:not(:disabled),
@@ -88,47 +111,44 @@
 	}
 
 	:focus-visible {
-		outline: 2px solid var(--color-gray-400);
+		outline: 2px solid var(--color-brand-text);
 		outline-offset: 2px;
 	}
 
 	input:focus-visible,
 	textarea:focus-visible {
 		outline: none;
-		border-color: var(--color-gray-400);
-		box-shadow: 0 0 0 3px oklch(100% 0 0 / 0.08);
+		border-color: var(--color-brand-text);
+		box-shadow: 0 0 0 3px oklch(47% 0.17 295 / 0.35);
 	}
 
 	::selection {
-		background: oklch(100% 0 0 / 0.18);
+		background: oklch(47% 0.17 295 / 0.55);
 	}
 
 	/* date-picker-svelte reads these. */
 	:root {
 		--date-picker-background: var(--color-paper-2);
 		--date-picker-foreground: var(--color-ink);
-		--date-picker-highlight-border: var(--color-gray-400);
-		--date-picker-highlight-shadow: oklch(100% 0 0 / 0.1);
-		--date-picker-selected-color: var(--color-paper);
-		--date-picker-selected-background: var(--color-ink);
+		--date-picker-highlight-border: var(--color-brand-text);
+		--date-picker-highlight-shadow: oklch(47% 0.17 295 / 0.35);
+		--date-picker-selected-color: var(--color-ink);
+		--date-picker-selected-background: var(--color-brand);
 	}
 }
 
 @layer components {
-	/* Small section label. */
+	/* Field and section label. */
 	.eyebrow {
 		font-size: 0.75rem;
-		font-weight: 500;
-		letter-spacing: 0.02em;
 		color: var(--color-gray-400);
 	}
 
 	/* A bordered panel whose children are separated by hairlines, not boxes. */
 	.panel {
 		border: 1px solid var(--color-gray-200);
-		border-radius: 0.75rem;
+		border-radius: var(--radius-xl);
 		background: var(--color-paper);
-		box-shadow: inset 0 1px 0 oklch(100% 0 0 / 0.03);
 		overflow: hidden;
 	}
 	.panel > .row + .row,
@@ -145,14 +165,11 @@
 		justify-content: center;
 		gap: 0.5rem;
 		border: 1px solid var(--color-gray-200);
-		border-radius: 0.5rem;
+		border-radius: var(--radius-lg);
 		background: transparent;
 		padding: 0.4375rem 0.75rem;
 		color: var(--tone);
-		font-size: 0.75rem;
-		font-weight: 500;
-		letter-spacing: 0.04em;
-		text-transform: uppercase;
+		font-size: 0.8125rem;
 		transition:
 			background-color 120ms var(--ease-out),
 			border-color 120ms var(--ease-out),
@@ -176,14 +193,14 @@
 		color: var(--color-red-500);
 	}
 	.btn-primary {
-		background: var(--color-ink);
-		border-color: var(--color-ink);
-		color: var(--color-void);
+		background: var(--color-brand);
+		border-color: var(--color-brand);
+		color: #fff;
 	}
 	.btn-primary:hover:not(:disabled) {
-		background: oklch(88% 0.003 250);
-		border-color: oklch(88% 0.003 250);
-		color: var(--color-void);
+		background: var(--color-brand-hover);
+		border-color: var(--color-brand-hover);
+		color: #fff;
 	}
 
 	.tone-red {
@@ -226,9 +243,9 @@
 		transform: scale(0.96);
 	}
 	.chip[aria-pressed='true'] {
-		background: var(--color-ink);
-		border-color: var(--color-ink);
-		color: var(--color-void);
+		background: var(--color-brand);
+		border-color: var(--color-brand);
+		color: #fff;
 	}
 
 	/* List row inside a .panel, or a standalone data card. */
@@ -241,7 +258,7 @@
 		transition: background-color 120ms var(--ease-out);
 	}
 	a.row:hover {
-		background: oklch(100% 0 0 / 0.025);
+		background: oklch(47% 0.17 295 / 0.12);
 	}
 }
 

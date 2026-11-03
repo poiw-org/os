@@ -1,6 +1,4 @@
 <script lang="ts">
-	import Fa from 'svelte-fa';
-	import { faSearch, faWifi, faChevronRight } from '@fortawesome/free-solid-svg-icons';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { getKeyBySerialNumber, listAllKeys, listAllUsers, listEntries } from '#lib/api.ts';
@@ -93,17 +91,13 @@
 <div class="lg:grid lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
 	<section class="flex min-w-0 flex-col gap-5 p-4 md:p-8">
 		<div class="flex flex-col gap-1">
-			<div class="flex items-center justify-between">
-				<h1 class="text-xl font-semibold tracking-tight">Users</h1>
-			</div>
-			<p class="text-gray-400">Everyone with access to the door, and the keys they hold.</p>
+			<h1 class="text-xl font-bold">Users</h1>
 		</div>
 
 		{#if !scanning}
 			<div
-				class="flex items-center gap-3 rounded-lg border bg-paper-2 py-1.5 pr-1.5 pl-3.5 text-gray-400 focus-within:border-gray-400"
+				class="flex items-center gap-3 rounded-lg border bg-paper-2 py-1.5 pr-1.5 pl-3.5 text-gray-400 focus-within:border-brand-text"
 			>
-				<Fa icon={faSearch} />
 				<input
 					type="text"
 					bind:value={searchQuery}
@@ -112,10 +106,10 @@
 					class="w-full border-0! bg-transparent! p-1 text-ink shadow-none! outline-none!"
 				/>
 				<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-				<span onclick={findByTag} class="btn shrink-0"><Fa icon={faWifi} />Scan tag</span>
+				<span onclick={findByTag} class="btn shrink-0">Scan tag</span>
 			</div>
 		{:else}
-			<span class="btn self-start"><Fa icon={faSearch} />Please approach the tag ...</span>
+			<span class="btn self-start">Hold the tag to the phone…</span>
 		{/if}
 
 		{#if loadError}
@@ -135,10 +129,7 @@
 							<span class="flex min-w-0 items-center gap-3">
 								<Avatar email={user.email} size={32} />
 								<span class="truncate">{user.email}</span>
-								{#if user.blocked}<span
-										class="rounded-full border border-red-500/40 px-2 py-0.5 text-[11px] text-red-500"
-										>BLOCKED</span
-									>{/if}
+								{#if user.blocked}<span class="text-xs text-red-500">blocked</span>{/if}
 							</span>
 							<span class="flex shrink-0 items-center gap-3 text-xs text-gray-400">
 								{#if keys.length}
@@ -153,17 +144,16 @@
 								{:else}
 									<span>no keys</span>
 								{/if}
-								<Fa icon={faChevronRight} />
 							</span>
 						</a>
 					{:else}
-						<span class="block p-8 text-center text-gray-400">No users were found.</span>
+						<span class="block p-8 text-gray-400">No users found.</span>
 					{/each}
 				</div>
 				{#if !query && withoutKeys > 0}
 					<button
 						onclick={() => (showAll = !showAll)}
-						class="self-start text-xs text-gray-400 underline underline-offset-4 hover:text-ink"
+						class="self-start text-xs text-brand-text underline"
 						>{showAll
 							? 'Hide users without keys'
 							: `Show ${withoutKeys} users without keys`}</button
@@ -174,13 +164,10 @@
 	</section>
 
 	<aside
-		class="flex min-w-0 flex-col gap-2 border-t bg-paper/60 p-4 md:p-8 lg:sticky lg:top-[49px] lg:h-[calc(100vh-49px)] lg:overflow-y-auto lg:border-t-0 lg:border-l"
+		class="flex min-w-0 flex-col gap-2 border-t p-4 md:p-8 lg:sticky lg:top-[49px] lg:h-[calc(100vh-49px)] lg:overflow-y-auto lg:border-t-0 lg:border-l"
 	>
 		<div class="flex flex-col gap-1 pb-3">
-			<div class="flex items-center justify-between">
-				<h2 class="text-xl font-semibold tracking-tight">Live entries</h2>
-			</div>
-			<p class="text-gray-400">Every tap on the door, as it happens.</p>
+			<h2 class="text-xl font-bold">Door entries</h2>
 		</div>
 		<div class="panel">
 			{#each activity.items ?? [] as entry (entry.id)}
@@ -194,7 +181,7 @@
 					/>
 				</div>
 			{:else}
-				<span class="block p-8 text-center text-gray-400">No door activity yet.</span>
+				<span class="block p-8 text-gray-400">No door activity yet.</span>
 			{/each}
 		</div>
 	</aside>

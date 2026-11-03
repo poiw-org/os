@@ -2,11 +2,11 @@
 
 Locked system for the backoffice. Extend this file instead of restyling pages one by one.
 
-Direction: quiet and premium. Hairline-divided panels instead of boxed cards, a white primary action, one muted accent that only means ok/live, no status badges shouting, no live indicators.
+Direction: the original po/iw look. Midnight navy with a faint dot grid, Space Mono everywhere, tight 4px corners, one electric purple primary action. Hairline-divided panels, no shouting badges.
 
 ## Genre
 
-modern-minimal with atmospheric dark (Linear / Vercel). Dark only.
+hacker-terminal minimal on midnight navy. Dark only.
 
 ## Layout
 
@@ -16,16 +16,25 @@ modern-minimal with atmospheric dark (Linear / Vercel). Dark only.
 
 ## Tokens (see `src/app.css`)
 
-- Paper `--color-void` / `--color-paper` / `--color-paper-2`, ink `--color-ink`, hairline `gray-200`.
-- Accent: muted mint `oklch(80% 0.15 162)` (the old `green-700` name still points at it).
-- Status is a dot plus text. Buttons are ghost (`.btn`), white for the one primary (`.btn-primary`), red only for destructive (`.tone-red`).
-- Type: Geist (UI), Geist Mono (data, `.eyebrow` labels). Roman only, no italics.
+- Paper `--color-void` / `--color-paper` / `--color-paper-2` (navy, hue 285), ink `--color-ink`, hairline `gray-200`.
+- Brand: `--color-brand` purple for the primary button, chips and focus; `--color-brand-text` for links. Mint (`green-700`) still means ok/success.
+- Status is a dot plus text. Buttons are ghost (`.btn`), purple for the one primary (`.btn-primary`), red only for destructive (`.tone-red`).
+- Type: Space Mono for everything; `.eyebrow` labels are uppercase and tracked. Roman only.
+- Logo: `static/poiw.png`, recoloured with white lettering so it sits straight on the navy (`Brand`).
 - Avatars: Gravatar (SHA-256 of the email, `d=404`) over a generated gradient fallback.
 
 ## Components
 
 `.panel` + `.row` (hairline-divided lists), `.btn`, `.eyebrow`, `Avatar`, `KeyStatusBadge`, `Breadcrumb`, `ActivityRow`.
 
+## Rules against template tells
+
+- No icon library. Actions are words; status is a dot plus text. No pills, no tinted alert boxes, no side stripes.
+- No glow, blur, gradient fills, drop shadows or decorative 3D. Surfaces are flat, separated by hairlines.
+- Buttons and labels are sentence case, not uppercase. Headings are bold Space Mono, no subtitle under every h1.
+- Auth screens are a single left-biased column on the dot grid. No split art panel, no segmented tabs.
+- Avatars are a flat hue colour (or Gravatar). Loading is the word "Loading…", not a spinner.
+
 ## Motion
 
-New live rows slide in 240ms; presses scale to 0.97; everything collapses under `prefers-reduced-motion`.
+New live rows slide in 240ms; presses scale to 0.97; no pulses, pings or staggered entrances; everything collapses under `prefers-reduced-motion`.

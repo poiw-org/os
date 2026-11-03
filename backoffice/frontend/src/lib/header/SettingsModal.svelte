@@ -127,14 +127,12 @@
 	{onclose}
 	onclick={(e) => e.target === dialog && dialog?.close()}
 	aria-labelledby="settings-title"
-	class="sheet m-auto w-[calc(100%-2rem)] max-w-lg overflow-hidden rounded-2xl border bg-paper p-0 text-ink shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-sm"
+	class="sheet m-auto w-[calc(100%-2rem)] max-w-lg overflow-hidden rounded-lg border bg-paper p-0 text-ink backdrop:bg-black/70"
 >
-	<header
-		class="relative flex items-center gap-4 border-b bg-[radial-gradient(120%_140%_at_0%_0%,oklch(80%_0.15_162/0.12),transparent_60%)] px-6 pt-6 pb-5"
-	>
+	<header class="relative flex items-center gap-4 border-b px-6 pt-6 pb-5">
 		<Avatar email={user.email} size={56} />
 		<span class="flex min-w-0 flex-col pr-8">
-			<h2 id="settings-title" class="truncate text-lg font-semibold tracking-tight">
+			<h2 id="settings-title" class="truncate text-base font-bold">
 				{user.nickname}
 			</h2>
 			<span class="truncate text-gray-400">{user.email}</span>
@@ -143,7 +141,7 @@
 			type="button"
 			onclick={() => dialog?.close()}
 			aria-label="Close"
-			class="absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-full text-gray-400 hover:bg-paper-2 hover:text-ink"
+			class="absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-md text-gray-400 hover:bg-paper-2 hover:text-ink"
 			>✕</button
 		>
 	</header>
@@ -155,7 +153,7 @@
 				role="tab"
 				aria-selected={tab === value}
 				onclick={() => select(value)}
-				class="-mb-px border-b-2 px-2.5 py-3 text-sm font-medium transition-colors {tab === value
+				class="-mb-px border-b-2 px-2.5 py-3 text-sm font-medium {tab === value
 					? 'border-ink text-ink'
 					: 'border-transparent text-gray-400 hover:text-ink'}">{label}</button
 			>
@@ -180,7 +178,7 @@
 				</span>
 			</form>
 
-			<div class="flex items-center gap-4 rounded-xl border bg-paper-2/50 p-4">
+			<div class="flex items-center gap-4 rounded-lg border p-4">
 				<Avatar email={user.email} size={40} />
 				<p class="flex-1 text-gray-400">
 					Your avatar comes from Gravatar, with a generated one as fallback.
@@ -315,8 +313,8 @@
 			<p
 				role="status"
 				class="rounded-lg border px-3.5 py-2.5 {failed
-					? 'border-red-500/30 bg-red-500/5 text-red-400'
-					: 'border-green-700/30 bg-green-700/5 text-green-700'}"
+					? 'border-red-500/40 text-red-400'
+					: 'border-green-700/40 text-green-700'}"
 			>
 				{message}
 			</p>

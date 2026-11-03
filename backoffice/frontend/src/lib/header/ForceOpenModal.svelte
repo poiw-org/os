@@ -1,6 +1,4 @@
 <script lang="ts">
-	import Fa from 'svelte-fa';
-	import { faDoorOpen } from '@fortawesome/free-solid-svg-icons';
 	import {
 		DOOR_ID,
 		unlockDoor,
@@ -74,7 +72,7 @@
 	oncancel={(e) => phase === 'running' && e.preventDefault()}
 	onclick={(e) => e.target === dialog && close()}
 	aria-labelledby="force-open-title"
-	class="sheet m-auto w-[calc(100%-2rem)] max-w-xl overflow-hidden rounded-2xl border bg-paper p-0 text-ink shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-sm"
+	class="sheet m-auto w-[calc(100%-2rem)] max-w-xl overflow-hidden rounded-lg border bg-paper p-0 text-ink backdrop:bg-black/70"
 >
 	<div class="relative p-6">
 		<button
@@ -82,10 +80,10 @@
 			onclick={close}
 			disabled={phase === 'running'}
 			aria-label="Close"
-			class="absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-full text-gray-400 hover:bg-paper-2 hover:text-ink disabled:opacity-30"
+			class="absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-md text-gray-400 hover:bg-paper-2 hover:text-ink disabled:opacity-30"
 			>✕</button
 		>
-		<h2 id="force-open-title" class="text-lg font-semibold tracking-tight">Remote unlock</h2>
+		<h2 id="force-open-title" class="text-base font-bold">Remote unlock</h2>
 		<p class="mt-1 text-sm text-gray-400">
 			Sends a one-time unlock to <span class="font-mono text-gray-500">door:{DOOR_ID}</span>. It is
 			logged under your name as a remote unlock.
@@ -111,13 +109,13 @@
 						</span>
 					{/if}
 					<span
-						class="dot relative z-10 flex h-6 w-6 items-center justify-center rounded-full border font-mono text-[11px] transition-colors duration-200
+						class="dot relative z-10 flex h-6 w-6 items-center justify-center rounded-full border font-mono text-[11px]
 						{state === 'done'
 							? 'border-green-500 bg-paper text-green-500'
 							: state === 'failed'
 								? 'border-red-500 bg-paper text-red-500'
 								: state === 'active'
-									? 'active border-ink bg-paper text-ink'
+									? 'border-ink bg-paper text-ink'
 									: 'bg-paper text-gray-400'}"
 					>
 						{state === 'done' ? '✓' : state === 'failed' ? '!' : i + 1}
@@ -128,7 +126,7 @@
 		</ol>
 
 		<!-- Transcript of the exchanges -->
-		<div class="mt-6 overflow-hidden rounded-xl border bg-void text-[12px] leading-5 text-gray-400">
+		<div class="mt-6 overflow-hidden rounded-lg border bg-void text-[12px] leading-5 text-gray-400">
 			<div class="flex items-center justify-between border-b border-gray-200 px-3 py-1.5">
 				<span class="font-mono text-[11px] text-gray-500">realtime · door:{DOOR_ID}</span>
 				{#if ackLatency !== undefined}
@@ -176,17 +174,17 @@
 
 		<div class="mt-6 flex justify-end gap-2">
 			{#if phase === 'opened'}
-				<button type="button" class="btn btn-primary" onclick={close}>DONE</button>
+				<button type="button" class="btn btn-primary" onclick={close}>Done</button>
 			{:else}
 				<button type="button" class="btn" onclick={close} disabled={phase === 'running'}
-					>CANCEL</button
+					>Cancel</button
 				>
 				<button type="button" class="btn btn-primary" onclick={run} disabled={phase === 'running'}
-					><Fa icon={faDoorOpen} />{phase === 'running'
-						? 'UNLOCKING…'
+					>{phase === 'running'
+						? 'Unlocking…'
 						: phase === 'failed'
-							? 'TRY AGAIN'
-							: 'REMOTE UNLOCK'}</button
+							? 'Try again'
+							: 'Remote unlock'}</button
 				>
 			{/if}
 		</div>
@@ -194,24 +192,6 @@
 </dialog>
 
 <style>
-	.dot.active::after {
-		content: '';
-		position: absolute;
-		inset: -4px;
-		border-radius: 9999px;
-		border: 1px solid currentColor;
-		animation: ping 1.1s cubic-bezier(0, 0, 0.2, 1) infinite;
-	}
-	@keyframes ping {
-		from {
-			opacity: 0.6;
-			transform: scale(0.85);
-		}
-		to {
-			opacity: 0;
-			transform: scale(1.5);
-		}
-	}
 	.cursor {
 		animation: blink 1s steps(2) infinite;
 	}
@@ -221,7 +201,6 @@
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.dot.active::after,
 		.cursor {
 			animation: none;
 		}

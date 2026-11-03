@@ -1,6 +1,4 @@
 <script lang="ts">
-	import Fa from 'svelte-fa';
-	import { faChevronRight } from '@fortawesome/free-solid-svg-icons';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
@@ -70,7 +68,7 @@
 	<title>{user?.email ?? 'User'}</title>
 </svelte:head>
 
-<div class="mx-auto flex max-w-4xl flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
+<div class="flex max-w-4xl flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
 	{#if loadError}
 		<span class="flex w-full justify-center px-10 pt-20 text-red-500">{loadError}</span>
 	{:else if !user || !keys.items}
@@ -82,7 +80,7 @@
 			<span class="flex items-center gap-4">
 				<Avatar email={user.email} size={56} />
 				<span class="flex flex-col">
-					<span class="text-xl font-semibold tracking-tight break-all">{user.email}</span>
+					<span class="text-xl font-bold break-all">{user.email}</span>
 					<span class="text-gray-400"
 						>{keys.items.length} key{keys.items.length === 1 ? '' : 's'}{#if user.blocked}
 							· <span class="text-red-500">blocked</span>{/if}</span
@@ -90,12 +88,12 @@
 				</span>
 			</span>
 			{#if !user.blocked}
-				<a href={resolve(`/items/create?user=${user.id}`)} class="btn btn-primary">+ ISSUE KEY</a>
+				<a href={resolve(`/items/create?user=${user.id}`)} class="btn btn-primary">Issue key</a>
 			{/if}
 		</div>
 
 		<div class="flex flex-col gap-2">
-			<span class="eyebrow flex items-center justify-between"><span>KEYS</span></span>
+			<h2 class="font-bold">Keys</h2>
 			<div class="panel">
 				{#each keys.items as key (key.id)}
 					<a href={resolve(`/items?id=${key.id}`)} in:arrive class="row">
@@ -111,17 +109,16 @@
 								>until {formatDate(key.expiresAt).split(',')[0]}</span
 							>
 							<KeyStatusBadge status={keyStatus(key, new Date(now))} />
-							<Fa icon={faChevronRight} />
 						</span>
 					</a>
 				{:else}
-					<span class="block p-8 text-center text-gray-400">This user has no keys yet.</span>
+					<span class="block p-8 text-gray-400">This user has no keys yet.</span>
 				{/each}
 			</div>
 		</div>
 
 		<div class="flex flex-col gap-2">
-			<span class="eyebrow flex items-center justify-between"><span>RECENT ENTRIES</span></span>
+			<h2 class="font-bold">Recent entries</h2>
 			<div class="panel">
 				{#each entries.items ?? [] as entry (entry.id)}
 					<div in:arrive>
@@ -134,9 +131,7 @@
 						/>
 					</div>
 				{:else}
-					<span class="block p-8 text-center text-gray-400"
-						>No entries for this user's keys yet.</span
-					>
+					<span class="block p-8 text-gray-400">No entries for this user's keys yet.</span>
 				{/each}
 			</div>
 		</div>

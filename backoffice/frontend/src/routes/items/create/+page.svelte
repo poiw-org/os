@@ -3,9 +3,6 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
-	import { fade, fly } from 'svelte/transition';
-	import Fa from 'svelte-fa';
-	import { faArrowRight, faKey, faMicrochip, faWifi } from '@fortawesome/free-solid-svg-icons';
 	import { DateInput } from 'date-picker-svelte';
 	import { issueKey, listUsers } from '#lib/api.ts';
 	import { scanTag } from '#lib/nfc.ts';
@@ -18,14 +15,6 @@
 	import UserPicker from '#lib/ui/UserPicker.svelte';
 
 	const DAY = 86_400_000;
-	const reduced = () =>
-		typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-	const stagger = (index: number) => ({
-		y: reduced() ? 0 : 14,
-		duration: reduced() ? 0 : 320,
-		delay: reduced() ? 0 : index * 70
-	});
-
 	const addMonths = (from: Date, months: number) =>
 		new Date(from.getFullYear(), from.getMonth() + months, from.getDate());
 	const presets = [
@@ -99,7 +88,7 @@
 		(async () => {
 			try {
 				users = await listUsers();
-				// Arriving from a user's page ("+ ISSUE KEY") pre-selects that user.
+				// Arriving from a user's page ("Issue key") pre-selects that user.
 				user = users.find((option) => option.value === page.url.searchParams.get('user'));
 			} catch (e) {
 				toast.error(e instanceof Error ? e.message : 'Could not load the users.');
@@ -118,7 +107,7 @@
 	<div class="flex flex-col gap-3">
 		<Breadcrumb crumbs={[{ label: 'Users', href: '/' }, { label: 'Issue a key' }]} />
 		<div class="flex flex-col gap-1">
-			<h1 class="text-xl font-semibold tracking-tight">Issue a key</h1>
+			<h1 class="text-xl font-bold">Issue a key</h1>
 			<p class="text-gray-400">Bind a new key to a user and a physical tag, or make it virtual.</p>
 		</div>
 	</div>
@@ -130,22 +119,20 @@
 			class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]"
 		>
 			<div class="panel">
-				<section in:fly={stagger(0)} class="flex gap-4 p-5 md:p-6">
-					<span class="step" aria-hidden="true">1</span>
+				<section class="flex gap-4 p-5 md:p-6">
 					<div class="flex min-w-0 flex-1 flex-col gap-4">
 						<div>
-							<h2 class="font-medium">Who is it for?</h2>
+							<h2 class="font-bold">Who is it for?</h2>
 							<p class="text-gray-400">Only users who are not blocked can hold a key.</p>
 						</div>
 						<UserPicker {users} bind:value={user} />
 					</div>
 				</section>
 
-				<section in:fly={stagger(1)} class="flex gap-4 border-t p-5 md:p-6">
-					<span class="step" aria-hidden="true">2</span>
+				<section class="flex gap-4 border-t p-5 md:p-6">
 					<div class="flex min-w-0 flex-1 flex-col gap-4">
 						<div>
-							<h2 class="font-medium">Which tag?</h2>
+							<h2 class="font-bold">Which tag?</h2>
 							<p class="text-gray-400">
 								{virtual
 									? 'A virtual key has no tag. It only unlocks the door remotely.'
@@ -158,9 +145,8 @@
 						{#if !virtual}
 							<div class="flex flex-wrap items-center gap-3">
 								<label
-									class="flex min-w-0 flex-1 basis-56 items-center gap-3 rounded-lg border bg-paper-2 pl-3.5 text-gray-400 transition-colors focus-within:border-gray-400"
+									class="flex min-w-0 flex-1 basis-56 items-center gap-3 rounded-lg border bg-paper-2 pl-3.5 text-gray-400 transition-colors focus-within:border-brand-text"
 								>
-									<Fa icon={faKey} />
 									<input
 										required
 										placeholder="Tag S/N"
@@ -174,30 +160,23 @@
 								</label>
 								<button type="button" onclick={scan} class="btn py-3">
 									{#if scanning}
-										<span class="relative flex h-2 w-2">
-											<span
-												class="absolute inline-flex h-full w-full rounded-full bg-green-700 opacity-75 motion-safe:animate-ping"
-											></span>
-											<span class="relative inline-flex h-2 w-2 rounded-full bg-green-700"></span>
-										</span>
 										Hold a tag to the phone
 									{:else}
-										<Fa icon={faWifi} />Scan tag
+										Scan tag
 									{/if}
 								</button>
 								<button type="button" onclick={() => (doorScan = true)} class="btn py-3">
-									<Fa icon={faMicrochip} />Scan at door
+									Scan at door
 								</button>
 							</div>
 						{/if}
 					</div>
 				</section>
 
-				<section in:fly={stagger(2)} class="flex gap-4 border-t p-5 md:p-6">
-					<span class="step" aria-hidden="true">3</span>
+				<section class="flex gap-4 border-t p-5 md:p-6">
 					<div class="flex min-w-0 flex-1 flex-col gap-4">
 						<div>
-							<h2 class="font-medium">When is it valid?</h2>
+							<h2 class="font-bold">When is it valid?</h2>
 							<p class="text-gray-400">Outside this window the door refuses the key.</p>
 						</div>
 						<div class="flex flex-wrap gap-4">
@@ -233,19 +212,17 @@
 							{/each}
 						</div>
 						{#if !validRange}
-							<p in:fade={{ duration: 150 }} class="text-red-500" role="status">
-								The key must expire after it activates.
-							</p>
+							<p class="text-red-500" role="status">The key must expire after it activates.</p>
 						{/if}
 					</div>
 				</section>
 			</div>
 
-			<aside in:fly={stagger(3)} class="panel flex flex-col lg:sticky lg:top-20">
+			<aside class="panel flex flex-col lg:sticky lg:top-20">
 				<div class="flex flex-col gap-4 p-5">
-					<span class="eyebrow">Summary</span>
+					<h2 class="font-bold">Summary</h2>
 					{#if user}
-						<div in:fly={{ y: 6, duration: 180 }} class="flex items-center gap-3">
+						<div class="flex items-center gap-3">
 							<Avatar email={user.label} size={40} />
 							<span class="min-w-0 truncate">{user.label}</span>
 						</div>
@@ -268,11 +245,9 @@
 				<div class="border-t p-5">
 					<button type="submit" disabled={processing} class="btn btn-primary w-full py-3">
 						{#if processing}
-							<span
-								class="h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent motion-safe:animate-spin"
-							></span>Issuing…
+							Issuing…
 						{:else}
-							Issue key<Fa icon={faArrowRight} />
+							Issue key
 						{/if}
 					</button>
 				</div>

@@ -19,12 +19,14 @@
 		<main class="mx-auto w-full max-w-[1500px] flex-1">
 			{@render children()}
 		</main>
-		<p id="footer" class="border-t p-4 text-center font-mono text-xs text-gray-400 print:hidden">
-			Open Source/FOSS project made by po/iw. Find the source code in our
-			<a href="https://github.com/poiw-org" target="_blank" rel="noreferrer" class="font-bold"
-				>Github page</a
-			>.
-		</p>
+		<footer id="footer" class="border-t text-xs text-gray-400 print:hidden">
+			<p class="mx-auto w-full max-w-[1500px] px-4 py-4 md:px-8">
+				Open Source/FOSS project made by po/iw. Find the source code in our
+				<a href="https://github.com/poiw-org" target="_blank" rel="noreferrer" class="font-bold"
+					>Github page</a
+				>.
+			</p>
+		</footer>
 	</div>
 {/if}
 <Notifications />

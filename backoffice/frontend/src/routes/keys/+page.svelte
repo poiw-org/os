@@ -1,6 +1,4 @@
 <script lang="ts">
-	import Fa from 'svelte-fa';
-	import { faChevronRight } from '@fortawesome/free-solid-svg-icons';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { listAllKeys, toKeySummary } from '#lib/api.ts';
@@ -34,12 +32,11 @@
 	<title>My keys</title>
 </svelte:head>
 
-<div class="mx-auto flex max-w-4xl flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
+<div class="flex max-w-4xl flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
 	<div class="flex flex-col gap-1">
-		<h1 class="text-xl font-semibold tracking-tight">My keys</h1>
+		<h1 class="text-xl font-bold">My keys</h1>
 		<p class="text-gray-400">
-			Keys are issued by an admin. You can disable one you no longer trust; only an admin can enable
-			it again.
+			You can disable a key you no longer trust. Only an admin can enable it again.
 		</p>
 	</div>
 
@@ -63,11 +60,10 @@
 							>until {formatDate(key.expiresAt).split(',')[0]}</span
 						>
 						<KeyStatusBadge status={keyStatus(key, new Date(now))} />
-						<Fa icon={faChevronRight} />
 					</span>
 				</a>
 			{:else}
-				<span class="block p-8 text-center text-gray-400">You have no keys yet.</span>
+				<span class="block p-8 text-gray-400">You have no keys yet.</span>
 			{/each}
 		</div>
 	{/if}

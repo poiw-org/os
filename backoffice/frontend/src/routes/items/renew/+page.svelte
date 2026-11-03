@@ -3,8 +3,6 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
-	import Fa from 'svelte-fa';
-	import { faHandSparkles } from '@fortawesome/free-solid-svg-icons';
 	import { DateInput } from 'date-picker-svelte';
 	import { getKey, renewKey } from '#lib/api.ts';
 	import { shortId } from '#lib/format.ts';
@@ -45,8 +43,12 @@
 {#if loadError}
 	<span class="flex w-full justify-center px-10 pt-20 text-red-500">{loadError}</span>
 {:else if !processing && key}
-	<form onsubmit={submit} class="flex flex-col items-start justify-start px-4 py-4 md:px-10">
-		<p class="text-xl font-bold">Renew {shortId(key.id)} owned by {key.user.email}</p>
+	<form
+		onsubmit={submit}
+		class="flex flex-col items-start justify-start px-4 py-6 md:px-8 md:py-10"
+	>
+		<h1 class="text-xl font-bold">Renew {shortId(key.id)}</h1>
+		<p class="mt-1 text-gray-400">{key.user.email}</p>
 		<span class="mt-10 flex gap-4">
 			<span class="flex flex-col gap-2">
 				<span>Activate not before</span>
@@ -67,7 +69,7 @@
 				/>
 			</span>
 		</span>
-		<button type="submit" class="btn btn-primary mt-10"><Fa icon={faHandSparkles} />RENEW</button>
+		<button type="submit" class="btn btn-primary mt-10">Renew</button>
 	</form>
 {:else}
 	<span class="flex pb-20"><Loading /></span>

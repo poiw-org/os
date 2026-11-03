@@ -1,12 +1,9 @@
 <script lang="ts">
-	import Fa from 'svelte-fa';
-	import { faDoorClosed, faDoorOpen } from '@fortawesome/free-solid-svg-icons';
 	import { unlockDoor, type ForceOpenEvent } from '#lib/api.ts';
 	import { signInWithPasskey, signOut } from '#lib/auth.ts';
 
 	type Phase = 'idle' | 'passkey' | 'door' | 'unlocking' | 'done' | 'failed';
 
-	const RING = 2 * Math.PI * 26;
 	const COPY: Record<Phase, [string, string]> = {
 		idle: ['Quick unlock', 'Open the door with a passkey'],
 		passkey: ['Waiting for your passkey', 'Follow the prompt on your device'],
@@ -23,7 +20,7 @@
 	let resetTimer: ReturnType<typeof setTimeout> | undefined;
 
 	const busy = $derived(phase === 'passkey' || phase === 'door' || phase === 'unlocking');
-	// The ring fills as the door's warning tone counts down; other phases show a sweeping arc.
+	// The bar fills as the door's warning tone counts down.
 	const progress = $derived(
 		phase === 'done'
 			? 1
@@ -90,117 +87,37 @@
 	onclick={run}
 	disabled={busy}
 	aria-busy={busy}
-	class="qu group relative flex w-full items-center gap-4 overflow-hidden rounded-2xl border bg-paper-2 p-4 text-left shadow-[0_1px_0_0_rgb(255_255_255/0.04)_inset] transition-[transform,border-color,background-color] duration-200 ease-out active:scale-[0.985] enabled:hover:border-gray-300 {phase ===
-	'done'
-		? 'border-green-500/50'
-		: phase === 'failed'
-			? 'qu-shake border-red-500/50'
+	class="relative flex w-full items-center gap-3 overflow-hidden rounded-lg border bg-paper-2 px-4 py-3 text-left enabled:hover:border-gray-300 {phase ===
+	'failed'
+		? 'border-red-500/60'
+		: phase === 'done'
+			? 'border-green-500/60'
 			: ''}"
 >
-	<!-- Soft glow that follows the state -->
-	<span
-		aria-hidden="true"
-		class="pointer-events-none absolute -top-10 -left-10 h-32 w-32 rounded-full blur-3xl transition-opacity duration-500 {phase ===
-		'failed'
-			? 'bg-red-500/20 opacity-100'
-			: phase === 'idle'
-				? 'bg-green-500/10 opacity-60 group-hover:opacity-100'
-				: 'bg-green-500/20 opacity-100'}"
-	></span>
-
-	<span class="relative flex h-14 w-14 shrink-0 items-center justify-center">
-		<svg viewBox="0 0 60 60" class="absolute inset-0 -rotate-90" aria-hidden="true">
-			<circle cx="30" cy="30" r="26" fill="none" stroke="var(--color-gray-200)" stroke-width="3" />
-			<circle
-				cx="30"
-				cy="30"
-				r="26"
-				fill="none"
-				stroke-width="3"
-				stroke-linecap="round"
-				class="qu-ring {phase === 'passkey' || phase === 'door' ? 'qu-sweep' : ''} {phase ===
-				'failed'
-					? 'stroke-red-500'
-					: 'stroke-green-500'}"
-				stroke-dasharray={phase === 'passkey' || phase === 'door' ? `${RING * 0.28} ${RING}` : RING}
-				stroke-dashoffset={RING * (1 - progress)}
-				opacity={phase === 'idle' || phase === 'failed' ? (phase === 'failed' ? 1 : 0) : 1}
-			/>
-		</svg>
-		<span
-			class="relative text-lg transition-colors duration-300 {phase === 'done'
+	<svg
+		viewBox="0 0 24 24"
+		class="h-5 w-5 shrink-0 {phase === 'failed'
+			? 'text-red-500'
+			: phase === 'done'
 				? 'text-green-500'
-				: phase === 'failed'
-					? 'text-red-500'
-					: 'text-ink'}"
-		>
-			{#if phase === 'done' || phase === 'unlocking'}
-				<span class="qu-pop block"><Fa icon={faDoorOpen} /></span>
-			{:else}
-				<span class="block"><Fa icon={faDoorClosed} /></span>
-			{/if}
-		</span>
+				: 'text-brand-text'}"
+		fill="none"
+		stroke="currentColor"
+		stroke-width="1.8"
+		stroke-linecap="round"
+		stroke-linejoin="round"
+		aria-hidden="true"
+	>
+		<circle cx="8" cy="15" r="4" />
+		<path d="M11 12 21 2m-4 4 3 3m-6 0 2 2" />
+	</svg>
+	<span class="flex min-w-0 flex-col gap-0.5" aria-live="polite">
+		<span class="font-mono font-bold">{title}</span>
+		<span class="text-gray-400">{detail}</span>
 	</span>
-
-	<span class="relative flex min-w-0 flex-1 flex-col gap-0.5" aria-live="polite">
-		<span class="font-medium tracking-tight">{title}</span>
-		<span class="text-sm text-gray-400">{detail}</span>
-	</span>
-
-	{#if phase === 'idle'}
-		<span
-			aria-hidden="true"
-			class="relative text-gray-400 transition-transform duration-200 ease-out group-hover:translate-x-0.5 group-hover:text-ink"
-			>→</span
-		>
-	{/if}
+	<span
+		class="absolute inset-x-0 bottom-0 h-0.5 origin-left bg-green-500 transition-transform duration-1000 ease-linear motion-reduce:transition-none"
+		style:transform="scaleX({progress})"
+		aria-hidden="true"
+	></span>
 </button>
-
-<style>
-	.qu-ring {
-		transition:
-			stroke-dashoffset 1s linear,
-			opacity 200ms ease;
-		transform-origin: center;
-	}
-	.qu-sweep {
-		animation: qu-spin 1.1s linear infinite;
-	}
-	.qu-pop {
-		animation: qu-pop 380ms cubic-bezier(0.34, 1.56, 0.64, 1);
-	}
-	.qu-shake {
-		animation: qu-shake 420ms cubic-bezier(0.36, 0.07, 0.19, 0.97);
-	}
-	@keyframes qu-spin {
-		to {
-			transform: rotate(360deg);
-		}
-	}
-	@keyframes qu-pop {
-		from {
-			transform: scale(0.6);
-			opacity: 0;
-		}
-	}
-	@keyframes qu-shake {
-		20%,
-		60% {
-			transform: translateX(-5px);
-		}
-		40%,
-		80% {
-			transform: translateX(5px);
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.qu-sweep,
-		.qu-pop,
-		.qu-shake {
-			animation: none;
-		}
-		.qu-ring {
-			transition: none;
-		}
-	}
-</style>

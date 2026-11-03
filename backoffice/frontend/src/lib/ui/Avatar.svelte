@@ -47,11 +47,10 @@
 </script>
 
 <span
-	class="relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-medium text-white/90 select-none"
+	class="relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full text-white select-none"
 	style="width:{size}px;height:{size}px;font-size:{Math.round(
 		size * 0.4
-	)}px;background:linear-gradient(135deg, oklch(62% 0.12 {hue}), oklch(38% 0.1 {(hue + 50) %
-		360}));box-shadow:inset 0 0 0 1px oklch(100% 0 0 / 0.12)"
+	)}px;background:oklch(42% 0.09 {hue})"
 	aria-hidden="true"
 >
 	{initial}

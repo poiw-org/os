@@ -4,9 +4,9 @@ import { test, expect, KEY_IDS, USERS } from './fixtures';
 // Update intentionally with: pnpm test:visual --update-snapshots
 
 const screens: [name: string, path: string, ready: string][] = [
-	['home', '/', 'Live entries'],
-	['user', `/users?id=${USERS[0].id}`, 'RECENT ENTRIES'],
-	['key-detail', `/items?id=${KEY_IDS.first}`, 'Logs:'],
+	['home', '/', 'Door entries'],
+	['user', `/users?id=${USERS[0].id}`, 'Recent entries'],
+	['key-detail', `/items?id=${KEY_IDS.first}`, 'Log'],
 	['create', '/items/create', 'Activate not before'],
 	['renew', `/items/renew?id=${KEY_IDS.first}`, 'Activate not before']
 ];

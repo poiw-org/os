@@ -61,9 +61,9 @@ test.describe('signed in', () => {
 		page
 	}) => {
 		await page.goto(`/users?id=${USERS[0].id}`);
-		await expect(page.getByText('RECENT ENTRIES')).toBeVisible();
+		await expect(page.getByText('Recent entries')).toBeVisible();
 		await expect(page.getByRole('link', { name: new RegExp(short(firstId)) })).toBeVisible();
-		await page.getByRole('link', { name: '+ ISSUE KEY' }).click();
+		await page.getByRole('link', { name: 'Issue key' }).click();
 		await expect(page.getByText('alice@example.test').first()).toBeVisible();
 	});
 
@@ -95,7 +95,7 @@ test.describe('signed in', () => {
 
 	test('key detail shows access log', async ({ page }) => {
 		await page.goto(`/items?id=${firstId}`);
-		await expect(page.getByText('Logs:')).toBeVisible();
+		await expect(page.getByRole('heading', { name: 'Log' })).toBeVisible();
 		// Log rows are icon-only until expanded and newest first, so the first one is the failed entry.
 		await page.locator('div.cursor-pointer').first().click();
 		await expect(page.getByText('Reason: KeyExpired')).toBeVisible();
@@ -202,10 +202,9 @@ test.describe('signed in', () => {
 
 	test('renew a key', async ({ page, api }) => {
 		await page.goto(`/items/renew?id=${firstId}`);
-		await expect(
-			page.getByText(`Renew ${short(firstId)} owned by alice@example.test`)
-		).toBeVisible();
-		await page.getByRole('button', { name: 'RENEW' }).click();
+		await expect(page.getByRole('heading', { name: `Renew ${short(firstId)}` })).toBeVisible();
+		await expect(page.getByText('alice@example.test')).toBeVisible();
+		await page.getByRole('button', { name: 'Renew' }).click();
 		await expect(page).toHaveURL(new RegExp(`/items\\?id=${firstId}`));
 		const renew = api.bodies.find((b) => b.call === 'POST /functions/v1/keys')?.body;
 		expect(renew).toMatchObject({ action: 'renew', id: firstId });
@@ -243,9 +242,9 @@ test.describe('signed in', () => {
 
 	test('the door writes a key to a tag and the modal follows it', async ({ page, api }) => {
 		await page.goto(`/items?id=${KEY_IDS.first}`);
-		await page.getByRole('button', { name: 'WRITE AT DOOR' }).click();
+		await page.getByRole('button', { name: 'Write at door' }).click();
 		const dialog = page.getByRole('dialog');
-		await dialog.getByRole('button', { name: 'START WRITER MODE' }).click();
+		await dialog.getByRole('button', { name: 'Start writer mode' }).click();
 		await expect(dialog.getByText('Hold the tag to the reader')).toBeVisible();
 		await expect(dialog.getByText('Writing. Keep it still')).toBeVisible();
 		await expect(dialog.getByText('Key written')).toBeVisible();
@@ -303,9 +302,11 @@ test.describe('signed in', () => {
 
 	test('log out returns to the sign-in page', async ({ page, api }) => {
 		await page.goto('/');
-		// The header renders a mobile and a desktop copy; click whichever is visible.
-		await page.locator('a:visible', { hasText: 'LOG OUT' }).click();
-		await expect(page).toHaveURL(/\/login$/);
+		// Retry the click: under load it can land before the page has hydrated.
+		await expect(async () => {
+			await page.getByRole('button', { name: 'Log out' }).click({ timeout: 1000 });
+			await expect(page).toHaveURL(/\/login$/, { timeout: 1500 });
+		}).toPass();
 		expect(api.calls).toContain('POST /auth/v1/logout');
 	});
 
@@ -349,7 +350,7 @@ test.describe('signed out', () => {
 		await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 		await expect(page).toHaveURL(/\/keys$/);
 		await expect(page.getByRole('heading', { name: 'My keys' })).toBeVisible();
-		await expect(page.getByText('ISSUE KEY')).toHaveCount(0);
+		await expect(page.getByText('Issue key')).toHaveCount(0);
 		await expect(page.getByRole('button', { name: 'REMOTE UNLOCK' })).toHaveCount(0);
 		await page.goto('/items/create');
 		await expect(page).toHaveURL(/\/keys$/);
@@ -366,7 +367,7 @@ test.describe('signed out', () => {
 
 	test('register checks the passwords, then asks to confirm the email', async ({ page, api }) => {
 		await page.goto('/login');
-		await page.getByRole('tab', { name: 'Register' }).click();
+		await page.getByRole('button', { name: 'Register' }).click();
 		await page.getByLabel('Email').fill('new@example.test');
 		await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
 		await page.getByLabel('Confirm password').fill('something-else');
@@ -401,6 +402,6 @@ test.describe('reset link opened (session present)', () => {
 			'/#access_token=x&refresh_token=y&expires_in=3600&token_type=bearer&type=recovery'
 		);
 		await expect(page).toHaveURL(/\/reset-password/);
-		await expect(page.getByText('Choose a new password')).toBeVisible();
+		await expect(page.getByRole('heading', { name: 'New password' })).toBeVisible();
 	});
 });

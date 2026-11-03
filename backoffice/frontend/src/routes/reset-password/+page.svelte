@@ -44,12 +44,10 @@
 	<span class="flex min-h-screen items-center justify-center"><Loading /></span>
 {:else if !signedIn}
 	<AuthShell title="Link expired" subtitle="This reset link is invalid or has already been used.">
-		<a href={resolve('/login')} class="btn btn-primary py-2.5 text-[0.8125rem]"
-			>Request a new link</a
-		>
+		<a href={resolve('/login')} class="btn btn-primary py-2.5">Request a new link</a>
 	</AuthShell>
 {:else}
-	<AuthShell title="Choose a new password" subtitle="You will be signed in once it is saved.">
+	<AuthShell title="New password">
 		<form onsubmit={submit} class="flex flex-col gap-4">
 			<label class="flex flex-col gap-1.5">
 				<span class="eyebrow">New password</span>
@@ -74,14 +72,9 @@
 				/>
 			</label>
 			{#if message}
-				<p
-					role="status"
-					class="rounded-lg border border-red-500/30 bg-red-500/5 px-3.5 py-2.5 text-red-400"
-				>
-					{message}
-				</p>
+				<p role="status" class="text-red-400">{message}</p>
 			{/if}
-			<button type="submit" disabled={busy} class="btn btn-primary mt-2 py-2.5 text-[0.8125rem]"
+			<button type="submit" disabled={busy} class="btn btn-primary mt-1 py-2.5"
 				>{busy ? 'Saving…' : 'Save password'}</button
 			>
 		</form>

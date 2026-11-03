@@ -13,17 +13,17 @@
 	type Mode = 'signin' | 'register' | 'reset';
 	const copy: Record<Mode, { title: string; subtitle: string; action: string }> = {
 		signin: {
-			title: 'Welcome back',
-			subtitle: 'Sign in to manage keys and doors.',
+			title: 'Sign in',
+			subtitle: '',
 			action: 'Sign in'
 		},
 		register: {
-			title: 'Create an account',
-			subtitle: 'Admins issue your keys once your account exists.',
+			title: 'Register',
+			subtitle: 'An admin issues your keys once the account exists.',
 			action: 'Create account'
 		},
 		reset: {
-			title: 'Reset your password',
+			title: 'Reset password',
 			subtitle: 'We will email you a link to choose a new one.',
 			action: 'Send reset link'
 		}
@@ -99,26 +99,6 @@
 <AuthShell title={copy[mode].title} subtitle={copy[mode].subtitle}>
 	{#if mode === 'signin' && canUsePasskey}
 		<QuickUnlock />
-		<div class="flex items-center gap-3 text-xs text-gray-400">
-			<span class="h-px flex-1 bg-gray-200"></span>or sign in<span class="h-px flex-1 bg-gray-200"
-			></span>
-		</div>
-	{/if}
-
-	{#if mode !== 'reset'}
-		<div role="tablist" class="grid grid-cols-2 gap-1 rounded-lg border bg-paper p-1">
-			{#each [['signin', 'Sign in'], ['register', 'Register']] as const as [value, label] (value)}
-				<button
-					type="button"
-					role="tab"
-					aria-selected={mode === value}
-					onclick={() => switchTo(value)}
-					class="rounded-md py-1.5 text-sm font-medium transition-colors {mode === value
-						? 'bg-paper-2 text-ink shadow-[inset_0_0_0_1px_var(--color-gray-200)]'
-						: 'text-gray-400 hover:text-ink'}">{label}</button
-				>
-			{/each}
-		</div>
 	{/if}
 
 	<form onsubmit={submit} class="flex flex-col gap-4">
@@ -142,7 +122,7 @@
 						<button
 							type="button"
 							onclick={() => switchTo('reset')}
-							class="text-xs text-gray-400 hover:text-ink">Forgot password?</button
+							class="text-xs text-brand-text underline">Forgot password?</button
 						>
 					{/if}
 				</span>
@@ -183,42 +163,33 @@
 		{/if}
 
 		{#if message}
-			<p
-				role="status"
-				class="rounded-lg border px-3.5 py-2.5 {failed
-					? 'border-red-500/30 bg-red-500/5 text-red-400'
-					: 'border-green-700/30 bg-green-700/5 text-green-700'}"
-			>
-				{message}
-			</p>
+			<p role="status" class={failed ? 'text-red-400' : 'text-green-700'}>{message}</p>
 		{/if}
 
-		<button type="submit" disabled={busy} class="btn btn-primary mt-2 py-2.5 text-[0.8125rem]">
+		<button type="submit" disabled={busy} class="btn btn-primary mt-1 py-2.5">
 			{busy ? 'One moment…' : copy[mode].action}
 		</button>
 	</form>
 
 	{#if mode === 'signin' && canUsePasskey}
-		<div class="flex items-center gap-3 text-xs text-gray-400">
-			<span class="h-px flex-1 bg-gray-200"></span>or<span class="h-px flex-1 bg-gray-200"></span>
-		</div>
-		<button type="button" onclick={passkey} disabled={busy} class="btn py-2.5 text-[0.8125rem]">
-			<svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8"
-				><circle cx="9" cy="8" r="4" /><path d="M2 21a7 7 0 0 1 11-5.7" /><circle
-					cx="18"
-					cy="13"
-					r="2.5"
-				/><path d="M18 15.5V21l1.5-1.5L18 18" /></svg
-			>
-			Sign in with a passkey
-		</button>
+		<button type="button" onclick={passkey} disabled={busy} class="btn py-2.5"
+			>Sign in with a passkey</button
+		>
 	{/if}
 
-	{#if mode === 'reset'}
-		<button
-			type="button"
-			onclick={() => switchTo('signin')}
-			class="self-start text-sm text-gray-400 hover:text-ink">← Back to sign in</button
-		>
+	{#if mode === 'signin'}
+		<p class="text-gray-400">
+			No account? <button
+				type="button"
+				onclick={() => switchTo('register')}
+				class="text-brand-text underline">Register</button
+			>
+		</p>
+	{:else}
+		<p class="text-gray-400">
+			<button type="button" onclick={() => switchTo('signin')} class="text-brand-text underline"
+				>Back to sign in</button
+			>
+		</p>
 	{/if}
 </AuthShell>

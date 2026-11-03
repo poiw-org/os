@@ -3,16 +3,6 @@
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
-	import Fa from 'svelte-fa';
-	import {
-		faHandSparkles,
-		faFire,
-		faStopCircle,
-		faMicrochip,
-		faTrash,
-		faCheckCircle,
-		faUnlink
-	} from '@fortawesome/free-solid-svg-icons';
 	import {
 		deleteKey as removeKey,
 		getKey,
@@ -83,7 +73,7 @@
 		};
 
 		await scanTag(async (serialNumber, ndef, stop) => {
-			status = `Validating S/N`;
+			status = 'Validating the tag…';
 			if (current.serialNumber != serialNumber) {
 				toast.error("The tag's serial number has changed. Please re-issue the key.");
 				stop();
@@ -231,11 +221,11 @@
 	const shownEntries = $derived(showAllEntries ? entries.items : entries.items?.slice(0, PREVIEW));
 </script>
 
-<div class="mx-auto flex max-w-4xl flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
+<div class="flex max-w-4xl flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
 	{#if loadError}
 		<span class="flex w-full justify-center px-10 pt-20 text-red-500">{loadError}</span>
 	{:else if processing || !key}
-		<span class="w-full text-center">{status}</span>
+		<span class="w-full text-gray-400">{status}</span>
 		<Loading />
 	{:else}
 		<Breadcrumb
@@ -249,47 +239,42 @@
 		/>
 		<div class="flex flex-wrap items-center justify-between gap-4">
 			<span class="flex flex-wrap items-center gap-3">
-				<span class="font-mono text-xl font-medium tracking-tight" title={key.id}
-					>{shortId(key.id)}</span
-				>
-				{#if keyState}<KeyStatusBadge status={keyState} large />{/if}
-				{#if !key.serialNumber}<VirtualBadge large />{/if}
-				{#if key.v1}<V1Badge large />{:else if key.v2}<V2Badge large />{/if}
+				<span class="font-mono text-xl font-bold" title={key.id}>{shortId(key.id)}</span>
+				{#if keyState}<KeyStatusBadge status={keyState} />{/if}
+				{#if !key.serialNumber}<VirtualBadge />{/if}
+				{#if key.v1}<V1Badge />{:else if key.v2}<V2Badge />{/if}
 			</span>
 			<span class="flex flex-wrap items-center gap-2">
 				{#if admin}
-					<button onclick={goToRenew} class="btn"><Fa icon={faHandSparkles} />RENEW</button>
+					<button onclick={goToRenew} class="btn">Renew</button>
 					{#if key.serialNumber}
-						<button onclick={checkOut} class="btn"><Fa icon={faFire} />WRITE TO TAG</button>
-						<button onclick={() => (writerOpen = true)} class="btn"
-							><Fa icon={faMicrochip} />WRITE AT DOOR</button
-						>
+						<button onclick={checkOut} class="btn">Write to tag</button>
+						<button onclick={() => (writerOpen = true)} class="btn">Write at door</button>
 					{/if}
 				{/if}
 				{#if key.disabled}
 					{#if admin}
 						{#if key.serialNumber && !key.serialReleased}
-							<button onclick={releaseSerial} class="btn"><Fa icon={faUnlink} />RELEASE TAG</button>
+							<button onclick={releaseSerial} class="btn">Release tag</button>
 						{/if}
 						<button
 							onclick={enableKey}
 							disabled={!!serialHolder}
 							title={serialHolder ? 'Its tag now belongs to another key' : undefined}
-							class="btn disabled:cursor-not-allowed disabled:opacity-40"
-							><Fa icon={faCheckCircle} />ENABLE</button
+							class="btn disabled:cursor-not-allowed disabled:opacity-40">Enable</button
 						>
 					{/if}
 				{:else}
-					<button onclick={disableKey} class="btn"><Fa icon={faStopCircle} />DISABLE</button>
+					<button onclick={disableKey} class="btn">Disable</button>
 				{/if}
 				{#if admin}
-					<button onclick={deleteKey} class="btn tone-red"><Fa icon={faTrash} />DELETE</button>
+					<button onclick={deleteKey} class="btn tone-red">Delete</button>
 				{/if}
 			</span>
 		</div>
 
 		{#if key.serialReleased}
-			<div class="panel border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-500">
+			<div class="panel border-yellow-500/50 px-4 py-3 text-sm text-yellow-500">
 				{#if serialHolder}
 					Tag {key.serialNumber} was released and now belongs to
 					<a
@@ -331,14 +316,14 @@
 
 	{#if entries.items}
 		<div class="flex flex-col gap-2">
-			<span class="eyebrow flex items-center justify-between"><span>Logs:</span></span>
+			<h2 class="font-bold">Log</h2>
 			<div class="panel">
 				{#each shownEntries ?? [] as entry (entry.id)}
 					<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 					<div
 						in:arrive
 						onclick={() => showEntry(entry)}
-						class="row cursor-pointer hover:bg-white/[0.025]"
+						class="row cursor-pointer hover:bg-brand/10"
 					>
 						<span class="flex items-center gap-3"
 							><span
@@ -354,11 +339,11 @@
 					</div>
 					{#if selectedId === entry.id}
 						<div class="flex flex-col gap-1 bg-paper-2 px-4 py-3 text-xs text-gray-600">
-							<div>Occured on: {formatDateTime(entry.timestamp)}</div>
+							<div>Occurred on: {formatDateTime(entry.timestamp)}</div>
 							<div>
 								Outcome: <span
 									class={entry.type == EntryType.SUCCESSFUL ? 'text-green-400' : 'text-red-400'}
-									>{entry.type == EntryType.SUCCESSFUL ? 'SUCCESS' : 'FAILURE'}</span
+									>{entry.type == EntryType.SUCCESSFUL ? 'Success' : 'Failure'}</span
 								>
 							</div>
 							{#if entry.type == EntryType.FAILED}
@@ -370,13 +355,13 @@
 						</div>
 					{/if}
 				{:else}
-					<span class="block p-8 text-center text-gray-400">No entries yet.</span>
+					<span class="block p-8 text-gray-400">No entries yet.</span>
 				{/each}
 			</div>
 			{#if entries.items.length > PREVIEW}
 				<button
 					onclick={() => (showAllEntries = !showAllEntries)}
-					class="self-start text-xs text-gray-400 underline underline-offset-4 hover:text-ink"
+					class="self-start text-xs text-brand-text underline"
 					>{showAllEntries ? 'Show fewer' : `Show all ${entries.items.length} entries`}</button
 				>
 			{/if}

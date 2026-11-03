@@ -1,7 +1,5 @@
 <script lang="ts">
 	import { fly } from 'svelte/transition';
-	import Fa from 'svelte-fa';
-	import { faSearch } from '@fortawesome/free-solid-svg-icons';
 	import type { UserOption } from '#lib/types.ts';
 	import Avatar from '#lib/ui/Avatar.svelte';
 
@@ -76,7 +74,6 @@
 		<div
 			class="flex items-center gap-3 rounded-lg border bg-paper-2 py-1.5 pl-3.5 text-gray-400 transition-colors focus-within:border-gray-400"
 		>
-			<Fa icon={faSearch} />
 			<input
 				bind:this={input}
 				bind:value={query}
@@ -106,7 +103,7 @@
 				role="listbox"
 				aria-label="Users"
 				transition:fly={{ y: -6, duration: 150 }}
-				class="panel absolute inset-x-0 top-full z-20 mt-2 max-h-80 overflow-auto shadow-2xl shadow-black/40"
+				class="panel absolute inset-x-0 top-full z-20 mt-2 max-h-80 overflow-auto"
 			>
 				{#each matches as user, i (user.value)}
 					{@const text = parts(user.label)}
@@ -119,7 +116,7 @@
 						onclick={() => choose(user)}
 						onkeydown={() => {}}
 						onmouseenter={() => (active = i)}
-						class="row cursor-pointer justify-start {i === active ? 'bg-white/5' : ''}"
+						class="row cursor-pointer justify-start {i === active ? 'bg-brand/20' : ''}"
 					>
 						<Avatar email={user.label} size={28} />
 						<span class="truncate"
