@@ -53,7 +53,9 @@
 		failed = error;
 	};
 
-	const enter = () => (window.location.href = '/');
+	const enter = () => {
+		window.location.href = '/';
+	};
 
 	const passkey = async () => {
 		busy = true;

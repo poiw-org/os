@@ -14,6 +14,7 @@
 	--radius-lg: 0.25rem;
 	--radius-xl: 0.25rem;
 
+	--color-backing: #03030d;
 	--color-void: oklch(10.5% 0.03 285);
 	--color-paper: oklch(14% 0.035 285);
 	--color-paper-2: oklch(18% 0.04 285);
@@ -138,6 +139,29 @@
 }
 
 @layer components {
+	/* A white surface inside the dark app: the same tokens, inverted, with square corners. */
+	.light {
+		color-scheme: light;
+		--radius-md: 0;
+		--radius-lg: 0;
+		--radius-xl: 0;
+		--color-void: oklch(98.5% 0.006 285);
+		--color-paper: oklch(96% 0.01 285);
+		--color-paper-2: oklch(99.5% 0.003 285);
+		--color-ink: oklch(16% 0.04 285);
+		--color-gray-200: oklch(88% 0.015 285);
+		--color-gray-300: oklch(76% 0.02 285);
+		--color-gray-400: oklch(48% 0.03 285);
+		--color-gray-600: oklch(36% 0.035 285);
+		--color-brand-text: oklch(45% 0.17 295);
+		--color-green-700: oklch(42% 0.12 162);
+		--color-green-500: oklch(52% 0.13 162);
+		--color-red-400: oklch(50% 0.18 22);
+		--color-red-500: oklch(50% 0.18 22);
+		background: var(--color-void);
+		color: var(--color-ink);
+	}
+
 	/* Field and section label. */
 	.eyebrow {
 		font-size: 0.75rem;

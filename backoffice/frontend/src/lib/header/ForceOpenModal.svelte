@@ -7,6 +7,7 @@
 		type ForceOpenEvent,
 		type ForceOpenStep
 	} from '#lib/api.ts';
+	import { reveal, swapIn, swapOut } from '#lib/motion.ts';
 	import { toast } from '#lib/notify.svelte.ts';
 
 	// Admins talk to the door directly; members go through the server.
@@ -18,40 +19,77 @@
 		send: 'Command',
 		ack: 'Door',
 		unlock: 'Unlock',
-		log: 'Logged'
+		log: 'Log'
+	};
+	// What the user is waiting on while a step is under way.
+	const HEADLINES: Record<ForceOpenStep, string> = {
+		auth: 'Connecting',
+		join: 'Connecting',
+		send: 'Sending',
+		ack: 'Waiting for the door',
+		unlock: 'Opening',
+		log: 'Logging'
 	};
 
 	type Phase = 'confirm' | 'running' | 'opened' | 'failed';
 
 	let dialog = $state<HTMLDialogElement>();
-	let terminal = $state<HTMLOListElement>();
 	let phase = $state<Phase>('confirm');
 	let events = $state<ForceOpenEvent[]>([]);
 	let error = $state('');
 
 	$effect(() => dialog?.showModal());
 
-	// The latest state of each checkpoint.
-	const stepState = $derived(
-		Object.fromEntries(events.map((e) => [e.step, e.state])) as Partial<
-			Record<ForceOpenStep, ForceOpenEvent['state']>
+	// The latest event of each checkpoint.
+	const latest = $derived(
+		Object.fromEntries(events.map((e) => [e.step, e])) as Partial<
+			Record<ForceOpenStep, ForceOpenEvent>
 		>
 	);
+	const last = $derived(events.at(-1));
 	const ackLatency = $derived(
 		events.find((e) => e.step === 'ack' && e.state === 'done')?.latencyMs
 	);
+	// The ring fills a sixth per checkpoint, half of one while it is under way.
+	const progress = $derived(
+		phase === 'opened'
+			? 1
+			: FORCE_OPEN_STEPS.reduce(
+					(sum, step) =>
+						sum + (latest[step]?.state === 'done' ? 1 : latest[step]?.state === 'active' ? 0.5 : 0),
+					0
+				) / FORCE_OPEN_STEPS.length
+	);
 
-	const push = (event: ForceOpenEvent) => {
-		events.push(event);
-		queueMicrotask(() => terminal?.lastElementChild?.scrollIntoView({ block: 'nearest' }));
-	};
+	const headline = $derived(
+		phase === 'confirm'
+			? 'Unlock the door?'
+			: phase === 'opened'
+				? 'Door unlocked'
+				: phase === 'failed'
+					? 'Could not unlock'
+					: last
+						? HEADLINES[last.step]
+						: 'Connecting'
+	);
+	const detail = $derived(
+		phase === 'confirm'
+			? `Sends a one-time unlock to door:${DOOR_ID}. It is logged under your name.`
+			: phase === 'failed'
+				? error
+				: phase === 'opened'
+					? latest.log?.state === 'done'
+						? 'Recorded under your name'
+						: 'It opened, but the entry was not logged'
+					: (last?.text ?? '')
+	);
 
 	const run = async () => {
 		phase = 'running';
 		events = [];
 		error = '';
 		try {
-			const { logged } = await (admin ? forceOpenDoor : unlockDoor)(push);
+			const { logged } = await (admin ? forceOpenDoor : unlockDoor)((e) => events.push(e));
 			phase = 'opened';
 			if (!logged) toast.error('The door opened, but the entry could not be logged.');
 		} catch (e) {
@@ -63,7 +101,7 @@
 	// Closing mid-command would hide the outcome of a door that may be opening.
 	const close = () => phase !== 'running' && dialog?.close();
 
-	const pad = (ms: number) => `+${ms}ms`.padStart(8, ' ');
+	const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
 </script>
 
 <dialog
@@ -72,109 +110,150 @@
 	oncancel={(e) => phase === 'running' && e.preventDefault()}
 	onclick={(e) => e.target === dialog && close()}
 	aria-labelledby="force-open-title"
-	class="sheet m-auto w-[calc(100%-2rem)] max-w-xl overflow-hidden rounded-lg border bg-paper p-0 text-ink backdrop:bg-black/70"
+	class="sheet m-auto w-[calc(100%-2rem)] max-w-sm overflow-hidden rounded-lg border bg-paper p-0 text-ink backdrop:bg-black/70"
 >
-	<div class="relative p-6">
+	<div class="flex items-center justify-between border-b px-4 py-2.5">
+		<h2 id="force-open-title" class="text-sm">Remote unlock</h2>
 		<button
 			type="button"
 			onclick={close}
 			disabled={phase === 'running'}
 			aria-label="Close"
-			class="absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-md text-gray-400 hover:bg-paper-2 hover:text-ink disabled:opacity-30"
+			class="-mr-2 flex h-7 w-7 items-center justify-center rounded-md text-gray-400 hover:bg-paper-2 hover:text-ink disabled:opacity-30"
 			>✕</button
 		>
-		<h2 id="force-open-title" class="text-base font-bold">Remote unlock</h2>
-		<p class="mt-1 text-sm text-gray-400">
-			Sends a one-time unlock to <span class="font-mono text-gray-500">door:{DOOR_ID}</span>. It is
-			logged under your name as a remote unlock.
-		</p>
+	</div>
 
-		<!-- Checkpoints of the command choreography -->
-		<ol class="mt-6 grid grid-cols-6" aria-label="Progress">
-			{#each FORCE_OPEN_STEPS as step, i (step)}
-				{@const state = stepState[step]}
-				<li
-					class="relative flex flex-col items-center gap-2 text-center"
-					aria-current={state === 'active' ? 'step' : undefined}
-				>
-					{#if i > 0}
-						<span class="absolute top-3 right-1/2 h-px w-full bg-gray-200" aria-hidden="true">
-							<span
-								class="block h-full origin-left transition-transform duration-300 ease-out motion-reduce:transition-none {state ===
-								'failed'
-									? 'bg-red-500'
-									: 'bg-green-500'}"
-								style:transform="scaleX({state ? 1 : 0})"
-							></span>
-						</span>
-					{/if}
-					<span
-						class="dot relative z-10 flex h-6 w-6 items-center justify-center rounded-full border font-mono text-[11px]
-						{state === 'done'
-							? 'border-green-500 bg-paper text-green-500'
-							: state === 'failed'
-								? 'border-red-500 bg-paper text-red-500'
-								: state === 'active'
-									? 'border-ink bg-paper text-ink'
-									: 'bg-paper text-gray-400'}"
-					>
-						{state === 'done' ? '✓' : state === 'failed' ? '!' : i + 1}
-					</span>
-					<span class="text-xs {state ? 'text-ink' : 'text-gray-400'}">{LABELS[step]}</span>
-				</li>
-			{/each}
-		</ol>
-
-		<!-- Transcript of the exchanges -->
-		<div class="mt-6 overflow-hidden rounded-lg border bg-void text-[12px] leading-5 text-gray-400">
-			<div class="flex items-center justify-between border-b border-gray-200 px-3 py-1.5">
-				<span class="font-mono text-[11px] text-gray-500">realtime · door:{DOOR_ID}</span>
-				{#if ackLatency !== undefined}
-					<span class="font-mono text-[11px] text-green-400">door rtt {ackLatency} ms</span>
-				{/if}
-			</div>
-			<ol
-				bind:this={terminal}
-				class="h-48 overflow-y-auto px-3 py-2 font-mono"
-				role="log"
-				aria-live="polite"
-			>
-				{#each events as e, i (i)}
-					<li
-						class="flex gap-2 whitespace-pre {e.state === 'failed'
-							? 'text-red-400'
-							: e.state === 'done'
-								? 'text-ink'
-								: 'text-gray-400'}"
-					>
-						<span class="text-gray-300">{pad(e.at)}</span>
-						<span
-							class={e.dir === '>'
-								? 'text-blue-500'
-								: e.dir === '<'
-									? 'text-green-400'
-									: 'text-gray-300'}>{e.dir}</span
-						>
-						<span class="min-w-0 flex-1 truncate">{e.text}</span>
-						{#if e.latencyMs !== undefined}<span class="text-yellow-500">{e.latencyMs} ms</span
-							>{/if}
-					</li>
-				{:else}
-					<li class="text-gray-400">Idle. Nothing has been sent.</li>
-				{/each}
-				{#if phase === 'running'}<li class="cursor text-gray-500" aria-hidden="true">▍</li>{/if}
-			</ol>
+	<div class="flex flex-col items-center px-6 pt-8 pb-6 text-center">
+		<!-- The lock: the ring fills per checkpoint, the shackle lifts when the door opens. -->
+		<div
+			class="lock {phase}"
+			role="progressbar"
+			aria-label="Unlock progress"
+			aria-valuemin={0}
+			aria-valuemax={100}
+			aria-valuenow={Math.round(progress * 100)}
+		>
+			<svg viewBox="0 0 120 120" width="120" height="120" fill="none" aria-hidden="true">
+				<circle cx="60" cy="60" r="56" class="stroke-gray-200" stroke-width="2" />
+				<circle
+					cx="60"
+					cy="60"
+					r="56"
+					class="ring"
+					stroke-width="3"
+					stroke-linecap="round"
+					pathLength="1"
+					stroke-dasharray="1"
+					stroke-dashoffset={1 - progress}
+					opacity={progress ? 1 : 0}
+					transform="rotate(-90 60 60)"
+				/>
+				<g class="glyph" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+					<path class="shackle" d="M49 55v-8a11 11 0 0 1 22 0v16" />
+					<rect x="42" y="55" width="36" height="28" rx="6" class="fill-paper" />
+					<path d="M60 66v6" />
+				</g>
+			</svg>
 		</div>
 
-		{#if phase === 'failed'}
-			<p role="alert" class="mt-4 text-sm text-red-500">{error}</p>
-		{:else if phase === 'opened'}
-			<p role="status" class="mt-4 text-sm text-green-600">The door unlocked.</p>
+		<!-- Each line swaps in place as the command moves on. -->
+		<div
+			class="mt-6 w-full"
+			role={phase === 'failed' ? 'alert' : 'status'}
+			aria-live={phase === 'failed' ? 'assertive' : 'polite'}
+		>
+			<div class="grid">
+				{#key headline}
+					<p class="font-mono text-lg font-bold [grid-area:1/1]" in:swapIn out:swapOut>
+						{headline}
+					</p>
+				{/key}
+			</div>
+			<div class="mt-1 grid min-h-10">
+				{#key detail}
+					<p
+						class="text-sm text-balance [grid-area:1/1] {phase === 'failed'
+							? 'text-red-500'
+							: 'text-gray-400'}"
+						in:swapIn
+						out:swapOut
+					>
+						{detail}
+					</p>
+				{/key}
+			</div>
+		</div>
+
+		{#if phase !== 'confirm'}
+			<div class="w-full" in:reveal>
+				<dl class="mt-5 grid w-full grid-cols-3 divide-x border-y py-3 text-center">
+					<div>
+						<dt class="eyebrow">Door reply</dt>
+						<dd class="mt-0.5 font-mono tabular-nums">
+							{ackLatency === undefined ? '—' : `${ackLatency} ms`}
+						</dd>
+					</div>
+					<div>
+						<dt class="eyebrow">Elapsed</dt>
+						<dd class="mt-0.5 font-mono tabular-nums">
+							{phase === 'running' || !last ? '—' : seconds(last.at)}
+						</dd>
+					</div>
+					<div>
+						<dt class="eyebrow">Logged</dt>
+						<dd class="mt-0.5 font-mono">
+							{latest.log?.state === 'done' ? 'Yes' : latest.log?.state === 'failed' ? 'No' : '—'}
+						</dd>
+					</div>
+				</dl>
+
+				<details class="group w-full border-b text-left">
+					<summary
+						class="flex cursor-pointer list-none items-center justify-between py-2.5 text-xs text-gray-400 hover:text-ink [&::-webkit-details-marker]:hidden"
+					>
+						Steps
+						<svg
+							viewBox="0 0 12 12"
+							class="h-3 w-3 transition-transform duration-200 group-open:rotate-90 motion-reduce:transition-none"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.5"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true"><path d="m4.5 2.5 3.5 3.5-3.5 3.5" /></svg
+						>
+					</summary>
+					<ol class="pb-3 text-xs">
+						{#each FORCE_OPEN_STEPS as step (step)}
+							{@const e = latest[step]}
+							<li class="flex items-center gap-2 py-1">
+								<span
+									class="h-1.5 w-1.5 shrink-0 rounded-full {e?.state === 'done'
+										? 'bg-green-500'
+										: e?.state === 'failed'
+											? 'bg-red-500'
+											: e?.state === 'active'
+												? 'bg-brand-text'
+												: 'bg-gray-300'}"
+								></span>
+								<span class="w-16 shrink-0 font-mono {e ? 'text-ink' : 'text-gray-400'}"
+									>{LABELS[step]}</span
+								>
+								<span class="min-w-0 flex-1 truncate text-gray-400">{e?.text ?? ''}</span>
+								{#if e?.latencyMs !== undefined}
+									<span class="font-mono text-gray-400 tabular-nums">{e.latencyMs} ms</span>
+								{/if}
+							</li>
+						{/each}
+					</ol>
+				</details>
+			</div>
 		{/if}
 
-		<div class="mt-6 flex justify-end gap-2">
+		<div class="mt-6 grid w-full grid-cols-2 gap-2">
 			{#if phase === 'opened'}
-				<button type="button" class="btn btn-primary" onclick={close}>Done</button>
+				<button type="button" class="btn btn-primary col-span-2" onclick={close}>Done</button>
 			{:else}
 				<button type="button" class="btn" onclick={close} disabled={phase === 'running'}
 					>Cancel</button
@@ -184,7 +263,7 @@
 						? 'Unlocking…'
 						: phase === 'failed'
 							? 'Try again'
-							: 'Remote unlock'}</button
+							: 'Unlock'}</button
 				>
 			{/if}
 		</div>
@@ -192,17 +271,73 @@
 </dialog>
 
 <style>
-	.cursor {
-		animation: blink 1s steps(2) infinite;
+	/* Colour follows the outcome: purple while working, mint once open, red when it failed. */
+	.lock {
+		--tint: var(--color-brand-text);
+		color: var(--color-gray-600);
 	}
-	@keyframes blink {
-		to {
-			opacity: 0;
+	.lock.opened {
+		--tint: var(--color-green-500);
+		color: var(--color-green-500);
+	}
+	.lock.failed {
+		--tint: var(--color-red-500);
+		color: var(--color-red-500);
+	}
+	.ring {
+		stroke: var(--tint);
+		transition:
+			stroke-dashoffset 600ms var(--ease-out),
+			stroke 240ms var(--ease-out);
+	}
+	.glyph {
+		stroke: currentColor;
+		transition: color 240ms var(--ease-out);
+	}
+
+	/* The shackle lifts and swings about its right leg, with a little give, like the real thing. */
+	.shackle {
+		transform-origin: 71px 63px;
+		transition: transform 520ms cubic-bezier(0.34, 1.45, 0.64, 1);
+	}
+	.opened .shackle {
+		transform: translateY(-7px) rotate(-14deg);
+	}
+
+	/* The lock settles as it opens, and shakes its head once when it could not. */
+	.lock.opened svg {
+		animation: settle 520ms var(--ease-out);
+	}
+	.lock.failed svg {
+		animation: shake 420ms var(--ease-out);
+	}
+	@keyframes settle {
+		40% {
+			transform: scale(1.05);
 		}
 	}
+	@keyframes shake {
+		20% {
+			transform: translateX(-8px);
+		}
+		40% {
+			transform: translateX(6px);
+		}
+		60% {
+			transform: translateX(-4px);
+		}
+		80% {
+			transform: translateX(2px);
+		}
+	}
+
 	@media (prefers-reduced-motion: reduce) {
-		.cursor {
-			animation: none;
+		.ring,
+		.shackle {
+			transition: none;
+		}
+		.lock svg {
+			animation: none !important;
 		}
 	}
 </style>

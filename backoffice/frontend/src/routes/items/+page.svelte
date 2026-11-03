@@ -15,7 +15,7 @@
 	import { formatDate, formatDateTime, shortId } from '#lib/format.ts';
 	import { liveRows, watchTable } from '#lib/live.svelte.ts';
 	import { arrive } from '#lib/motion.ts';
-	import { scanTag } from '#lib/nfc.ts';
+	import { nfcSupported, scanTag } from '#lib/nfc.ts';
 	import { ask, toast } from '#lib/notify.svelte.ts';
 	import { keyStatus } from '#lib/status.ts';
 	import Loading from '#lib/loading.svelte';
@@ -248,7 +248,9 @@
 				{#if admin}
 					<button onclick={goToRenew} class="btn">Renew</button>
 					{#if key.serialNumber}
-						<button onclick={checkOut} class="btn">Write to tag</button>
+						{#if nfcSupported}
+							<button onclick={checkOut} class="btn">Write to tag</button>
+						{/if}
 						<button onclick={() => (writerOpen = true)} class="btn">Write at door</button>
 					{/if}
 				{/if}

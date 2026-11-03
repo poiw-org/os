@@ -165,6 +165,10 @@ export type Database = {
 				Args: { door: string; command_id: string; latency_ms: number };
 				Returns: number;
 			};
+			set_admin: {
+				Args: { target: string; admin: boolean };
+				Returns: undefined;
+			};
 		};
 		Enums: { [_ in never]: never };
 		CompositeTypes: { [_ in never]: never };

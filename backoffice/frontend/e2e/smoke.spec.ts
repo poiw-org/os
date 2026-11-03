@@ -217,13 +217,14 @@ test.describe('signed in', () => {
 		await page.goto('/');
 		await page.getByRole('button', { name: 'REMOTE UNLOCK' }).locator('visible=true').click();
 		const dialog = page.getByRole('dialog');
-		await dialog.getByRole('button', { name: 'REMOTE UNLOCK' }).click();
-		await expect(
-			dialog.getByRole('status').filter({ hasText: 'The door unlocked.' })
-		).toBeVisible();
-		await expect(dialog.getByRole('log')).toContainText('force_open_ack');
-		await expect(dialog.getByRole('log')).toContainText('Unlocking in 1 s');
-		await expect(dialog.getByRole('log')).toContainText('Entry recorded under your name');
+		await dialog.getByRole('button', { name: 'Unlock', exact: true }).click();
+		await expect(dialog.getByRole('status').filter({ hasText: 'Door unlocked' })).toBeVisible();
+		await expect(dialog.getByRole('status')).toContainText('Recorded under your name');
+		await expect(dialog.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
+		const steps = dialog.getByRole('group');
+		await steps.getByText('Steps').click();
+		await expect(steps).toContainText('force_open_ack');
+		await expect(steps).toContainText('Entry recorded under your name');
 		expect(api.broadcasts).toHaveLength(1);
 		expect(api.broadcasts[0]).toMatchObject({
 			topic: 'realtime:door:front',
@@ -274,7 +275,7 @@ test.describe('signed in', () => {
 		await page.goto('/');
 		await page.getByRole('button', { name: 'REMOTE UNLOCK' }).locator('visible=true').click();
 		const dialog = page.getByRole('dialog');
-		await dialog.getByRole('button', { name: 'REMOTE UNLOCK' }).click();
+		await dialog.getByRole('button', { name: 'Unlock', exact: true }).click();
 		await expect(dialog.getByRole('alert').filter({ hasText: 'did not answer' })).toBeVisible({
 			timeout: 15_000
 		});

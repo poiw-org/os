@@ -5,7 +5,7 @@
 	import { onMount } from 'svelte';
 	import { DateInput } from 'date-picker-svelte';
 	import { issueKey, listUsers } from '#lib/api.ts';
-	import { scanTag } from '#lib/nfc.ts';
+	import { nfcSupported, scanTag } from '#lib/nfc.ts';
 	import { toast } from '#lib/notify.svelte.ts';
 	import WriteCardModal from '#lib/header/WriteCardModal.svelte';
 	import Loading from '#lib/loading.svelte';
@@ -158,13 +158,15 @@
 										class="w-full border-0! bg-transparent! p-3 font-mono text-base text-ink shadow-none! outline-none!"
 									/>
 								</label>
-								<button type="button" onclick={scan} class="btn py-3">
-									{#if scanning}
-										Hold a tag to the phone
-									{:else}
-										Scan tag
-									{/if}
-								</button>
+								{#if nfcSupported}
+									<button type="button" onclick={scan} class="btn py-3">
+										{#if scanning}
+											Hold a tag to the phone
+										{:else}
+											Scan tag
+										{/if}
+									</button>
+								{/if}
 								<button type="button" onclick={() => (doorScan = true)} class="btn py-3">
 									Scan at door
 								</button>

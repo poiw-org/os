@@ -2,9 +2,18 @@
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
-	import { getUser, listAllKeys, listEntries, toEntry, toKeySummary } from '#lib/api.ts';
+	import {
+		getUser,
+		isAdmin,
+		listAllKeys,
+		listEntries,
+		setAdmin,
+		toEntry,
+		toKeySummary
+	} from '#lib/api.ts';
 	import { formatDate, shortId } from '#lib/format.ts';
 	import { liveRows } from '#lib/live.svelte.ts';
+	import { ask, toast } from '#lib/notify.svelte.ts';
 	import { arrive } from '#lib/motion.ts';
 	import { keyStatus } from '#lib/status.ts';
 	import Loading from '#lib/loading.svelte';
@@ -19,7 +28,11 @@
 	const userId = page.url.searchParams.get('id') ?? '';
 
 	let user = $state.raw<UserSummary>();
+	let admin = $state(false);
+	let changingRole = $state(false);
 	let loadError = $state('');
+	// The database refuses changes to your own role, so the control is hidden for yourself.
+	const self = userId === page.data.user.id;
 
 	// The stream is scoped by RLS to admins and filtered to this user's keys on the server.
 	const keys = liveRows({
@@ -35,7 +48,7 @@
 		table: 'entries',
 		load: async () => {
 			const ids = (await listAllKeys(userId)).map((key) => key.id);
-			return listEntries({ keyIds: ids, openedBy: userId, limit: 25 });
+			return listEntries({ keyIds: ids, openedBy: [userId], limit: 25 });
 		},
 		map: toEntry,
 		accept: (entry) =>
@@ -56,12 +69,45 @@
 
 	onMount(async () => {
 		try {
-			user = userId ? await getUser(userId) : undefined;
+			[user, admin] = userId
+				? await Promise.all([getUser(userId), isAdmin(userId)])
+				: [undefined, false];
 			if (!user) loadError = 'User not found.';
 		} catch (e) {
 			loadError = e instanceof Error ? e.message : 'Could not load the user.';
 		}
 	});
+
+	const toggleAdmin = async () => {
+		if (!user) return;
+		const accepted = await ask(
+			admin
+				? {
+						title: 'Remove admin?',
+						message: `${user.email} will no longer manage users, keys or the door. Their own keys keep working.`,
+						confirmLabel: 'Remove admin',
+						tone: 'danger'
+					}
+				: {
+						title: 'Make admin?',
+						message: `${user.email} will be able to manage every user, key and the door, including other admins.`,
+						confirmLabel: 'Make admin'
+					}
+		);
+		if (!accepted) return;
+		changingRole = true;
+		try {
+			await setAdmin(user.id, !admin);
+			admin = !admin;
+			toast.success(
+				admin ? `${user.email} is now an admin.` : `${user.email} is no longer an admin.`
+			);
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'Could not change the role.');
+		} finally {
+			changingRole = false;
+		}
+	};
 </script>
 
 <svelte:head>
@@ -82,14 +128,22 @@
 				<span class="flex flex-col">
 					<span class="text-xl font-bold break-all">{user.email}</span>
 					<span class="text-gray-400"
-						>{keys.items.length} key{keys.items.length === 1 ? '' : 's'}{#if user.blocked}
+						>{#if admin}<span class="text-ink">admin</span> ·
+						{/if}{keys.items.length} key{keys.items.length === 1 ? '' : 's'}{#if user.blocked}
 							· <span class="text-red-500">blocked</span>{/if}</span
 					>
 				</span>
 			</span>
-			{#if !user.blocked}
-				<a href={resolve(`/items/create?user=${user.id}`)} class="btn btn-primary">Issue key</a>
-			{/if}
+			<span class="flex flex-wrap gap-2">
+				{#if !self}
+					<button class="btn" onclick={toggleAdmin} disabled={changingRole}
+						>{admin ? 'Remove admin' : 'Make admin'}</button
+					>
+				{/if}
+				{#if !user.blocked}
+					<a href={resolve(`/items/create?user=${user.id}`)} class="btn btn-primary">Issue key</a>
+				{/if}
+			</span>
 		</div>
 
 		<div class="flex flex-col gap-2">

@@ -80,6 +80,22 @@ export async function getUser(id: string): Promise<UserSummary | undefined> {
 	return data ? toUserSummary(data) : undefined;
 }
 
+export async function isAdmin(userId: string): Promise<boolean> {
+	const { data, error } = await supabase
+		.from('admins')
+		.select('user_id')
+		.eq('user_id', userId)
+		.maybeSingle();
+	if (error) throw error;
+	return Boolean(data);
+}
+
+// Admins cannot change their own role; the database refuses it.
+export async function setAdmin(userId: string, admin: boolean) {
+	const { error } = await supabase.rpc('set_admin', { target: userId, admin });
+	if (error) throw error;
+}
+
 // The algorithm named in a token's header, or undefined when it cannot be read.
 function jwtAlgorithm(jwt: string | null) {
 	try {
@@ -171,20 +187,36 @@ export async function listUsers(): Promise<UserOption[]> {
 
 /**
  * Newest first. Pass `keyIds` to scope the log to some keys, plus `openedBy` to include the door
- * opens that user gave from the web UI; omit both for the whole door.
+ * opens those users gave from the web UI; omit both for the whole door. `since` is inclusive and
+ * `until` exclusive.
  */
 export async function listEntries(
-	options: { keyIds?: string[]; openedBy?: string; limit?: number } = {}
+	options: {
+		keyIds?: string[];
+		openedBy?: string[];
+		since?: Date;
+		until?: Date;
+		type?: EntryType;
+		limit?: number;
+		/** Skip this many of the newest matches; pages through a long log with `limit`. */
+		offset?: number;
+	} = {}
 ) {
 	let query = supabase
 		.from('entries')
 		.select(ENTRY_COLUMNS)
 		.order('created_at', { ascending: false });
-	if (options.openedBy) {
+	if (options.openedBy?.length) {
 		const keys = options.keyIds?.length ? `,key_id.in.(${options.keyIds.join(',')})` : '';
-		query = query.or(`opened_by.eq.${options.openedBy}${keys}`);
+		query = query.or(`opened_by.in.(${options.openedBy.join(',')})${keys}`);
 	} else if (options.keyIds) query = query.in('key_id', options.keyIds);
-	if (options.limit) query = query.limit(options.limit);
+	if (options.since) query = query.gte('created_at', options.since.toISOString());
+	if (options.until) query = query.lt('created_at', options.until.toISOString());
+	if (options.type) query = query.eq('type', options.type);
+	if (options.limit) {
+		const start = options.offset ?? 0;
+		query = query.range(start, start + options.limit - 1);
+	}
 	const { data, error } = await query;
 	if (error) throw error;
 	return data.map(toEntry);

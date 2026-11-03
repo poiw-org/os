@@ -1,5 +1,8 @@
 import { toast } from '#lib/notify.svelte.ts';
 
+/** Web NFC exists only in Chrome on Android. */
+export const nfcSupported = typeof window !== 'undefined' && 'NDEFReader' in window;
+
 /**
  * Starts a Web NFC scan and calls `onTag` for every tag read. Failures are shown as toasts and
  * reported through `onStop`, which also runs when the scan is stopped. Resolves a stop function,
@@ -9,7 +12,7 @@ export async function scanTag(
 	onTag: (serialNumber: string, ndef: NDEFReader, stop: () => void) => void | Promise<void>,
 	onStop: () => void = () => {}
 ): Promise<(() => void) | undefined> {
-	if (!('NDEFReader' in window)) {
+	if (!nfcSupported) {
 		toast.error(
 			'Scanning only works in Chrome on Android. Switch browsers or enter the S/N manually.'
 		);

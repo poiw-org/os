@@ -26,6 +26,9 @@ test.describe('signed out', () => {
 	test('visual: login', async ({ page }) => {
 		await page.goto('/login');
 		await expect(page.getByText('SIGN IN').first()).toBeVisible();
+		// The lanyard panel only exists from the lg breakpoint up.
+		if ((page.viewportSize()?.width ?? 0) >= 1024)
+			await expect(page.locator('[data-ready="true"]')).toBeVisible();
 		await page.evaluate(() => document.fonts.ready);
 		await expect(page).toHaveScreenshot('login.png', { fullPage: true });
 	});

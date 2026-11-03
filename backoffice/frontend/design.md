@@ -38,3 +38,7 @@ hacker-terminal minimal on midnight navy. Dark only.
 ## Motion
 
 New live rows slide in 240ms; presses scale to 0.97; no pulses, pings or staggered entrances; everything collapses under `prefers-reduced-motion`.
+
+Motion reports an event, never decorates. The one hero moment is the remote unlock: a ring around a lock fills a step at a time, the shackle springs open as the door unlocks (the only overshoot in the app), and a failure shakes once. Status text swaps in place (`swapIn`/`swapOut` in `src/lib/motion.ts`). Nothing loops.
+
+Command progress is shown as a headline plus one detail line, with a three-figure summary and the per-step breakdown behind a "Steps" disclosure. No terminal transcripts.
