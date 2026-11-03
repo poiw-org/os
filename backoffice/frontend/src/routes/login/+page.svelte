@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { unlockDoor } from '#lib/api.ts';
 	import {
-		getCurrentUser,
 		passkeysSupported,
 		sendPasswordReset,
 		signIn,
@@ -20,7 +20,7 @@
 		},
 		register: {
 			title: 'Create an account',
-			subtitle: 'An admin grants backoffice access once your account exists.',
+			subtitle: 'Admins issue your keys once your account exists.',
 			action: 'Create account'
 		},
 		reset: {
@@ -54,14 +54,23 @@
 		failed = error;
 	};
 
-	// Only admins may use the backoffice; anyone else is signed straight back out.
-	const enterOrReject = async (rejection: string, error: boolean) => {
-		if (await getCurrentUser()) {
-			window.location.href = '/';
-			return;
+	const enter = () => (window.location.href = '/');
+
+	// Asks for a passkey and, once it is given, remotely unlocks the door. The session is dropped
+	// right after: this is a shortcut at the door, not a sign-in.
+	const quickUnlock = async () => {
+		busy = true;
+		message = '';
+		try {
+			await signInWithPasskey();
+			await unlockDoor();
+			report('The door is unlocking.', false);
+		} catch (e) {
+			if (!(e instanceof Error && e.name === 'NotAllowedError'))
+				report(e instanceof Error ? e.message : 'Could not unlock the door.');
 		}
 		await signOut();
-		report(rejection, error);
+		busy = false;
 	};
 
 	const passkey = async () => {
@@ -69,7 +78,7 @@
 		message = '';
 		try {
 			await signInWithPasskey();
-			await enterOrReject('This account does not have access to the backoffice yet.', true);
+			enter();
 		} catch (e) {
 			// Closing the browser's passkey prompt is not an error worth showing.
 			if (!(e instanceof Error && e.name === 'NotAllowedError'))
@@ -86,11 +95,10 @@
 		try {
 			if (mode === 'signin') {
 				await signIn(email, password);
-				await enterOrReject('This account does not have access to the backoffice yet.', true);
+				enter();
 			} else if (mode === 'register') {
-				if (await signUp(email, password))
-					await enterOrReject('Account created. Ask an admin to grant you access.', false);
-				else report('Check your inbox to confirm your email, then ask an admin for access.', false);
+				if (await signUp(email, password)) enter();
+				else report('Check your inbox to confirm your email, then sign in.', false);
 			} else {
 				await sendPasswordReset(email);
 				report('If an account exists for this email, a reset link is on its way.', false);
@@ -213,6 +221,9 @@
 				/><path d="M18 15.5V21l1.5-1.5L18 18" /></svg
 			>
 			Sign in with a passkey
+		</button>
+		<button type="button" onclick={quickUnlock} disabled={busy} class="btn py-2.5 text-[0.8125rem]">
+			Quick unlock
 		</button>
 	{/if}
 

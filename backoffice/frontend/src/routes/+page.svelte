@@ -61,7 +61,7 @@
 				if (!query) return showAll || keys.length > 0;
 				return (
 					user.email.toLowerCase().includes(query) ||
-					keys.some((key) => key.serialNumber.toLowerCase().includes(query))
+					keys.some((key) => key.serialNumber?.toLowerCase().includes(query))
 				);
 			})
 			.sort((a, b) => b.keys.length - a.keys.length || a.user.email.localeCompare(b.user.email))

@@ -3,6 +3,7 @@
 	import { faDoorOpen } from '@fortawesome/free-solid-svg-icons';
 	import {
 		DOOR_ID,
+		unlockDoor,
 		FORCE_OPEN_STEPS,
 		forceOpenDoor,
 		type ForceOpenEvent,
@@ -10,7 +11,8 @@
 	} from '#lib/api.ts';
 	import { toast } from '#lib/notify.svelte.ts';
 
-	let { onclose }: { onclose: () => void } = $props();
+	// Admins talk to the door directly; members go through the server.
+	let { admin, onclose }: { admin: boolean; onclose: () => void } = $props();
 
 	const LABELS: Record<ForceOpenStep, string> = {
 		auth: 'Auth',
@@ -51,11 +53,11 @@
 		events = [];
 		error = '';
 		try {
-			const { logged } = await forceOpenDoor(push);
+			const { logged } = await (admin ? forceOpenDoor : unlockDoor)(push);
 			phase = 'opened';
 			if (!logged) toast.error('The door opened, but the entry could not be logged.');
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Could not send the force unlock command.';
+			error = e instanceof Error ? e.message : 'Could not send the remote unlock command.';
 			phase = 'failed';
 		}
 	};
@@ -83,10 +85,10 @@
 			class="absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-full text-gray-400 hover:bg-paper-2 hover:text-ink disabled:opacity-30"
 			>✕</button
 		>
-		<h2 id="force-open-title" class="text-lg font-semibold tracking-tight">Open the door</h2>
+		<h2 id="force-open-title" class="text-lg font-semibold tracking-tight">Remote unlock</h2>
 		<p class="mt-1 text-sm text-gray-400">
 			Sends a one-time unlock to <span class="font-mono text-gray-500">door:{DOOR_ID}</span>. It is
-			logged under your name as an open from the web UI.
+			logged under your name as a remote unlock.
 		</p>
 
 		<!-- Checkpoints of the command choreography -->
@@ -181,10 +183,10 @@
 				>
 				<button type="button" class="btn btn-primary" onclick={run} disabled={phase === 'running'}
 					><Fa icon={faDoorOpen} />{phase === 'running'
-						? 'OPENING…'
+						? 'UNLOCKING…'
 						: phase === 'failed'
 							? 'TRY AGAIN'
-							: 'OPEN DOOR'}</button
+							: 'REMOTE UNLOCK'}</button
 				>
 			{/if}
 		</div>

@@ -35,10 +35,12 @@
 	</a>
 	{#if user}
 		<span class="flex items-center gap-1.5 md:gap-2">
-			<button type="button" onclick={() => (forceOpenOpen = true)} class="btn"
-				><Fa icon={faDoorOpen} />OPEN DOOR</button
-			>
-			<a onclick={createKey} class="btn btn-primary">+ ISSUE KEY</a>
+			{#if user.canUnlock}
+				<button type="button" onclick={() => (forceOpenOpen = true)} class="btn"
+					><Fa icon={faDoorOpen} />REMOTE UNLOCK</button
+				>
+			{/if}
+			{#if user.isAdmin}<a onclick={createKey} class="btn btn-primary">+ ISSUE KEY</a>{/if}
 			<button
 				type="button"
 				onclick={() => (settingsOpen = true)}
@@ -54,7 +56,7 @@
 </header>
 
 {#if user && forceOpenOpen}
-	<ForceOpenModal onclose={() => (forceOpenOpen = false)} />
+	<ForceOpenModal admin={user.isAdmin} onclose={() => (forceOpenOpen = false)} />
 {/if}
 
 {#if user && settingsOpen}

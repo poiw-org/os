@@ -29,7 +29,7 @@ export const toUserSummary = (row: Raw): UserSummary => ({
 export const toKeySummary = (row: Raw): KeySummary => ({
 	id: row.id as string,
 	userId: row.user_id as string,
-	serialNumber: row.serial_number as string,
+	serialNumber: (row.serial_number as string | null) ?? null,
 	notBefore: new Date(row.not_before as string),
 	expiresAt: new Date(row.expires_at as string),
 	disabled: row.disabled as boolean,
@@ -83,7 +83,9 @@ export async function getUser(id: string): Promise<UserSummary | undefined> {
 // The algorithm named in a token's header, or undefined when it cannot be read.
 function jwtAlgorithm(jwt: string | null) {
 	try {
-		const header = JSON.parse(atob((jwt ?? '').split('.')[0].replace(/-/g, '+').replace(/_/g, '/')));
+		const header = JSON.parse(
+			atob((jwt ?? '').split('.')[0].replace(/-/g, '+').replace(/_/g, '/'))
+		);
 		return typeof header.alg === 'string' ? header.alg : undefined;
 	} catch {
 		return undefined;
@@ -92,7 +94,7 @@ function jwtAlgorithm(jwt: string | null) {
 
 function toKey(row: {
 	id: string;
-	serial_number: string;
+	serial_number: string | null;
 	not_before: string;
 	expires_at: string;
 	issued_at: string;
@@ -315,11 +317,22 @@ export async function unlockDoor(onEvent: (event: ForceOpenEvent) => void = () =
 	try {
 		result = await invoke('unlock');
 	} catch (e) {
-		emit({ step: 'ack', state: 'failed', dir: '<', text: e instanceof Error ? e.message : 'Failed' });
+		emit({
+			step: 'ack',
+			state: 'failed',
+			dir: '<',
+			text: e instanceof Error ? e.message : 'Failed'
+		});
 		throw e;
 	}
 	emit({ step: 'send', state: 'done', dir: '·', text: 'Command on the wire' });
-	emit({ step: 'ack', state: 'done', dir: '<', text: 'force_open_ack', latencyMs: result.latency_ms });
+	emit({
+		step: 'ack',
+		state: 'done',
+		dir: '<',
+		text: 'force_open_ack',
+		latencyMs: result.latency_ms
+	});
 
 	const unlockAt = performance.now() + result.delay_ms;
 	emit({
@@ -330,10 +343,13 @@ export async function unlockDoor(onEvent: (event: ForceOpenEvent) => void = () =
 	});
 	for (let left = Math.ceil((unlockAt - performance.now()) / 1000); left > 0; left--) {
 		emit({ step: 'unlock', state: 'active', dir: '·', text: `Unlocking in ${left} s` });
-		await new Promise((resolve) => setTimeout(resolve, Math.min(1000, unlockAt - performance.now())));
+		await new Promise((resolve) =>
+			setTimeout(resolve, Math.min(1000, unlockAt - performance.now()))
+		);
 	}
 	emit({ step: 'unlock', state: 'done', dir: '·', text: 'Door unlocked' });
-	if (result.logged) emit({ step: 'log', state: 'done', dir: '<', text: 'Entry recorded under your name' });
+	if (result.logged)
+		emit({ step: 'log', state: 'done', dir: '<', text: 'Entry recorded under your name' });
 	else emit({ step: 'log', state: 'failed', dir: '<', text: 'Not logged' });
 	return { latencyMs: result.latency_ms, logged: result.logged };
 }

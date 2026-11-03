@@ -34,10 +34,13 @@
 	import KeyStatusBadge from '#lib/ui/KeyStatusBadge.svelte';
 	import V1Badge from '#lib/ui/V1Badge.svelte';
 	import V2Badge from '#lib/ui/V2Badge.svelte';
+	import VirtualBadge from '#lib/ui/VirtualBadge.svelte';
 	import WriteCardModal from '#lib/header/WriteCardModal.svelte';
 
 	const PREVIEW = 50;
 	const keyId = page.url.searchParams.get('id') ?? '';
+	// Members see their own key and can disable it; everything else is for admins.
+	const admin = page.data.user.isAdmin as boolean;
 
 	let key = $state.raw<Key>();
 	let selectedId = $state<number>();
@@ -48,7 +51,7 @@
 	$effect(() => {
 		const current = key;
 		serialHolder = undefined;
-		if (!current?.serialReleased) return;
+		if (!current?.serialReleased || !current.serialNumber) return;
 		getKeyBySerialNumber(current.serialNumber)
 			.then((holder) => {
 				if (key === current) serialHolder = holder?.id === current.id ? undefined : holder;
@@ -69,7 +72,7 @@
 	let loadError = $state('');
 
 	const checkOut = async () => {
-		if (!key) return;
+		if (!key?.serialNumber) return;
 		const current = key;
 
 		processing = true;
@@ -209,7 +212,7 @@
 				} else if (key) {
 					key = {
 						...key,
-						serialNumber: row.serial_number as string,
+						serialNumber: (row.serial_number as string | null) ?? null,
 						notBefore: new Date(row.not_before as string),
 						expiresAt: new Date(row.expires_at as string),
 						disabled: row.disabled as boolean,
@@ -236,11 +239,13 @@
 		<Loading />
 	{:else}
 		<Breadcrumb
-			crumbs={[
-				{ label: 'Users', href: '/' },
-				{ label: key.user.email, href: `/users?id=${key.user.id}` },
-				{ label: shortId(key.id) }
-			]}
+			crumbs={admin
+				? [
+						{ label: 'Users', href: '/' },
+						{ label: key.user.email, href: `/users?id=${key.user.id}` },
+						{ label: shortId(key.id) }
+					]
+				: [{ label: 'My keys', href: '/keys' }, { label: shortId(key.id) }]}
 		/>
 		<div class="flex flex-wrap items-center justify-between gap-4">
 			<span class="flex flex-wrap items-center gap-3">
@@ -248,29 +253,38 @@
 					>{shortId(key.id)}</span
 				>
 				{#if keyState}<KeyStatusBadge status={keyState} large />{/if}
+				{#if !key.serialNumber}<VirtualBadge large />{/if}
 				{#if key.v1}<V1Badge large />{:else if key.v2}<V2Badge large />{/if}
 			</span>
 			<span class="flex flex-wrap items-center gap-2">
-				<button onclick={goToRenew} class="btn"><Fa icon={faHandSparkles} />RENEW</button>
-				<button onclick={checkOut} class="btn"><Fa icon={faFire} />WRITE TO TAG</button>
-				<button onclick={() => (writerOpen = true)} class="btn"
-					><Fa icon={faMicrochip} />WRITE AT DOOR</button
-				>
-				{#if key.disabled}
-					{#if !key.serialReleased}
-						<button onclick={releaseSerial} class="btn"><Fa icon={faUnlink} />RELEASE TAG</button>
+				{#if admin}
+					<button onclick={goToRenew} class="btn"><Fa icon={faHandSparkles} />RENEW</button>
+					{#if key.serialNumber}
+						<button onclick={checkOut} class="btn"><Fa icon={faFire} />WRITE TO TAG</button>
+						<button onclick={() => (writerOpen = true)} class="btn"
+							><Fa icon={faMicrochip} />WRITE AT DOOR</button
+						>
 					{/if}
-					<button
-						onclick={enableKey}
-						disabled={!!serialHolder}
-						title={serialHolder ? 'Its tag now belongs to another key' : undefined}
-						class="btn disabled:cursor-not-allowed disabled:opacity-40"
-						><Fa icon={faCheckCircle} />ENABLE</button
-					>
+				{/if}
+				{#if key.disabled}
+					{#if admin}
+						{#if key.serialNumber && !key.serialReleased}
+							<button onclick={releaseSerial} class="btn"><Fa icon={faUnlink} />RELEASE TAG</button>
+						{/if}
+						<button
+							onclick={enableKey}
+							disabled={!!serialHolder}
+							title={serialHolder ? 'Its tag now belongs to another key' : undefined}
+							class="btn disabled:cursor-not-allowed disabled:opacity-40"
+							><Fa icon={faCheckCircle} />ENABLE</button
+						>
+					{/if}
 				{:else}
 					<button onclick={disableKey} class="btn"><Fa icon={faStopCircle} />DISABLE</button>
 				{/if}
-				<button onclick={deleteKey} class="btn tone-red"><Fa icon={faTrash} />DELETE</button>
+				{#if admin}
+					<button onclick={deleteKey} class="btn tone-red"><Fa icon={faTrash} />DELETE</button>
+				{/if}
 			</span>
 		</div>
 
@@ -283,14 +297,14 @@
 						class="font-mono underline underline-offset-4">{shortId(serialHolder.id)}</a
 					>. This key cannot be enabled unless that key is removed.
 				{:else}
-					Tag {key.serialNumber} was released for reuse. Enabling this key will claim it again, if
-					no other key has taken it by then.
+					Tag {key.serialNumber} was released for reuse. Enabling this key will claim it again, if no
+					other key has taken it by then.
 				{/if}
 			</div>
 		{/if}
 
 		<dl class="panel text-sm">
-			{#each [['User', key.user.email], ['Tag S/N', key.serialNumber ? key.serialNumber + (key.serialReleased ? ' (released)' : '') : '-'], ['Valid not before', formatDate(key.notBefore)], ['Expires at', formatDate(key.expiresAt)], ['Issued at', formatDate(key.issuedAt)], ['Issued by', key.issuedBy || '-']] as [label, value] (label)}
+			{#each [['User', key.user.email], ['Tag S/N', key.serialNumber ? key.serialNumber + (key.serialReleased ? ' (released)' : '') : 'Virtual (no tag)'], ['Valid not before', formatDate(key.notBefore)], ['Expires at', formatDate(key.expiresAt)], ['Issued at', formatDate(key.issuedAt)], ['Issued by', key.issuedBy || '-']] as [label, value] (label)}
 				<div class="row">
 					<dt class="text-gray-400">{label}</dt>
 					<dd class="min-w-0 text-right break-all {label === 'Tag S/N' ? 'font-mono' : ''}">
@@ -302,15 +316,17 @@
 				</div>
 			{/each}
 		</dl>
-		<details class="panel text-sm">
-			<summary class="row cursor-pointer text-gray-400 select-none">JWT</summary>
-			<textarea
-				disabled
-				value={key.jwt}
-				rows="4"
-				class="block w-full resize-none rounded-none border-0 border-t p-4 font-mono text-xs break-all text-gray-600"
-			></textarea>
-		</details>
+		{#if admin}
+			<details class="panel text-sm">
+				<summary class="row cursor-pointer text-gray-400 select-none">JWT</summary>
+				<textarea
+					disabled
+					value={key.jwt}
+					rows="4"
+					class="block w-full resize-none rounded-none border-0 border-t p-4 font-mono text-xs break-all text-gray-600"
+				></textarea>
+			</details>
+		{/if}
 	{/if}
 
 	{#if entries.items}
@@ -368,7 +384,7 @@
 	{/if}
 </div>
 
-{#if writerOpen && key}
+{#if writerOpen && key?.serialNumber}
 	<WriteCardModal
 		token={key.jwt}
 		serialNumber={key.serialNumber}

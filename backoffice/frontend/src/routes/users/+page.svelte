@@ -16,6 +16,7 @@
 	import Breadcrumb from '#lib/ui/Breadcrumb.svelte';
 	import KeyStatusBadge from '#lib/ui/KeyStatusBadge.svelte';
 	import V1Badge from '#lib/ui/V1Badge.svelte';
+	import VirtualBadge from '#lib/ui/VirtualBadge.svelte';
 
 	const userId = page.url.searchParams.get('id') ?? '';
 
@@ -100,7 +101,9 @@
 					<a href={resolve(`/items?id=${key.id}`)} in:arrive class="row">
 						<span class="flex min-w-0 flex-wrap items-baseline gap-x-4 gap-y-0.5">
 							<span class="font-mono text-[13px]">{shortId(key.id)}</span>
-							<span class="font-mono text-xs text-gray-400">{key.serialNumber}</span>
+							{#if key.serialNumber}<span class="font-mono text-xs text-gray-400"
+									>{key.serialNumber}</span
+								>{:else}<VirtualBadge />{/if}
 							{#if key.v1}<V1Badge />{/if}
 						</span>
 						<span class="flex shrink-0 items-center gap-4">

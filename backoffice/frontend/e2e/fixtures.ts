@@ -333,6 +333,8 @@ async function mockSupabase(page: Page, state: ApiState) {
 		}
 		if (path === '/rest/v1/doors' && req.method() === 'PATCH') return empty();
 		if (path === '/rest/v1/rpc/log_web_open') return json(1);
+		// A member without an active key.
+		if (path === '/rest/v1/rpc/can_unlock') return json(false);
 		if (path === '/rest/v1/entries') {
 			// key_id is `eq.<id>` on the key page; the user page asks `or=(opened_by.eq.<user>,key_id.in.(<ids>))`.
 			const keyFilter = url.searchParams.get('key_id') ?? url.searchParams.get('or');

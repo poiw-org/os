@@ -216,9 +216,9 @@ test.describe('signed in', () => {
 		api
 	}) => {
 		await page.goto('/');
-		await page.getByRole('button', { name: 'OPEN DOOR' }).locator('visible=true').click();
+		await page.getByRole('button', { name: 'REMOTE UNLOCK' }).locator('visible=true').click();
 		const dialog = page.getByRole('dialog');
-		await dialog.getByRole('button', { name: 'OPEN DOOR' }).click();
+		await dialog.getByRole('button', { name: 'REMOTE UNLOCK' }).click();
 		await expect(
 			dialog.getByRole('status').filter({ hasText: 'The door unlocked.' })
 		).toBeVisible();
@@ -273,9 +273,9 @@ test.describe('signed in', () => {
 	test('force open reports an offline door instead of pretending', async ({ page, api }) => {
 		api.doorAnswers = false;
 		await page.goto('/');
-		await page.getByRole('button', { name: 'OPEN DOOR' }).locator('visible=true').click();
+		await page.getByRole('button', { name: 'REMOTE UNLOCK' }).locator('visible=true').click();
 		const dialog = page.getByRole('dialog');
-		await dialog.getByRole('button', { name: 'OPEN DOOR' }).click();
+		await dialog.getByRole('button', { name: 'REMOTE UNLOCK' }).click();
 		await expect(dialog.getByRole('alert').filter({ hasText: 'did not answer' })).toBeVisible({
 			timeout: 15_000
 		});
@@ -342,14 +342,17 @@ test.describe('signed out', () => {
 		await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible();
 	});
 
-	test('a non-admin account is turned away and signed out', async ({ page, api }) => {
+	test('a member lands on their keys and gets no admin controls', async ({ page }) => {
 		await page.goto('/login');
 		await page.getByLabel('Email').fill('nobody@example.test');
 		await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
 		await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-		await expect(page.getByText('does not have access')).toBeVisible();
-		await expect(page).toHaveURL(/\/login$/);
-		expect(api.calls).toContain('POST /auth/v1/logout');
+		await expect(page).toHaveURL(/\/keys$/);
+		await expect(page.getByRole('heading', { name: 'My keys' })).toBeVisible();
+		await expect(page.getByText('ISSUE KEY')).toHaveCount(0);
+		await expect(page.getByRole('button', { name: 'REMOTE UNLOCK' })).toHaveCount(0);
+		await page.goto('/items/create');
+		await expect(page).toHaveURL(/\/keys$/);
 	});
 
 	test('forgot password sends a reset link', async ({ page, api }) => {

@@ -38,6 +38,8 @@
 	let users = $state<UserOption[]>();
 	let user = $state<UserOption>();
 	let serialNumber = $state('');
+	// A virtual key has no tag: it only unlocks the door remotely.
+	let virtual = $state(false);
 	let notBefore = $state(new Date());
 	let expiresAt = $state(addMonths(new Date(), 12));
 	let scanning = $state(false);
@@ -66,7 +68,7 @@
 		try {
 			const { id } = await issueKey({
 				userId: user.value,
-				serialNumber,
+				serialNumber: virtual ? undefined : serialNumber,
 				notBefore,
 				expiresAt
 			});
@@ -117,7 +119,7 @@
 		<Breadcrumb crumbs={[{ label: 'Users', href: '/' }, { label: 'Issue a key' }]} />
 		<div class="flex flex-col gap-1">
 			<h1 class="text-xl font-semibold tracking-tight">Issue a key</h1>
-			<p class="text-gray-400">Bind a new key to a user and a physical tag.</p>
+			<p class="text-gray-400">Bind a new key to a user and a physical tag, or make it virtual.</p>
 		</div>
 	</div>
 
@@ -145,42 +147,49 @@
 						<div>
 							<h2 class="font-medium">Which tag?</h2>
 							<p class="text-gray-400">
-								The key is bound to this serial number. It cannot be written to another tag.
+								{virtual
+									? 'A virtual key has no tag. It only unlocks the door remotely.'
+									: 'The key is bound to this serial number. It cannot be written to another tag.'}
 							</p>
 						</div>
-						<div class="flex flex-wrap items-center gap-3">
-							<label
-								class="flex min-w-0 flex-1 basis-56 items-center gap-3 rounded-lg border bg-paper-2 pl-3.5 text-gray-400 transition-colors focus-within:border-gray-400"
-							>
-								<Fa icon={faKey} />
-								<input
-									required
-									placeholder="Tag S/N"
-									aria-label="Tag S/N"
-									autocomplete="off"
-									spellcheck="false"
-									bind:value={serialNumber}
-									maxlength="12"
-									class="w-full border-0! bg-transparent! p-3 font-mono text-base text-ink shadow-none! outline-none!"
-								/>
-							</label>
-							<button type="button" onclick={scan} class="btn py-3">
-								{#if scanning}
-									<span class="relative flex h-2 w-2">
-										<span
-											class="absolute inline-flex h-full w-full rounded-full bg-green-700 opacity-75 motion-safe:animate-ping"
-										></span>
-										<span class="relative inline-flex h-2 w-2 rounded-full bg-green-700"></span>
-									</span>
-									Hold a tag to the phone
-								{:else}
-									<Fa icon={faWifi} />Scan tag
-								{/if}
-							</button>
-							<button type="button" onclick={() => (doorScan = true)} class="btn py-3">
-								<Fa icon={faMicrochip} />Scan at door
-							</button>
-						</div>
+						<label class="flex items-center gap-2 text-sm">
+							<input type="checkbox" bind:checked={virtual} />Virtual key (no tag)
+						</label>
+						{#if !virtual}
+							<div class="flex flex-wrap items-center gap-3">
+								<label
+									class="flex min-w-0 flex-1 basis-56 items-center gap-3 rounded-lg border bg-paper-2 pl-3.5 text-gray-400 transition-colors focus-within:border-gray-400"
+								>
+									<Fa icon={faKey} />
+									<input
+										required
+										placeholder="Tag S/N"
+										aria-label="Tag S/N"
+										autocomplete="off"
+										spellcheck="false"
+										bind:value={serialNumber}
+										maxlength="12"
+										class="w-full border-0! bg-transparent! p-3 font-mono text-base text-ink shadow-none! outline-none!"
+									/>
+								</label>
+								<button type="button" onclick={scan} class="btn py-3">
+									{#if scanning}
+										<span class="relative flex h-2 w-2">
+											<span
+												class="absolute inline-flex h-full w-full rounded-full bg-green-700 opacity-75 motion-safe:animate-ping"
+											></span>
+											<span class="relative inline-flex h-2 w-2 rounded-full bg-green-700"></span>
+										</span>
+										Hold a tag to the phone
+									{:else}
+										<Fa icon={faWifi} />Scan tag
+									{/if}
+								</button>
+								<button type="button" onclick={() => (doorScan = true)} class="btn py-3">
+									<Fa icon={faMicrochip} />Scan at door
+								</button>
+							</div>
+						{/if}
 					</div>
 				</section>
 
@@ -245,7 +254,9 @@
 					{/if}
 					<dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2">
 						<dt class="text-gray-400">Tag</dt>
-						<dd class="truncate text-right font-mono">{serialNumber || '—'}</dd>
+						<dd class="truncate text-right font-mono">
+							{virtual ? 'Virtual' : serialNumber || '—'}
+						</dd>
 						<dt class="text-gray-400">From</dt>
 						<dd class="text-right">{day(notBefore)}</dd>
 						<dt class="text-gray-400">Until</dt>
