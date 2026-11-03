@@ -462,12 +462,16 @@ void Cloud::onMessage(const char* text, size_t len) {
 		if (!strcmp(type, "DELETE")) return;  // a deleted key keeps its blacklist entry until it expires
 		const char* id = doc["payload"]["data"]["record"]["id"] | "";
 		if (!*id) { syncDue_ = true; return; }
+		// A v1 key's card may still carry its Firestore id as jti, so it is listed under both ids.
+		const char* legacyId = doc["payload"]["data"]["record"]["legacy_id"] | "";
 		if (doc["payload"]["data"]["record"]["disabled"] | false) {
 			uint32_t exp = parseIso(doc["payload"]["data"]["record"]["expires_at"] | "");
 			blacklist_->upsert(id, exp ? exp : 0xFFFFFFFFu);
+			if (*legacyId) blacklist_->upsert(legacyId, exp ? exp : 0xFFFFFFFFu);
 			LOG("Key disabled: %s", id);
 		} else {
 			blacklist_->remove(id);
+			if (*legacyId) blacklist_->remove(legacyId);
 			LOG("Key enabled: %s", id);
 		}
 		blacklistDirty_ = true;

@@ -82,14 +82,14 @@ cp config.example.h config.h   # then edit the pins (GPIO numbers)
 ```
 
 `config.h` holds wiring only and is git-ignored. The build stops if `DOOR_PIN` or `SPEAKER` is missing,
-because guessing a relay pin could fire the lock. The PN532 reader is wired to the default I2C pins
-(SDA 21, SCL 22).
+because guessing a relay pin could fire the lock. The PN532 reader (in I2C mode) is wired to SDA 21
+and SCL 22; `NFC_SDA` and `NFC_SCL` in `config.h` change that. The firmware drives the chip with its
+own small driver (`Pn532.cpp`, over a bit-banged I2C bus), so there are no NFC libraries to install.
 
 ### 3. Build and flash
 
 Install [PlatformIO Core](https://docs.platformio.org/en/latest/core/installation/) (or use the VS Code
-extension). The first build downloads the ESP32 toolchain and ArduinoJson, and fetches the PN532
-libraries (not in the PlatformIO registry) at a pinned commit into `.pio/vendor/`; `git` must be available.
+extension). The first build downloads the ESP32 toolchain and ArduinoJson.
 
 ```sh
 pio run                # build

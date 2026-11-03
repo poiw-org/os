@@ -28,6 +28,7 @@
 	import { EntryType, type Entry, type Key } from '#lib/types.ts';
 	import Breadcrumb from '#lib/ui/Breadcrumb.svelte';
 	import KeyStatusBadge from '#lib/ui/KeyStatusBadge.svelte';
+	import V1Badge from '#lib/ui/V1Badge.svelte';
 
 	const PREVIEW = 50;
 	const keyId = page.url.searchParams.get('id') ?? '';
@@ -210,6 +211,7 @@
 					>{shortId(key.id)}</span
 				>
 				{#if keyState}<KeyStatusBadge status={keyState} large />{/if}
+				{#if key.v1}<V1Badge large />{/if}
 			</span>
 			<span class="flex flex-wrap items-center gap-2">
 				<button onclick={goToRenew} class="btn"><Fa icon={faHandSparkles} />RENEW</button>

@@ -14,6 +14,7 @@
 #include "Jwt.h"
 #include "Log.h"
 #include "Persist.h"
+#include "Pins.h"
 #include "Reader.h"
 #include "Settings.h"
 
@@ -24,18 +25,6 @@ BlacklistSet blacklist;
 Actuators actuators;
 Reader reader;
 Cloud cloud;
-TagRead tag;
-// The reader runs on core 0 and hands finished reads to loop(), so tag reads and network work
-// (TLS, websocket) never wait for each other. Only the reader task touches the I2C bus.
-QueueHandle_t tagQueue;
-
-void readerTask(void*) {
-	static TagRead read;
-	for (;;) {
-		if (reader.poll(read)) xQueueSend(tagQueue, &read, 0);
-		vTaskDelay(1);
-	}
-}
 
 uint32_t lastTapMs = 0;
 uint32_t lastFailureLogMs = 0;
@@ -71,14 +60,14 @@ void onForceOpen() {
 	LOG("Door opened (force open).");
 }
 
-void handleTag() {
+void handleTag(const TagRead& tag) {
 	lastTapMs = millis();
 	JournalRecord r = newRecord();
 	r.uidLen = tag.uidLen;
 	memcpy(r.uid, tag.uid, tag.uidLen);
 
 	KeyClaims key;
-	JwtResult parsed = tag.hasToken ? jwtVerify(tag.token, tag.tokenLen, (const uint8_t*)settings.jwtSecret,
+	JwtResult parsed = tag.token ? jwtVerify(tag.token, tag.tokenLen, (const uint8_t*)settings.jwtSecret,
 	                                            strlen(settings.jwtSecret), key)
 	                                : JwtResult::Malformed;
 	if (parsed != JwtResult::Ok) {
@@ -87,7 +76,7 @@ void handleTag() {
 		r.verdict = 255;  // no Verdict applies; stored as reason "Unknown"
 		r.flags |= kInvalidToken;
 		static const char* const kWhy[] = {"ok", "malformed token", "bad signature (check the signing secret)", "missing or bad claims"};
-		LOG("Denied: the tag carries no valid key (%s).", tag.hasToken ? kWhy[(int)parsed] : "no token found on the tag");
+		LOG("Denied: the tag carries no valid key (%s).", tag.token ? kWhy[(int)parsed] : "no token found on the tag");
 		if (millis() - lastFailureLogMs >= kFailureLogGapMs || !lastFailureLogMs) {
 			lastFailureLogMs = millis();
 			record(r);
@@ -125,6 +114,7 @@ void printStatus() {
 	LOG("blacklist : %u disabled keys", (unsigned)blacklist.size());
 	LOG("journal   : %u events waiting, %lu dropped", (unsigned)Persist::journalCount(),
 	    (unsigned long)Persist::journalDropped());
+	reader.printStatus();
 	cloud.printStatus();
 }
 
@@ -171,9 +161,7 @@ void setup() {
 	}
 	LOG("%u events waiting to be uploaded.", (unsigned)Persist::journalCount());
 
-	reader.begin();
-	tagQueue = xQueueCreate(2, sizeof(TagRead));
-	xTaskCreatePinnedToCore(readerTask, "nfc", 8192, nullptr, 1, nullptr, 0);
+	reader.begin(NFC_SDA, NFC_SCL);
 	Cloud::Hooks hooks = {onForceOpen};
 	cloud.begin(settings, clock_, blacklist, hooks);
 }
@@ -181,10 +169,11 @@ void setup() {
 void loop() {
 	uint32_t ms = millis();
 
-	if (xQueueReceive(tagQueue, &tag, 0) == pdTRUE) {
+	if (const TagRead* tag = reader.take()) {
 		actuators.reading(true);
-		handleTag();
+		handleTag(*tag);
 		actuators.reading(false);
+		reader.release();
 	}
 	actuators.setOnline(cloud.online());
 	actuators.service();

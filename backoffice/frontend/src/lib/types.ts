@@ -23,6 +23,8 @@ export type KeySummary = {
 	notBefore: Date;
 	expiresAt: Date;
 	disabled: boolean;
+	/** Imported from the Firestore setup; its card may still carry the old token. */
+	v1: boolean;
 };
 
 export type KeyStatus = 'active' | 'disabled' | 'expired' | 'pending';
@@ -37,6 +39,7 @@ export type Key = {
 	issuedBy: string;
 	disabled: boolean;
 	jwt: string;
+	v1: boolean;
 };
 
 export type Entry = {

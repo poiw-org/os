@@ -6,6 +6,8 @@
 #include "../src/Crc.h"
 #include "../src/Journal.h"
 #include "../src/Jwt.h"
+#include "../src/Ndef.h"
+#include "../src/Pn532Frame.h"
 #include "../src/Sha256.h"
 #include "../src/SyncParser.h"
 #include "../src/TimeUtil.h"
@@ -301,7 +303,108 @@ static void testJournal() {
 	CHECK(strstr(json, "\"reason\":\"Unknown\""));
 }
 
+// Fake tag data area: `size` bytes are readable; `asked` records the most the walker requested.
+struct FakeTag { size_t size; size_t asked; };
+static bool fakeFill(void* ctx, size_t n) {
+	FakeTag& t = *static_cast<FakeTag*>(ctx);
+	if (n > t.asked) t.asked = n;
+	return n <= t.size;
+}
+
+// A text record "en" + token, as phones write it, inside an NDEF TLV at `at`.
+static size_t putTextTlv(uint8_t* a, size_t at, const char* token) {
+	size_t tl = strlen(token);
+	size_t payload = 3 + tl;
+	size_t i = at;
+	a[i++] = 0x03;
+	if (payload + 4 < 0xFF) {  // short record: flags, type length, payload length, type
+		a[i++] = (uint8_t)(payload + 4);
+		a[i++] = 0xD1; a[i++] = 0x01; a[i++] = (uint8_t)payload; a[i++] = 'T';
+	} else {                   // long record, 3-byte TLV length
+		size_t msg = payload + 7;
+		a[i++] = 0xFF; a[i++] = (uint8_t)(msg >> 8); a[i++] = (uint8_t)msg;
+		a[i++] = 0xC1; a[i++] = 0x01;
+		a[i++] = 0; a[i++] = 0; a[i++] = (uint8_t)(payload >> 8); a[i++] = (uint8_t)payload;
+		a[i++] = 'T';
+	}
+	a[i++] = 0x02; a[i++] = 'e'; a[i++] = 'n';
+	memcpy(a + i, token, tl);
+	i += tl;
+	a[i++] = 0xFE;
+	return i;
+}
+
+static void testNdef() {
+	uint8_t area[1024];
+	const uint8_t* tok;
+	size_t len;
+	FakeTag tag;
+
+	memset(area, 0, sizeof(area));
+	size_t end = putTextTlv(area, 0, GOOD);
+	tag = {end, 0};
+	CHECK(ndefFindToken(area, fakeFill, &tag, tok, len) && len == strlen(GOOD) && !memcmp(tok, GOOD, len));
+	CHECK(tag.asked <= end);  // never asks for bytes past the message
+
+	// Lock control and memory control TLVs, then padding, before the message (as on NTAG tags).
+	memset(area, 0, sizeof(area));
+	const uint8_t pre[] = {0x01, 0x03, 0xA0, 0x10, 0x44, 0x02, 0x03, 0x00, 0x00, 0x00};
+	memcpy(area, pre, sizeof(pre));
+	end = putTextTlv(area, sizeof(pre), GOOD);
+	tag = {end, 0};
+	CHECK(ndefFindToken(area, fakeFill, &tag, tok, len) && len == strlen(GOOD));
+
+	// A message over 254 bytes uses the long record and the 3-byte TLV length.
+	char big[400];
+	memset(big, 'A', sizeof(big) - 1);
+	memcpy(big, "eyJ", 3);
+	big[sizeof(big) - 1] = 0;
+	memset(area, 0, sizeof(area));
+	end = putTextTlv(area, 0, big);
+	tag = {end, 0};
+	CHECK(ndefFindToken(area, fakeFill, &tag, tok, len) && len == sizeof(big) - 1 && !memcmp(tok, big, len));
+
+	// Not found: terminator first, empty tag, no JWT in the record, message cut off by the tag.
+	memset(area, 0, sizeof(area));
+	area[0] = 0xFE;
+	tag = {sizeof(area), 0};
+	CHECK(!ndefFindToken(area, fakeFill, &tag, tok, len));
+	memset(area, 0, sizeof(area));
+	tag = {16, 0};
+	CHECK(!ndefFindToken(area, fakeFill, &tag, tok, len));
+	end = putTextTlv(area, 0, "hello world");
+	tag = {end, 0};
+	CHECK(!ndefFindToken(area, fakeFill, &tag, tok, len));
+	end = putTextTlv(area, 0, GOOD);
+	tag = {end - 20, 0};
+	CHECK(!ndefFindToken(area, fakeFill, &tag, tok, len));
+	area[1] = 0xFF; area[2] = 0xFF; area[3] = 0xFF;  // a length that runs far past the tag
+	tag = {sizeof(area), 0};
+	CHECK(!ndefFindToken(area, fakeFill, &tag, tok, len));
+}
+
+static void testPn532Frame() {
+	uint8_t f[16];
+	const uint8_t firmware[] = {0x02};
+	const uint8_t expectFirmware[] = {0x00, 0x00, 0xFF, 0x02, 0xFE, 0xD4, 0x02, 0x2A, 0x00};  // UM0701-02 example
+	CHECK(pn532::buildFrame(f, firmware, 1) == 9 && !memcmp(f, expectFirmware, 9));
+	const uint8_t list[] = {0x4A, 0x01, 0x00};
+	size_t n = pn532::buildFrame(f, list, 3);
+	CHECK(n == 11 && f[3] == 4 && (uint8_t)(f[3] + f[4]) == 0);
+	uint8_t sum = 0;
+	for (size_t i = 5; i < n - 1; i++) sum = (uint8_t)(sum + f[i]);  // TFI, payload and DCS add up to 0
+	CHECK(sum == 0 && f[n - 1] == 0);
+	CHECK(pn532::headerValid(f));
+	uint8_t bad[5];
+	memcpy(bad, f, 5);
+	bad[4] ^= 1;
+	CHECK(!pn532::headerValid(bad));
+	CHECK(!pn532::headerValid(pn532::kAckFrame));  // LEN 00 / LCS FF marks an ACK, never a data frame
+}
+
 int main() {
+	testNdef();
+	testPn532Frame();
 	testHash();
 	testJwt();
 	testAccess();

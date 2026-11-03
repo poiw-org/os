@@ -1,184 +1,169 @@
 #include "Reader.h"
 #include <string.h>
 #include "Log.h"
+#include "Ndef.h"
 
 namespace {
-// How long one presence check waits. Short, so the websocket and relay timers stay responsive.
-constexpr uint32_t kPollMs = 60;
+// The token's TLV needs 4 bytes of TLV header, 7 of record header and 3 of text record prefix.
+static_assert(kMaxTokenLen + 14 <= Reader::kAreaBytes, "tag area too small for a maximum-size token");
+
+// Pause between polls, so a tag resting on the reader does not keep the chip transmitting flat out.
+constexpr uint32_t kIdlePollMs = 5;
 // A tag must be gone this long before it can be read again.
 constexpr uint32_t kReleaseMs = 600;
 constexpr uint32_t kHealthEveryMs = 300000;
 constexpr uint32_t kRetryEveryMs = 10000;
-constexpr uint8_t kPn532Addr = 0x48 >> 1;
-constexpr size_t kMaxPayload = kMaxTokenLen + 8;
-uint8_t gPayload[kMaxPayload];
-// Type 2 tag data area (from page 4), large enough for the NDEF TLV holding a maximum-size token.
-constexpr size_t kMaxArea = 896;
-constexpr uint8_t kLastPage = 230;  // NTAG216 user memory ends at page 225
-uint8_t gArea[kMaxArea];
+// Consecutive bus or protocol failures before the chip is reset and reconfigured.
+constexpr uint8_t kMaxErrors = 5;
 
-// Finds the JWT in a text record's payload: it sits after the status byte and language code
-// (normally 3 bytes), so locate it by its fixed header prefix instead of trusting that layout.
-void takeToken(const uint8_t* p, size_t len, TagRead& out) {
-	for (size_t i = 0; i + 3 <= len && i <= 8; i++) {
-		if (p[i] == 'e' && p[i + 1] == 'y' && p[i + 2] == 'J') {
-			size_t n = len - i;
-			if (n <= kMaxTokenLen) {
-				memcpy(out.token, p + i, n);
-				out.token[n] = 0;
-				out.tokenLen = n;
-				out.hasToken = true;
-			}
-			return;
-		}
-	}
+constexpr uint8_t kTaskCore = 1;
+constexpr UBaseType_t kTaskPriority = 2;  // above loop(), which runs at 1 on the same core
+constexpr uint32_t kTaskStack = 4096;
+
+// MIFARE Classic's public NDEF key (key A of every data sector).
+constexpr uint8_t kNdefKey[6] = {0xD3, 0xF7, 0xD3, 0xF7, 0xD3, 0xF7};
+constexpr uint8_t kLastPage = 230;   // Type 2 user memory ends at page 225 on an NTAG216
+constexpr uint8_t kLastBlock = 63;   // MIFARE Classic 1K
+
+// State of one tag read, shared with the fill callbacks. Data starts at page 4 / block 4.
+struct Fetch {
+	Pn532* pn;
+	const Pn532::Target* target;
+	uint8_t* area;
+	size_t have;   // bytes of the data area read so far (always a multiple of 16)
+	uint8_t next;  // next page (Type 2) or block (Classic) to read
+};
+
+// Reads 16 bytes at `address` (READ, 0x30) into the data area.
+bool readChunk(Fetch& f, uint8_t address) {
+	const uint8_t cmd[2] = {0x30, address};
+	uint8_t r[17];  // status byte + 16 data bytes
+	if (f.pn->exchange(cmd, sizeof(cmd), r, sizeof(r)) != 16) return false;
+	memcpy(f.area + f.have, r, 16);
+	f.have += 16;
+	return true;
 }
 
-// Returns the payload of the first record of an NDEF message, or nullptr.
-const uint8_t* firstRecordPayload(const uint8_t* m, size_t len, size_t& payloadLen) {
-	if (len < 3) return nullptr;
-	uint8_t hdr = m[0];
-	size_t typeLen = m[1];
-	size_t i = 2;
-	if (hdr & 0x10) {  // short record: 1-byte payload length
-		payloadLen = m[i++];
-	} else {
-		if (len < 6) return nullptr;
-		payloadLen = (size_t)m[2] << 24 | (size_t)m[3] << 16 | (size_t)m[4] << 8 | m[5];
-		i = 6;
+// Type 2 tags: one READ returns four pages.
+bool fillType2(void* ctx, size_t n) {
+	Fetch& f = *static_cast<Fetch*>(ctx);
+	if (n > Reader::kAreaBytes) return false;
+	while (f.have < n) {
+		if (f.next > kLastPage || !readChunk(f, f.next)) return false;
+		f.next += 4;
 	}
-	size_t idLen = 0;
-	if (hdr & 0x08) {
-		if (i >= len) return nullptr;
-		idLen = m[i++];
+	return true;
+}
+
+// MIFARE Classic: one block per read, one authentication per sector, trailers skipped.
+bool fillClassic(void* ctx, size_t n) {
+	Fetch& f = *static_cast<Fetch*>(ctx);
+	if (n > Reader::kAreaBytes) return false;
+	while (f.have < n) {
+		if (f.next % 4 == 3) f.next++;  // the sector trailer holds keys, not data
+		if (f.next > kLastBlock) return false;
+		if (f.next % 4 == 0) {
+			// AUTH_A, block, key, then the 4 least significant UID bytes.
+			uint8_t cmd[12] = {0x60, f.next};
+			memcpy(cmd + 2, kNdefKey, sizeof(kNdefKey));
+			memcpy(cmd + 8, f.target->uid + f.target->uidLen - 4, 4);
+			uint8_t r[2];
+			if (f.pn->exchange(cmd, sizeof(cmd), r, sizeof(r)) < 0) return false;
+		}
+		if (!readChunk(f, f.next)) return false;
+		f.next++;
 	}
-	i += typeLen + idLen;
-	if (i > len || payloadLen > len - i) return nullptr;
-	return m + i;
+	return true;
 }
 }  // namespace
 
-// READ returns 16 bytes (4 pages) per exchange; the NDEF library reads 4 and handles neither
-// messages over 254 bytes (3-byte TLV length) nor tags past page 63, which tokens need.
-bool Reader::readPages(uint8_t page, uint8_t* out) {
-	uint8_t cmd[2] = {0x30, page};
-	uint8_t resp[17];
-	uint8_t len = sizeof(resp);
-	if (!pn532_.inDataExchange(cmd, sizeof(cmd), resp, &len) || len < 16) return false;
-	memcpy(out, resp, 16);
-	return true;
-}
-
-void Reader::readType2(TagRead& out) {
-	size_t have = 0;
-	auto need = [&](size_t n) {
-		if (n > kMaxArea) return false;
-		while (have < n) {
-			if (4 + have / 4 > kLastPage || !readPages((uint8_t)(4 + have / 4), gArea + have)) return false;
-			have += 16;
-		}
-		return true;
-	};
-	// Walk the TLVs: skip NULL, lock and memory control blocks until the NDEF message (0x03).
-	size_t i = 0;
-	for (;;) {
-		if (!need(i + 1)) return;
-		uint8_t t = gArea[i];
-		if (t == 0x00) { i++; continue; }
-		if (t == 0xFE) return;
-		if (!need(i + 4)) return;
-		size_t len = gArea[i + 1];
-		size_t hdr = 2;
-		if (len == 0xFF) {
-			len = (size_t)gArea[i + 2] << 8 | gArea[i + 3];
-			hdr = 4;
-		}
-		if (t != 0x03) { i += hdr + len; continue; }
-		if (!need(i + hdr + len)) return;
-		size_t payloadLen;
-		const uint8_t* p = firstRecordPayload(gArea + i + hdr, len, payloadLen);
-		if (p) takeToken(p, payloadLen, out);
-		return;
-	}
-}
-
 bool Reader::probe() {
-	// The PN532 library retries a silent chip for seconds; one address ping tells us in ~1 ms.
-	Wire.begin();
-	// 100 kHz: at 400 kHz the PN532's clock stretching corrupts ESP32 reads mid-tag (MIFARE Classic
-	// then halts and every later block fails authentication).
-	Wire.setClock(100000);
-	Wire.beginTransmission(kPn532Addr);
-	if (Wire.endTransmission() != 0) return false;
-	nfc_.begin();
-	uint32_t t0 = millis();
-	uint32_t version = pn532_.getFirmwareVersion();
-	LOG("PN532 command round trip: %lu ms.", (unsigned long)(millis() - t0));
-	if (!version) return false;
-	LOG("PN532 ready (firmware %u.%u).", (unsigned)((version >> 16) & 0xFF), (unsigned)((version >> 8) & 0xFF));
+	if (!pn_.begin(sda_, scl_)) return false;
+	uint32_t v = pn_.version();
+	LOG("PN532 ready (firmware %u.%u).", (unsigned)((v >> 16) & 0xFF), (unsigned)((v >> 8) & 0xFF));
 	return true;
 }
 
-void Reader::begin() {
+void Reader::begin(uint8_t sda, uint8_t scl) {
+	sda_ = sda;
+	scl_ = scl;
 	lastCheckMs_ = millis();
 	ready_ = probe();
 	if (!ready_) LOG("PN532 not found; the door runs without NFC and keeps retrying.");
+	xTaskCreatePinnedToCore(&Reader::run, "nfc", kTaskStack, this, kTaskPriority, &task_, kTaskCore);
 }
 
-bool Reader::poll(TagRead& out) {
-	uint32_t ms = millis();
-	if (!ready_) {
-		if (ms - lastCheckMs_ < kRetryEveryMs) return false;
-		lastCheckMs_ = ms;
-		ready_ = probe();
-		if (!ready_) LOG("PN532 still not answering.");
-		return false;
+void Reader::run(void* self) { static_cast<Reader*>(self)->loop(); }
+
+void Reader::loop() {
+	for (;;) {
+		if (ready_) {
+			poll();
+			vTaskDelay(pdMS_TO_TICKS(kIdlePollMs));
+		} else {
+			vTaskDelay(pdMS_TO_TICKS(kRetryEveryMs));
+			ready_ = probe();
+			if (ready_) errors_ = 0;
+			else LOG("PN532 still not answering.");
+		}
 	}
+}
+
+void Reader::poll() {
+	uint32_t ms = millis();
 	if (ms - lastCheckMs_ >= kHealthEveryMs) {
 		lastCheckMs_ = ms;
-		Wire.beginTransmission(kPn532Addr);
-		if (Wire.endTransmission() != 0 || !pn532_.getFirmwareVersion()) {
+		if (!pn_.ping()) {
 			ready_ = false;
 			LOG("PN532 stopped answering; retrying in the background.");
-			return false;
+			return;
 		}
 	}
-	uint32_t pollStartMs = millis();
-	if (!nfc_.tagPresent(kPollMs)) {
-		if (present_ && ms - lastSeenMs_ > kReleaseMs) present_ = false;
-		return false;
-	}
-	lastSeenMs_ = ms;
-	if (present_) return false;  // still the tag we already handled
-	present_ = true;
-	uint32_t startMs = millis();
 
-	memset(&out, 0, sizeof(out));
-	uint8_t uidLen = nfc_.uidSize();
-	if (uidLen == 0 || uidLen > sizeof(out.uid)) return false;
-	out.uidLen = uidLen;
-	memcpy(out.uid, nfc_.uidBytes(), uidLen);
-	if (out.uidLen == 7) {
-		readType2(out);  // NTAG / Ultralight, what phones write
-		LOG("Tag read in %lu ms (detect %lu ms, uid %u bytes, token %s).", (unsigned long)(millis() - startMs),
-	    (unsigned long)(startMs - pollStartMs), (unsigned)out.uidLen, out.hasToken ? "yes" : "no");
-		return true;
-	}
-
-	// 4-byte UID: MIFARE Classic, read through the NDEF library.
-	NfcTag tag = nfc_.read();
-	if (tag.hasNdefMessage()) {
-		NdefMessage message = tag.getNdefMessage();
-		if (message.getRecordCount() > 0) {
-			NdefRecord record = message.getRecord(0);
-			int len = record.getPayloadLength();
-			if (len > 0 && (size_t)len <= kMaxPayload) {
-				record.getPayload(gPayload);
-				takeToken(gPayload, (size_t)len, out);
+	Pn532::Target target;
+	switch (pn_.detect(target)) {
+		case Pn532::Detect::Error:
+			if (++errors_ >= kMaxErrors) {  // reset the bus and the chip before giving up on it
+				errors_ = 0;
+				LOG("PN532 failed %u polls in a row; resetting it.", (unsigned)kMaxErrors);
+				ready_ = probe();
+				if (!ready_) LOG("PN532 stopped answering; retrying in the background.");
 			}
-		}
+			return;
+		case Pn532::Detect::None:
+			errors_ = 0;
+			if (present_ && ms - lastSeenMs_ > kReleaseMs) present_ = false;
+			return;
+		case Pn532::Detect::Found:
+			break;
 	}
-	LOG("Tag read in %lu ms (detect %lu ms, uid %u bytes, token %s).", (unsigned long)(millis() - startMs),
-	    (unsigned long)(startMs - pollStartMs), (unsigned)out.uidLen, out.hasToken ? "yes" : "no");
-	return true;
+	errors_ = 0;
+	lastSeenMs_ = millis();
+	if (present_ || full_.load(std::memory_order_acquire)) return;  // already handled, or loop() is busy
+	present_ = true;
+	read(target);
+}
+
+void Reader::read(const Pn532::Target& target) {
+	uint32_t startMs = millis();
+	memset(&slot_, 0, sizeof(slot_));
+	slot_.uidLen = target.uidLen;
+	memcpy(slot_.uid, target.uid, target.uidLen);
+
+	NdefFill fill = target.sak == 0x00 ? fillType2 : (target.sak & 0x08) ? fillClassic : nullptr;
+	Fetch fetch = {&pn_, &target, area_, 0, 4};
+	const uint8_t* token;
+	size_t len;
+	if (fill && ndefFindToken(area_, fill, &fetch, token, len) && len <= kMaxTokenLen) {
+		slot_.token = reinterpret_cast<const char*>(token);
+		slot_.tokenLen = len;
+	}
+	LOG("Tag read in %lu ms (uid %u bytes, %s).", (unsigned long)(millis() - startMs), (unsigned)slot_.uidLen,
+	    slot_.token ? "token found" : "no token");
+	full_.store(true, std::memory_order_release);
+}
+
+void Reader::printStatus() const {
+	LOG("nfc       : %s, task stack headroom %u of %u bytes", ready_ ? "ready" : "not answering",
+	    (unsigned)uxTaskGetStackHighWaterMark(task_), (unsigned)kTaskStack);
 }

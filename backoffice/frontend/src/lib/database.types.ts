@@ -61,6 +61,7 @@ export type Database = {
 					issued_at: string;
 					issued_by: string | null;
 					jwt: string | null;
+					legacy_id: string | null;
 					not_before: string;
 					serial_number: string;
 					user_id: string;
@@ -72,6 +73,7 @@ export type Database = {
 					issued_at?: string;
 					issued_by?: string | null;
 					jwt?: string | null;
+					legacy_id?: string | null;
 					not_before: string;
 					serial_number: string;
 					user_id: string;
@@ -83,6 +85,7 @@ export type Database = {
 					issued_at?: string;
 					issued_by?: string | null;
 					jwt?: string | null;
+					legacy_id?: string | null;
 					not_before?: string;
 					serial_number?: string;
 					user_id?: string;

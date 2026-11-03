@@ -13,6 +13,13 @@
 #ifndef SPEAKER
 #error "SPEAKER is not defined. Copy config.example.h to config.h and set your wiring."
 #endif
+// PN532 I2C bus. The default is the ESP32's usual I2C pair.
+#ifndef NFC_SDA
+#define NFC_SDA 21
+#endif
+#ifndef NFC_SCL
+#define NFC_SCL 22
+#endif
 #ifndef IDLE_LED
 #define IDLE_LED 27
 #endif

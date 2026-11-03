@@ -1,0 +1,330 @@
+// Runs the real Pn532.cpp against a simulated PN532 chip and tag. The I2C bus is the only seam:
+// this file supplies SoftI2c's methods, so the protocol code is the production code. Time is
+// virtual (stubs/Arduino.h). Build and run with `make test`.
+#include <stdio.h>
+#include <string.h>
+#include <deque>
+#include <vector>
+#define private public  // the tests drive one poll at a time instead of starting the reader task
+#include "../src/Reader.h"
+#undef private
+#include "../src/Pn532.h"
+#include "../src/Pn532Frame.h"
+
+uint64_t g_nowUs = 0;
+HostSerial Serial;
+static int failures = 0, checks = 0;
+#define CHECK(cond)                                                       \
+	do {                                                                  \
+		checks++;                                                         \
+		if (!(cond)) { failures++; printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #cond); } \
+	} while (0)
+
+namespace {
+struct Frame { std::vector<uint8_t> bytes; uint64_t readyAt; };
+
+struct Chip {
+	bool present = true;      // answers its I2C address
+	bool silent = false;      // takes commands but never answers them
+	bool corruptDcs = false;  // damages the data checksum of responses
+	std::deque<Frame> out;    // frames waiting to be read, in order
+	std::vector<uint8_t> in;  // bytes of the write transfer in progress
+	bool writing = false, reading = false, firstReadDone = false;
+	size_t pos = 0;
+	bool statusReady = false;
+	int aborts = 0, exchanges = 0;
+
+	bool tagPresent = false;
+	uint8_t sak = 0x08;
+	std::vector<uint8_t> uid = {0x13, 0xE8, 0x1A, 0x11};
+	std::vector<uint8_t> ats;
+	uint8_t key[6] = {0xD3, 0xF7, 0xD3, 0xF7, 0xD3, 0xF7};
+	bool classic = true;
+	int authedSector = -1;
+	uint8_t flat[4096];          // tag memory: Classic block b at b * 16, Type 2 page p at p * 4
+	int failExchangeAfter = -1;  // from this many exchanges on, the tag stops answering (pulled away)
+} chip;
+
+std::vector<uint8_t> makeFrame(uint8_t code, const std::vector<uint8_t>& data, bool corrupt) {
+	std::vector<uint8_t> f = {0x00, 0x00, 0xFF, (uint8_t)(data.size() + 2), (uint8_t)(0x100 - (data.size() + 2)), 0xD5, code};
+	uint8_t sum = (uint8_t)(0xD5 + code);
+	for (uint8_t b : data) { f.push_back(b); sum = (uint8_t)(sum + b); }
+	f.push_back((uint8_t)(0x100 - sum) ^ (corrupt ? 1 : 0));
+	f.push_back(0x00);
+	return f;
+}
+
+void enqueue(uint8_t code, const std::vector<uint8_t>& data) {
+	chip.out.push_back({std::vector<uint8_t>(pn532::kAckFrame, pn532::kAckFrame + 6), g_nowUs + 300});
+	chip.out.push_back({makeFrame(code, data, chip.corruptDcs), g_nowUs + 3000});  // RF work takes a few ms
+}
+
+void process() {
+	const std::vector<uint8_t>& f = chip.in;
+	if (f.size() == 6 && !memcmp(f.data(), pn532::kAckFrame, 6)) {  // host aborts the running command
+		chip.out.clear();
+		chip.aborts++;
+		return;
+	}
+	if (f.size() < 8 || f[0] != 0 || f[1] != 0 || f[2] != 0xFF || f[5] != 0xD4 || f.size() != (size_t)f[3] + 7) return;
+	uint8_t sum = 0;
+	for (size_t i = 5; i + 1 < f.size(); i++) sum = (uint8_t)(sum + f[i]);
+	if (sum != 0) return;  // bad host checksum: the chip ignores the frame
+	if (chip.silent) return;
+	uint8_t cmd = f[6];
+	std::vector<uint8_t> arg(f.begin() + 7, f.end() - 2);
+	switch (cmd) {
+		case 0x02: enqueue(0x03, {0x32, 0x01, 0x06, 0x07}); break;
+		case 0x14: enqueue(0x15, {}); break;
+		case 0x32: enqueue(0x33, {}); break;
+		case 0x4A:
+			if (!chip.tagPresent) { enqueue(0x4B, {0}); break; }
+			{
+				std::vector<uint8_t> d = {1, 1, 0x00, 0x04, chip.sak, (uint8_t)chip.uid.size()};
+				d.insert(d.end(), chip.uid.begin(), chip.uid.end());
+				d.insert(d.end(), chip.ats.begin(), chip.ats.end());
+				enqueue(0x4B, d);
+			}
+			break;
+		case 0x40: {  // InDataExchange: arg = {tg, tag command...}
+			chip.exchanges++;
+			uint8_t status = chip.failExchangeAfter >= 0 && chip.exchanges > chip.failExchangeAfter ? 0x01 : 0x00;
+			std::vector<uint8_t> d;
+			if (status) {
+			} else if (arg.size() >= 3 && arg[1] == 0x60) {  // AUTH_A, block, key, uid
+				bool ok = arg.size() == 13 && !memcmp(&arg[3], chip.key, 6) &&
+				          !memcmp(&arg[9], chip.uid.data() + chip.uid.size() - 4, 4);
+				if (ok) chip.authedSector = arg[2] / 4;
+				else status = 0x14;
+			} else if (arg.size() == 3 && arg[1] == 0x30) {  // READ
+				if (chip.classic && chip.authedSector != arg[2] / 4) status = 0x01;
+				else {
+					const uint8_t* p = chip.flat + arg[2] * (chip.classic ? 16 : 4);
+					d.assign(p, p + 16);
+				}
+			} else {
+				status = 0x01;
+			}
+			d.insert(d.begin(), status);
+			enqueue(0x41, d);
+			break;
+		}
+	}
+}
+}  // namespace
+
+// The bus, as the PN532 sees it.
+void SoftI2c::begin(uint8_t sda, uint8_t scl) {
+	sda_ = sda;
+	scl_ = scl;
+	stuck_ = false;
+}
+bool SoftI2c::sclRelease() { return true; }
+void SoftI2c::recover() {}
+
+bool SoftI2c::start(uint8_t addr7, bool read) {
+	g_nowUs += 20;
+	if (!chip.present || addr7 != 0x24) return false;
+	chip.reading = read;
+	chip.writing = !read;
+	chip.pos = 0;
+	chip.in.clear();
+	if (read) chip.statusReady = !chip.out.empty() && chip.out.front().readyAt <= g_nowUs;
+	return true;
+}
+
+bool SoftI2c::write(uint8_t b) {
+	g_nowUs += 10;
+	if (chip.writing) chip.in.push_back(b);
+	return chip.writing;
+}
+
+uint8_t SoftI2c::read(bool) {
+	g_nowUs += 10;
+	if (!chip.reading) return 0xFF;
+	size_t i = chip.pos++;
+	if (i == 0) return chip.statusReady ? 1 : 0;
+	if (!chip.statusReady || chip.out.empty()) return 0;
+	const std::vector<uint8_t>& b = chip.out.front().bytes;
+	return i - 1 < b.size() ? b[i - 1] : 0;
+}
+
+void SoftI2c::stop() {
+	if (chip.writing) process();
+	if (chip.reading && chip.statusReady && chip.pos > 1 && !chip.out.empty()) chip.out.pop_front();  // delivered
+	chip.reading = chip.writing = false;
+}
+
+static const char* TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJDLWxETTdCMndHWTduVVJZIiwic3ViIjoiYXV0aDB8NjBiY2M4Nzk2ZWI4ZjYwMDY4OGRlMDM3IiwiYXVkIjoiMTM6ZTg6MWE6MTEiLCJleHAiOjE5MjE0MDg0NjEsIm5iZiI6MTY2ODQyOTU5MCwiaWF0IjoxNzYzNjQyMDc4LCJpc3MiOiJkb25mbiJ9.q4Y8dOn7uc2nswRUzaocapasHJJkOy7eISGC4i28BRA";
+
+// NDEF TLV with a text record holding the token, as a phone writes it (long form: it is over 254 bytes).
+static size_t ndefBytes(uint8_t* a, const char* token) {
+	size_t tl = strlen(token), payload = 3 + tl, msg = payload + 7, i = 0;
+	a[i++] = 0x03; a[i++] = 0xFF; a[i++] = (uint8_t)(msg >> 8); a[i++] = (uint8_t)msg;
+	a[i++] = 0xC1; a[i++] = 0x01; a[i++] = 0; a[i++] = 0; a[i++] = (uint8_t)(payload >> 8); a[i++] = (uint8_t)payload;
+	a[i++] = 'T'; a[i++] = 0x02; a[i++] = 'e'; a[i++] = 'n';
+	memcpy(a + i, token, tl);
+	i += tl;
+	a[i++] = 0xFE;
+	return i;
+}
+
+static void resetChip();
+
+// Lays the message over MIFARE Classic data blocks from block 4, sector trailers filled with junk.
+static void writeClassic(const uint8_t* msg, size_t n) {
+	for (int b = 4; b < 64; b++) memset(chip.flat + b * 16, b % 4 == 3 ? 0xEE : 0x00, 16);
+	size_t at = 0;
+	for (int b = 4; b < 64 && at < n; b++) {
+		if (b % 4 == 3) continue;
+		size_t c = n - at < 16 ? n - at : 16;
+		memcpy(chip.flat + b * 16, msg + at, c);
+		at += c;
+	}
+}
+
+static void testReader() {
+	static Reader reader;  // 900 bytes of tag buffer: keep it off the stack, as in the firmware
+	uint8_t msg[512];
+	size_t n = ndefBytes(msg, TOKEN);
+
+	// MIFARE Classic tag, tapped: token read from the right blocks, once per sector authentication.
+	resetChip();
+	chip.tagPresent = true;
+	writeClassic(msg, n);
+	CHECK(reader.probe());
+	reader.poll();
+	const TagRead* tag = reader.take();
+	CHECK(tag && tag->token && tag->tokenLen == strlen(TOKEN) && !memcmp(tag->token, TOKEN, tag->tokenLen));
+	CHECK(tag && tag->uidLen == 4 && tag->uid[0] == 0x13 && tag->uid[3] == 0x11);
+	CHECK(chip.exchanges <= 22 + 8);  // about 22 data blocks plus one authentication per sector, not all 60 blocks
+
+	// The tag stays on the reader: not handed out again, even after release.
+	reader.release();
+	int seen = chip.exchanges;
+	for (int i = 0; i < 5; i++) reader.poll();
+	CHECK(!reader.take() && chip.exchanges == seen);
+
+	// Removed for longer than the release time, then tapped again: read again.
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
+	chip.tagPresent = true;
+	reader.poll();
+	CHECK(reader.take() && reader.take()->token);
+	reader.release();
+
+	// Pulled away mid-read: the read stops at the first failure and hands out a tag with no token.
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
+	chip.tagPresent = true;
+	chip.exchanges = 0;
+	chip.failExchangeAfter = 5;
+	reader.poll();
+	CHECK(reader.take() && !reader.take()->token && chip.exchanges == 6);  // 5 good exchanges, then one failure, then stop
+	reader.release();
+	chip.failExchangeAfter = -1;
+
+	// NTAG (Type 2, 7-byte UID): pages from 4, no authentication, four pages per read.
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
+	resetChip();
+	chip.tagPresent = true;
+	chip.classic = false;
+	chip.sak = 0x00;
+	chip.uid = {0x04, 0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6};
+	memset(chip.flat, 0, 16);
+	memcpy(chip.flat + 16, msg, n);
+	CHECK(reader.probe());
+	reader.poll();
+	tag = reader.take();
+	CHECK(tag && tag->token && tag->tokenLen == strlen(TOKEN) && !memcmp(tag->token, TOKEN, tag->tokenLen));
+	CHECK(tag && tag->uidLen == 7 && chip.exchanges == (int)((n + 15) / 16));  // one 16-byte read per 16 bytes of message
+	reader.release();
+
+	// Unsupported tag types (ISO-DEP only) are handed out without a token, not read.
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
+	chip.exchanges = 0;
+	chip.sak = 0x20;
+	chip.tagPresent = true;
+	reader.poll();
+	CHECK(reader.take() && !reader.take()->token && chip.exchanges == 0);
+	reader.release();
+}
+
+static void resetChip() {
+	Chip fresh;
+	chip = fresh;
+	for (int i = 0; i < (int)sizeof(chip.flat); i++) chip.flat[i] = (uint8_t)(i * 7 + 3);
+}
+
+int main() {
+	Pn532 pn;
+	uint8_t r[17];
+	const uint8_t auth4[12] = {0x60, 4, 0xD3, 0xF7, 0xD3, 0xF7, 0xD3, 0xF7, 0x13, 0xE8, 0x1A, 0x11};
+	const uint8_t read4[2] = {0x30, 4};
+
+	resetChip();
+	CHECK(pn.begin(21, 22) && pn.version() == 0x32010607u);
+
+	Pn532::Target t;
+	CHECK(pn.detect(t) == Pn532::Detect::None);
+	chip.tagPresent = true;
+	CHECK(pn.detect(t) == Pn532::Detect::Found && t.uidLen == 4 && t.sak == 0x08 && !memcmp(t.uid, "\x13\xE8\x1A\x11", 4));
+
+	// MIFARE Classic: reads need the sector authenticated first; a wrong key is refused, not a bus error.
+	CHECK(pn.exchange(read4, 2, r, sizeof(r)) == Pn532::kErrTag);
+	CHECK(pn.exchange(auth4, sizeof(auth4), r, sizeof(r)) == 0);
+	CHECK(pn.exchange(read4, 2, r, sizeof(r)) == 16 && !memcmp(r, chip.flat + 64, 16));
+	uint8_t badKey[12];
+	memcpy(badKey, auth4, sizeof(badKey));
+	badKey[2] ^= 0xFF;
+	CHECK(pn.exchange(badKey, sizeof(badKey), r, sizeof(r)) == Pn532::kErrTag);
+
+	// Type 2 tag, 7-byte UID, no authentication.
+	chip.classic = false;
+	chip.sak = 0x00;
+	chip.uid = {0x04, 0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6};
+	CHECK(pn.detect(t) == Pn532::Detect::Found && t.uidLen == 7 && t.sak == 0x00);
+	CHECK(pn.exchange(read4, 2, r, sizeof(r)) == 16 && !memcmp(r, chip.flat + 16, 16));
+
+	// An ISO-DEP tag appends a long ATS after the UID; that must not look like a bus error.
+	chip.ats.assign(40, 0x77);
+	chip.sak = 0x20;
+	CHECK(pn.detect(t) == Pn532::Detect::Found && t.sak == 0x20);
+	chip.ats.clear();
+
+	// A response with a damaged checksum is rejected as a frame error, and the next command works.
+	chip.corruptDcs = true;
+	CHECK(pn.exchange(read4, 2, r, sizeof(r)) == Pn532::kErrFrame);
+	chip.corruptDcs = false;
+	CHECK(pn.exchange(read4, 2, r, sizeof(r)) == 16);
+
+	// A chip that stops answering costs a bounded wait, is told to abort, and recovers afterwards.
+	chip.silent = true;
+	uint64_t before = g_nowUs;
+	CHECK(pn.exchange(read4, 2, r, sizeof(r)) == Pn532::kErrTimeout);
+	CHECK(g_nowUs - before < 200000 && chip.aborts >= 1);
+	chip.silent = false;
+	CHECK(pn.detect(t) == Pn532::Detect::Found);
+	CHECK(pn.exchange(read4, 2, r, sizeof(r)) == 16);
+
+	// No chip on the bus: begin() reports it and detect() reports an error instead of hanging.
+	chip.present = false;
+	before = g_nowUs;
+	CHECK(!pn.begin(21, 22));
+	CHECK(pn.detect(t) == Pn532::Detect::Error);
+	CHECK(g_nowUs - before < 500000);
+
+	testReader();
+	printf("%d chip checks, %d failures\n", checks, failures);
+	return failures ? 1 : 0;
+}

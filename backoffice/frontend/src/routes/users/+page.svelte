@@ -15,6 +15,7 @@
 	import Avatar from '#lib/ui/Avatar.svelte';
 	import Breadcrumb from '#lib/ui/Breadcrumb.svelte';
 	import KeyStatusBadge from '#lib/ui/KeyStatusBadge.svelte';
+	import V1Badge from '#lib/ui/V1Badge.svelte';
 
 	const userId = page.url.searchParams.get('id') ?? '';
 
@@ -99,6 +100,7 @@
 						<span class="flex min-w-0 flex-wrap items-baseline gap-x-4 gap-y-0.5">
 							<span class="font-mono text-[13px]">{shortId(key.id)}</span>
 							<span class="font-mono text-xs text-gray-400">{key.serialNumber}</span>
+							{#if key.v1}<V1Badge />{/if}
 						</span>
 						<span class="flex shrink-0 items-center gap-4">
 							<span class="hidden text-xs text-gray-400 md:inline"

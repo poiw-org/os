@@ -14,7 +14,7 @@ import {
 const DOOR_ID = 'main';
 
 const KEY_COLUMNS =
-	'id, serial_number, not_before, expires_at, issued_at, disabled, jwt, user:profiles!user_id(id, email), issuer:profiles!issued_by(email)';
+	'id, serial_number, not_before, expires_at, issued_at, disabled, jwt, legacy_id, user:profiles!user_id(id, email), issuer:profiles!issued_by(email)';
 
 // Rows arrive in the same snake_case shape from queries and from realtime events.
 type Raw = Record<string, unknown>;
@@ -31,7 +31,8 @@ export const toKeySummary = (row: Raw): KeySummary => ({
 	serialNumber: row.serial_number as string,
 	notBefore: new Date(row.not_before as string),
 	expiresAt: new Date(row.expires_at as string),
-	disabled: row.disabled as boolean
+	disabled: row.disabled as boolean,
+	v1: row.legacy_id != null
 });
 
 export const toEntry = (row: Raw): Entry => {
@@ -46,7 +47,8 @@ export const toEntry = (row: Raw): Entry => {
 	};
 };
 
-const KEY_SUMMARY_COLUMNS = 'id, user_id, serial_number, not_before, expires_at, disabled';
+const KEY_SUMMARY_COLUMNS =
+	'id, user_id, serial_number, not_before, expires_at, disabled, legacy_id';
 const ENTRY_COLUMNS = 'id, key_id, type, reason, created_at, metadata';
 
 export async function listAllUsers(): Promise<UserSummary[]> {
@@ -84,6 +86,7 @@ function toKey(row: {
 	issued_at: string;
 	disabled: boolean;
 	jwt: string | null;
+	legacy_id: string | null;
 	user: { id: string; email: string | null };
 	issuer: { email: string | null } | null;
 }): Key {
@@ -96,7 +99,8 @@ function toKey(row: {
 		issuedAt: new Date(row.issued_at),
 		issuedBy: row.issuer?.email ?? '',
 		disabled: row.disabled,
-		jwt: row.jwt ?? ''
+		jwt: row.jwt ?? '',
+		v1: row.legacy_id != null
 	};
 }
 
