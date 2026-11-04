@@ -125,7 +125,6 @@
 		{#each nav as [text, hash] (hash)}
 			<a href={hash} class="label hide-sm">{text}</a>
 		{/each}
-		<a href="https://blog.poiw.org" class="label hide-sm">Blog</a>
 		<div class="grow"></div>
 		<a href="https://github.com/poiw-org" class="label hide-sm">GitHub</a>
 		<a href={resolve(data.user ? '/os' : '/login')} class="label">
