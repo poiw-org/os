@@ -143,8 +143,8 @@
 </script>
 
 <ol>
-	{#each rows as { item, label, first, last } (item.id)}
-		<li in:arrive>
+	{#each rows as { item, label, first, last }, at (item.id)}
+		<li in:arrive={{ index: at }}>
 			{#if label}
 				<div class="eyebrow pb-3 {first ? '' : 'pt-2'}">{label}</div>
 			{/if}

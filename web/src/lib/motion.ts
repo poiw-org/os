@@ -1,5 +1,4 @@
 import { fade, fly, slide } from 'svelte/transition';
-import { cubicOut } from 'svelte/easing';
 
 export const reduced = () =>
 	typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -72,15 +71,40 @@ export const springDriver = (
 	};
 };
 
+/** CSS cubic-bezier(x1, y1, x2, y2) as a Svelte easing, so JS motion matches `--ease-out`. */
+const bezier = (x1: number, y1: number, x2: number, y2: number) => {
+	const at = (a: number, b: number, s: number) =>
+		3 * a * (1 - s) ** 2 * s + 3 * b * (1 - s) * s ** 2 + s ** 3;
+	return (t: number) => {
+		if (t <= 0 || t >= 1) return t;
+		let lo = 0;
+		let hi = 1;
+		for (let i = 0; i < 24; i++) {
+			const mid = (lo + hi) / 2;
+			if (at(x1, x2, mid) < t) lo = mid;
+			else hi = mid;
+		}
+		return at(y1, y2, (lo + hi) / 2);
+	};
+};
+/** Same curve as `--ease-out` in app.css. */
+export const easeOut = bezier(0.23, 1, 0.32, 1);
+
 /** A row that arrives live slides down into place; reduced motion gets a plain fade. */
-export const arrive = (node: Element) =>
-	fly(node, { y: reduced() ? 0 : -10, duration: reduced() ? 0 : 240 });
+export const arrive = (node: Element, { index = 0 }: { index?: number } = {}) =>
+	fly(node, {
+		y: reduced() ? 0 : -10,
+		duration: reduced() ? 0 : 240,
+		// A freshly loaded list cascades its first rows; a row arriving live is index 0 and lands at once.
+		delay: reduced() ? 0 : Math.min(index, 7) * 40,
+		easing: easeOut
+	});
 
 /** Text replaced in place: the new copy rises in while the old one fades out on the same spot. */
 export const swapIn = (node: Element) =>
-	fly(node, { y: reduced() ? 0 : 8, duration: reduced() ? 0 : 260, easing: cubicOut });
+	fly(node, { y: reduced() ? 0 : 8, duration: reduced() ? 0 : 260, easing: easeOut });
 export const swapOut = (node: Element) => fade(node, { duration: reduced() ? 0 : 120 });
 
 /** A section that appears under existing content opens up instead of making the layout jump. */
 export const reveal = (node: Element) =>
-	slide(node, { duration: reduced() ? 0 : 320, easing: cubicOut });
+	slide(node, { duration: reduced() ? 0 : 320, easing: easeOut });

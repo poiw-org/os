@@ -32,7 +32,7 @@
 	<title>My keys</title>
 </svelte:head>
 
-<div class="flex max-w-4xl flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
+<div class="stagger flex max-w-4xl flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
 	<div class="flex flex-col gap-1">
 		<h1 class="text-xl font-bold">My keys</h1>
 		<p class="text-gray-400">
@@ -46,8 +46,8 @@
 		<Loading />
 	{:else}
 		<div class="panel">
-			{#each keys.items as key (key.id)}
-				<a href={resolve(`/os/items?id=${key.id}`)} in:arrive class="row">
+			{#each keys.items as key, at (key.id)}
+				<a href={resolve(`/os/items?id=${key.id}`)} in:arrive={{ index: at }} class="row">
 					<span class="flex min-w-0 flex-wrap items-baseline gap-x-4 gap-y-0.5">
 						<span class="font-mono text-[13px]">{shortId(key.id)}</span>
 						{#if key.serialNumber}<span class="font-mono text-xs text-gray-400"

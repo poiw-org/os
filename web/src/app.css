@@ -45,7 +45,10 @@
 	/* Tailwind 2 had no teal; the markup's old teal classes were dead. */
 	--color-teal-*: initial;
 
-	--ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+	--ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+	--dur-fast: 120ms; /* hover, colour */
+	--dur-base: 220ms; /* rows, dialogs, small reveals */
+	--dur-page: 360ms; /* page and panel entrances */
 }
 
 @layer base {
@@ -353,10 +356,10 @@
 
 /* Modal dialogs: the surface rises in while the scrim fades. */
 dialog.sheet[open] {
-	animation: sheet-in 220ms var(--ease-out);
+	animation: sheet-in var(--dur-base) var(--ease-out);
 }
 dialog.sheet[open]::backdrop {
-	animation: scrim-in 220ms var(--ease-out);
+	animation: scrim-in var(--dur-base) var(--ease-out);
 }
 @keyframes sheet-in {
 	from {
@@ -381,5 +384,26 @@ dialog.sheet[open]::backdrop {
 	}
 	.btn:active:not(:disabled) {
 		transform: none;
+	}
+}
+
+/* Route changes: the old page fades out fast; the new one animates itself in. The header keeps its
+   own layer so it never fades with the page. */
+#menu {
+	view-transition-name: site-header;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+	mix-blend-mode: normal;
+}
+::view-transition-old(root) {
+	animation: page-out 120ms var(--ease-out) both;
+}
+::view-transition-new(root) {
+	animation: none;
+}
+@keyframes page-out {
+	to {
+		opacity: 0;
 	}
 }

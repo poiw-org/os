@@ -20,7 +20,7 @@
 	.os {
 		display: inline-block;
 		white-space: nowrap;
-		transition: letter-spacing 700ms cubic-bezier(0.22, 1, 0.36, 1);
+		transition: letter-spacing 700ms var(--ease-out);
 	}
 	.short {
 		letter-spacing: 0.08em;
@@ -32,7 +32,7 @@
 		max-width: 9em;
 		opacity: 1;
 		transition:
-			max-width 700ms cubic-bezier(0.22, 1, 0.36, 1),
+			max-width 700ms var(--ease-out),
 			opacity 400ms ease-out;
 	}
 	.short .fold {

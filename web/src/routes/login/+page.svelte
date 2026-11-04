@@ -9,6 +9,7 @@
 	} from '#lib/auth.ts';
 	import AuthShell from '#lib/auth/AuthShell.svelte';
 	import QuickUnlock from '#lib/auth/QuickUnlock.svelte';
+	import { arrive, reveal as unfold } from '#lib/motion.ts';
 
 	type Mode = 'signin' | 'register' | 'reset';
 	const copy: Record<Mode, { title: string; subtitle: string; action: string }> = {
@@ -117,7 +118,7 @@
 		</label>
 
 		{#if mode !== 'reset'}
-			<div class="flex flex-col gap-1.5">
+			<div class="flex flex-col gap-1.5" transition:unfold>
 				<span class="flex items-baseline justify-between">
 					<label for="password" class="eyebrow">Password</label>
 					{#if mode === 'signin'}
@@ -152,7 +153,7 @@
 		{/if}
 
 		{#if mode === 'register'}
-			<label class="flex flex-col gap-1.5">
+			<label class="flex flex-col gap-1.5" transition:unfold>
 				<span class="eyebrow">Confirm password</span>
 				<input
 					type={reveal ? 'text' : 'password'}
@@ -165,7 +166,7 @@
 		{/if}
 
 		{#if message}
-			<p role="status" class={failed ? 'text-red-400' : 'text-green-700'}>{message}</p>
+			<p role="status" in:arrive class={failed ? 'text-red-400' : 'text-green-700'}>{message}</p>
 		{/if}
 
 		<button type="submit" disabled={busy} class="btn btn-primary mt-1 py-2.5">

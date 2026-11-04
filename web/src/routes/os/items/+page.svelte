@@ -241,7 +241,7 @@
 	const shownEntries = $derived(showAllEntries ? entries.items : entries.items?.slice(0, PREVIEW));
 </script>
 
-<div class="flex max-w-4xl flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
+<div class="stagger flex max-w-4xl flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
 	{#if loadError}
 		<span class="flex w-full justify-center px-10 pt-20 text-red-500">{loadError}</span>
 	{:else if processing || !key}
@@ -345,10 +345,10 @@
 		<div class="flex flex-col gap-2">
 			<h2 class="font-bold">Log</h2>
 			<div class="panel">
-				{#each shownEntries ?? [] as entry (entry.id)}
+				{#each shownEntries ?? [] as entry, at (entry.id)}
 					<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 					<div
-						in:arrive
+						in:arrive={{ index: at }}
 						onclick={() => showEntry(entry)}
 						class="row cursor-pointer hover:bg-brand/10"
 					>

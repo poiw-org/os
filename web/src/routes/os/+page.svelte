@@ -315,7 +315,7 @@
 	<UnlockChart unlocks={unlocks.items} personOf={unlockedBy} days={CHART_DAYS} {now} />
 {/if}
 
-<div class="lg:grid lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+<div class="stagger lg:grid lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
 	<section class="flex min-w-0 flex-col gap-5 p-4 md:p-8">
 		<div class="flex flex-col gap-1">
 			<h1 class="text-xl font-bold">Users</h1>
@@ -353,8 +353,8 @@
 		{:else}
 			<div class="flex flex-col gap-2" id="results">
 				<div class="panel">
-					{#each rows as { user, keys, active, seen } (user.id)}
-						<a href={resolve(`/os/users?id=${user.id}`)} in:arrive class="row">
+					{#each rows as { user, keys, active, seen }, at (user.id)}
+						<a href={resolve(`/os/users?id=${user.id}`)} in:arrive={{ index: at }} class="row">
 							<span class="flex min-w-0 items-center gap-3">
 								<Avatar email={user.email} size={32} />
 								<span class="truncate">
@@ -422,8 +422,8 @@
 			<span class="block pb-2 text-sm text-red-500">{searchError}</span>
 		{/if}
 		<div class="panel">
-			{#each shownEntries ?? [] as entry (entry.id)}
-				<div in:arrive>
+			{#each shownEntries ?? [] as entry, at (entry.id)}
+				<div in:arrive={{ index: at }}>
 					<ActivityRow
 						{entry}
 						{now}

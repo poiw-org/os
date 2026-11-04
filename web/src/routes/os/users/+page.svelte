@@ -171,7 +171,7 @@
 	<title>{user ? user.fullName || user.email : 'User'}</title>
 </svelte:head>
 
-<div class="flex flex-col gap-8 px-4 py-6 md:px-8 md:py-10 lg:flex-row lg:items-start">
+<div class="stagger flex flex-col gap-8 px-4 py-6 md:px-8 md:py-10 lg:flex-row lg:items-start">
 	{#if loadError}
 		<span class="flex w-full justify-center px-10 pt-20 text-red-500">{loadError}</span>
 	{:else if !user || !keys.items}
@@ -276,8 +276,8 @@
 			<div class="flex flex-col gap-2">
 				<h2 class="font-bold">Keys</h2>
 				<div class="panel">
-					{#each keys.items as key (key.id)}
-						<a href={resolve(`/os/items?id=${key.id}`)} in:arrive class="row">
+					{#each keys.items as key, at (key.id)}
+						<a href={resolve(`/os/items?id=${key.id}`)} in:arrive={{ index: at }} class="row">
 							<span class="flex min-w-0 flex-wrap items-baseline gap-x-4 gap-y-0.5">
 								<span class="font-mono text-[13px]">{shortId(key.id)}</span>
 								{#if key.serialNumber}<span class="font-mono text-xs text-gray-400"

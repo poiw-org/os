@@ -45,7 +45,7 @@
 {:else if !processing && key}
 	<form
 		onsubmit={submit}
-		class="flex flex-col items-start justify-start px-4 py-6 md:px-8 md:py-10"
+		class="rise flex flex-col items-start justify-start px-4 py-6 md:px-8 md:py-10"
 	>
 		<h1 class="text-xl font-bold">Renew {shortId(key.id)}</h1>
 		<p class="mt-1 text-gray-400">{withName(key.user)}</p>

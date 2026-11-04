@@ -110,7 +110,7 @@
 	<title>Issue a key</title>
 </svelte:head>
 
-<div class="flex flex-col gap-6 p-4 md:p-8">
+<div class="stagger flex flex-col gap-6 p-4 md:p-8">
 	<div class="flex flex-col gap-3">
 		<Breadcrumb crumbs={[{ label: 'Users', href: '/os' }, { label: 'Issue a key' }]} />
 		<div class="flex flex-col gap-1">

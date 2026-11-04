@@ -268,13 +268,39 @@
 .console .rise {
 	opacity: 0;
 	transform: translateY(8px);
-	animation: console-in 420ms var(--ease-out) var(--d, 0ms) forwards;
+	animation: console-in var(--dur-page) var(--ease-out) var(--d, 0ms) forwards;
 }
 @keyframes console-in {
 	to {
 		opacity: 1;
 		transform: none;
 	}
+}
+
+/* Children rise in one after another, 50ms apart; --d offsets the whole group. */
+.console .stagger > * {
+	opacity: 0;
+	transform: translateY(8px);
+	animation: console-in var(--dur-page) var(--ease-out) calc(var(--i, 0) * 50ms + var(--d, 0ms))
+		forwards;
+}
+.console .stagger > :nth-child(2) {
+	--i: 1;
+}
+.console .stagger > :nth-child(3) {
+	--i: 2;
+}
+.console .stagger > :nth-child(4) {
+	--i: 3;
+}
+.console .stagger > :nth-child(5) {
+	--i: 4;
+}
+.console .stagger > :nth-child(6) {
+	--i: 5;
+}
+.console .stagger > :nth-child(n + 7) {
+	--i: 6;
 }
 
 @media (max-width: 767px) {
@@ -305,7 +331,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.console .rise {
+	.console .rise,
+	.console .stagger > * {
 		opacity: 1;
 		transform: none;
 		animation: none;

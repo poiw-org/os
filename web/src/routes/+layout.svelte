@@ -2,6 +2,8 @@
 	import '../app.css';
 	import '#lib/console.css';
 	import { page } from '$app/state';
+	import { onNavigate } from '$app/navigation';
+	import { reduced } from '#lib/motion.ts';
 	import Header from '#lib/header/Header.svelte';
 	import Notifications from '#lib/ui/Notifications.svelte';
 	import type { LayoutProps } from './$types';
@@ -11,6 +13,19 @@
 	let { children, data }: LayoutProps = $props();
 
 	onMount(startFaviconGalaxy);
+
+	// Leaving a page fades it out while the next one rises in on its own (.rise/.stagger). Same-page
+	// navigations (a ?id= change) and reduced motion skip it.
+	onNavigate((nav) => {
+		if (!document.startViewTransition || reduced()) return;
+		if (nav.from?.url.pathname === nav.to?.url.pathname) return;
+		return new Promise((resolve) => {
+			document.startViewTransition(async () => {
+				resolve();
+				await nav.complete;
+			});
+		});
+	});
 
 	// The auth screens bring their own full-bleed layout.
 	const bare = $derived(

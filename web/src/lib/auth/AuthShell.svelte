@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import OsLabel from '#lib/ui/OsLabel.svelte';
+	import { swapIn, swapOut } from '#lib/motion.ts';
 	import Dither from './Dither.svelte';
 	import Lanyard from './Lanyard.svelte';
 
@@ -30,11 +31,15 @@
 	</header>
 	<div class="relative flex min-h-screen flex-col px-6 pt-20 pb-8 sm:px-12 lg:w-1/2">
 		<main class="flex flex-1 items-center justify-center py-10 lg:justify-start lg:pl-[4vw]">
-			<div class="panel w-full max-w-sm p-8">
-				<div class="flex flex-col gap-6">
-					<header class="flex flex-col gap-3">
-						<h1 class="text-xl font-bold">{title}</h1>
-						{#if subtitle}<p class="text-gray-400">{subtitle}</p>{/if}
+			<div class="panel rise w-full max-w-sm p-8">
+				<div class="stagger flex flex-col gap-6" style="--d: 80ms">
+					<header class="grid">
+						{#key title}
+							<div class="flex flex-col gap-3 [grid-area:1/1]" in:swapIn out:swapOut>
+								<h1 class="text-xl font-bold">{title}</h1>
+								{#if subtitle}<p class="text-gray-400">{subtitle}</p>{/if}
+							</div>
+						{/key}
 					</header>
 					{@render children()}
 				</div>
