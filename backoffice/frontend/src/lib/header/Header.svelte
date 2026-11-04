@@ -21,8 +21,10 @@
 	};
 
 	// A dialog opened from the phone menu returns focus to "Menu": the row that opened it is gone.
+	let fromMenu = false;
 	const refocus = () => {
-		if (!document.activeElement || document.activeElement === document.body) menu?.focus();
+		if (fromMenu) menu?.focus();
+		fromMenu = false;
 	};
 </script>
 
@@ -46,8 +48,8 @@
 					bind:this={menu}
 					{user}
 					{brand}
-					onunlock={() => (forceOpenOpen = true)}
-					onsettings={() => (settingsOpen = true)}
+					onunlock={() => (fromMenu = forceOpenOpen = true)}
+					onsettings={() => (fromMenu = settingsOpen = true)}
 					onlogout={logout}
 				/>
 			</span>

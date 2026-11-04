@@ -134,10 +134,29 @@ async function renew(db: Db, body: Record<string, unknown>) {
 
   const { data: key } = await db
     .from("keys")
-    .select("id, user_id, serial_number, issued_at")
+    .select("id, user_id, serial_number, issued_at, expires_at, disabled")
     .eq("id", id)
     .maybeSingle();
   if (!key) throw new HttpError(404, "Key not found");
+  if (key.disabled) throw new HttpError(409, "This key is disabled");
+
+  // The token already on the tag keeps the exp it was signed with, and the door verifies it
+  // offline. An earlier date would only change the database copy (and drop a disabled key off the
+  // door's blacklist early), so ending access sooner is done by disabling the key.
+  const currentExpiry = new Date(key.expires_at);
+  if (expiresAt < currentExpiry)
+    throw new HttpError(
+      409,
+      "A key's expiry cannot be moved earlier. Disable the key to end access sooner.",
+    );
+
+  const { data: profile } = await db
+    .from("profiles")
+    .select("blocked")
+    .eq("id", key.user_id)
+    .maybeSingle();
+  if (!profile) throw new HttpError(404, "User not found");
+  if (profile.blocked) throw new HttpError(422, "User is blocked");
 
   const jwt = await signKey({
     id: key.id,
@@ -148,15 +167,22 @@ async function renew(db: Db, body: Record<string, unknown>) {
     expiresAt,
   });
 
-  const { error } = await db
+  // Conditional on the row being unchanged since it was read, so a concurrent renew or disable
+  // cannot slip past the checks above. The database also refuses an earlier expires_at.
+  const { data: updated, error } = await db
     .from("keys")
     .update({
       not_before: notBefore.toISOString(),
       expires_at: expiresAt.toISOString(),
       jwt,
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("disabled", false)
+    .lte("expires_at", expiresAt.toISOString())
+    .select("id");
   if (error) throw new HttpError(500, "Could not renew the key");
+  if (!updated?.length)
+    throw new HttpError(409, "The key changed meanwhile; reload and try again");
 
   return { id };
 }

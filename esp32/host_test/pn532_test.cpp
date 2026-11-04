@@ -46,6 +46,10 @@ struct Chip {
 	uint8_t flat[4096];          // tag memory: Classic block b at b * 16, Type 2 page p at p * 4
 	bool readOnly = false;       // refuses writes
 	int failExchangeAfter = -1;  // from this many exchanges on, the tag stops answering (pulled away)
+	bool fastRead = true;        // Type 2: supports FAST_READ (the original Ultralight does not)
+	int lastPage = 230;          // Type 2: FAST_READ past this page is refused
+	bool halted = false;         // refused a command; needs selecting again (InListPassiveTarget)
+	int fastReads = 0;
 } chip;
 
 std::vector<uint8_t> makeFrame(uint8_t code, const std::vector<uint8_t>& data, bool corrupt) {
@@ -82,6 +86,7 @@ void process() {
 		case 0x32: enqueue(0x33, {}); break;
 		case 0x4A:
 			if (!chip.tagPresent) { enqueue(0x4B, {0}); break; }
+			chip.halted = false;
 			{
 				std::vector<uint8_t> d = {1, 1, 0x00, 0x04, chip.sak, (uint8_t)chip.uid.size()};
 				d.insert(d.end(), chip.uid.begin(), chip.uid.end());
@@ -89,36 +94,48 @@ void process() {
 				enqueue(0x4B, d);
 			}
 			break;
-		case 0x40: {  // InDataExchange: arg = {tg, tag command...}
+		case 0x40:    // InDataExchange: arg = {tg, tag command...}
+		case 0x42: {  // InCommunicateThru: arg = {tag command...}
 			chip.exchanges++;
+			std::vector<uint8_t> t(arg.begin() + (cmd == 0x40 ? 1 : 0), arg.end());
 			uint8_t status = chip.failExchangeAfter >= 0 && chip.exchanges > chip.failExchangeAfter ? 0x01 : 0x00;
+			if (chip.halted) status = 0x01;  // a NAKed tag ignores everything until it is selected again
 			std::vector<uint8_t> d;
 			if (status) {
-			} else if (arg.size() >= 3 && (arg[1] == 0x60 || arg[1] == 0x61)) {  // AUTH_A / AUTH_B, block, key, uid
-				bool b = arg[1] == 0x61;
-				bool ok = arg.size() == 13 && !memcmp(&arg[3], b ? chip.keyB : chip.key, 6) &&
-				          !memcmp(&arg[9], chip.uid.data() + chip.uid.size() - 4, 4);
+			} else if (t.size() >= 2 && (t[0] == 0x60 || t[0] == 0x61)) {  // AUTH_A / AUTH_B, block, key, uid
+				bool b = t[0] == 0x61;
+				bool ok = t.size() == 12 && !memcmp(&t[2], b ? chip.keyB : chip.key, 6) &&
+				          !memcmp(&t[8], chip.uid.data() + chip.uid.size() - 4, 4);
 				if (ok) {
-					chip.authedSector = arg[2] / 4;
+					chip.authedSector = t[1] / 4;
 					chip.authedB = b;
 				} else status = 0x14;
-			} else if (arg.size() == 3 && arg[1] == 0x30) {  // READ
-				if (chip.classic && chip.authedSector != arg[2] / 4) status = 0x01;
+			} else if (t.size() == 2 && t[0] == 0x30) {  // READ
+				if (chip.classic && chip.authedSector != t[1] / 4) status = 0x01;
 				else {
-					const uint8_t* p = chip.flat + arg[2] * (chip.classic ? 16 : 4);
+					const uint8_t* p = chip.flat + t[1] * (chip.classic ? 16 : 4);
 					d.assign(p, p + 16);
 				}
-			} else if (arg.size() == 7 && arg[1] == 0xA2 && !chip.classic) {  // WRITE one page
+			} else if (t.size() == 3 && t[0] == 0x3A && !chip.classic) {  // FAST_READ first..last page
+				chip.fastReads++;
+				if (!chip.fastRead || t[2] < t[1] || t[2] > chip.lastPage) {
+					status = 0x01;  // NAK: the tag halts
+					chip.halted = true;
+				} else {
+					d.assign(chip.flat + t[1] * 4, chip.flat + (t[2] + 1) * 4);
+				}
+			} else if (t.size() == 6 && t[0] == 0xA2 && !chip.classic) {  // WRITE one page
 				if (chip.readOnly) status = 0x01;
-				else memcpy(chip.flat + arg[2] * 4, &arg[3], 4);
-			} else if (arg.size() == 19 && arg[1] == 0xA0 && chip.classic) {  // WRITE one 16-byte block (needs key B)
-				if (chip.authedSector != arg[2] / 4 || !chip.authedB || chip.readOnly) status = 0x01;
-				else memcpy(chip.flat + arg[2] * 16, &arg[3], 16);
+				else memcpy(chip.flat + t[1] * 4, &t[2], 4);
+			} else if (t.size() == 18 && t[0] == 0xA0 && chip.classic) {  // WRITE one 16-byte block (needs key B)
+				if (chip.authedSector != t[1] / 4 || !chip.authedB || chip.readOnly) status = 0x01;
+				else memcpy(chip.flat + t[1] * 16, &t[2], 16);
 			} else {
 				status = 0x01;
 			}
+			if (status) d.clear();
 			d.insert(d.begin(), status);
-			enqueue(0x41, d);
+			enqueue(cmd + 1, d);
 			break;
 		}
 	}
@@ -167,7 +184,8 @@ void SoftI2c::stop() {
 	chip.reading = chip.writing = false;
 }
 
-static const char* TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJDLWxETTdCMndHWTduVVJZIiwic3ViIjoiYXV0aDB8NjBiY2M4Nzk2ZWI4ZjYwMDY4OGRlMDM3IiwiYXVkIjoiMTM6ZTg6MWE6MTEiLCJleHAiOjE5MjE0MDg0NjEsIm5iZiI6MTY2ODQyOTU5MCwiaWF0IjoxNzYzNjQyMDc4LCJpc3MiOiJkb25mbiJ9.q4Y8dOn7uc2nswRUzaocapasHJJkOy7eISGC4i28BRA";
+// Synthetic token (signed with the host tests' throwaway secret). Never paste a real key here: the repo is public.
+static const char* TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJqdGkiOiJhYWFhYWFhYS1iYmJiLWNjY2MtZGRkZC1lZWVlZWVlZWVlZWUiLCJhdWQiOiIwNDphMTpiMjpjMzpkNDplNTpmNiIsImlhdCI6MTcwMDAwMDAwMCwibmJmIjoxNzAwMDAwMTAwLCJleHAiOjE4MDAwMDAwMDB9.ZCcN-soRSAVt5aHA6L_ZcGh7UnjAbZbPvkSm1z1io4A";
 
 // NDEF TLV with a text record holding the token, as a phone writes it (long form: it is over 254 bytes).
 static size_t ndefBytes(uint8_t* a, const char* token) {
@@ -227,7 +245,8 @@ static void testReader() {
 	CHECK(reader.take() && reader.take()->token);
 	reader.release();
 
-	// Pulled away mid-read: the read stops at the first failure and hands out a tag with no token.
+	// Pulled away mid-read: the read stops at the first failure and is retried a bounded number of
+	// times; then the tag is handed out with no token, so the denial is still journaled.
 	chip.tagPresent = false;
 	reader.poll();
 	g_nowUs += 700000;
@@ -236,7 +255,9 @@ static void testReader() {
 	chip.exchanges = 0;
 	chip.failExchangeAfter = 5;
 	reader.poll();
-	CHECK(reader.take() && !reader.take()->token && chip.exchanges == 6);  // 5 good exchanges, then one failure, then stop
+	CHECK(!reader.take() && chip.exchanges == 6);  // 5 good exchanges, then one failure, then stop
+	for (int i = 0; i < 4 && !reader.take(); i++) reader.poll();
+	CHECK(reader.take() && !reader.take()->token && chip.exchanges <= 6 + 2);
 	reader.release();
 	chip.failExchangeAfter = -1;
 
@@ -256,7 +277,88 @@ static void testReader() {
 	reader.poll();
 	tag = reader.take();
 	CHECK(tag && tag->token && tag->tokenLen == strlen(TOKEN) && !memcmp(tag->token, TOKEN, tag->tokenLen));
-	CHECK(tag && tag->uidLen == 7 && chip.exchanges == (int)((n + 15) / 16));  // one 16-byte read per 16 bytes of message
+	// FAST_READ: 4 pages for the TLV header, then the rest of the message in 60-page reads.
+	size_t restPages = (n - 1 - 16 + 3) / 4;  // the terminator after the message is not read
+	CHECK(tag && tag->uidLen == 7 && chip.exchanges == 1 + (int)((restPages + 59) / 60));
+	CHECK(chip.exchanges < (int)((n + 15) / 16) / 4);  // READ alone needed one exchange per 16 bytes
+	reader.release();
+
+	// The original Ultralight has no FAST_READ: the NAK halts it, so it is selected again and read
+	// with READ. Same token, one wasted exchange.
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
+	chip.fastRead = false;
+	chip.exchanges = chip.fastReads = 0;
+	chip.tagPresent = true;
+	reader.poll();
+	tag = reader.take();
+	CHECK(tag && tag->token && tag->tokenLen == strlen(TOKEN) && !memcmp(tag->token, TOKEN, tag->tokenLen));
+	CHECK(chip.fastReads == 1 && chip.exchanges == 1 + (int)((n - 1 + 15) / 16));
+	reader.release();
+	chip.fastRead = true;
+
+	// A FAST_READ that fails on the link (tag at the edge of the field) is not a verdict: nothing is
+	// handed out, and the next poll reads the tag again and finds the key.
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
+	chip.tagPresent = true;
+	chip.exchanges = 0;
+	chip.failExchangeAfter = 1;
+	reader.poll();
+	CHECK(!reader.take());
+	chip.failExchangeAfter = -1;
+	reader.poll();
+	tag = reader.take();
+	CHECK(tag && tag->token && tag->tokenLen == strlen(TOKEN));
+	reader.release();
+
+	// A tag that keeps failing is handed out without a token after the retries.
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
+	chip.tagPresent = true;
+	chip.exchanges = 0;
+	chip.failExchangeAfter = 0;
+	for (int i = 0; i < 3; i++) {
+		CHECK(!reader.take());
+		reader.poll();
+	}
+	chip.failExchangeAfter = -1;
+	tag = reader.take();
+	CHECK(tag && !tag->token);
+	reader.release();
+
+	// The retry count goes with the tag: one that failed once, left and came back gets its retries
+	// anew (a failed read clears present_, so leaving must reset the count regardless).
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
+	chip.tagPresent = true;
+	chip.failExchangeAfter = 0;
+	chip.exchanges = 0;
+	reader.poll();
+	CHECK(!reader.take());
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
+	chip.tagPresent = true;
+	chip.exchanges = 0;
+	reader.poll();
+	CHECK(!reader.take());
+	chip.exchanges = 0;
+	reader.poll();
+	CHECK(!reader.take());
+	chip.failExchangeAfter = -1;
+	reader.poll();
+	tag = reader.take();
+	CHECK(tag && tag->token && tag->tokenLen == strlen(TOKEN));
 	reader.release();
 
 	// Writer mode on the same NTAG: the matching tag gets the token and it reads back.
@@ -295,8 +397,24 @@ static void testReader() {
 	reader.poll();
 	CHECK(reader.arm(TOKEN, strlen(TOKEN), uid7, 7, 1000));
 	g_nowUs += 2000000;
-	reader.poll();
+	reader.checkDeadline();
 	CHECK(reader.writeState() == WriteState::Timeout);
+	// The deadline holds while the chip is not answering too (it is checked outside poll()).
+	CHECK(reader.arm(TOKEN, strlen(TOKEN), uid7, 7, 1000));
+	reader.ready_ = false;
+	g_nowUs += 2000000;
+	reader.checkDeadline();
+	CHECK(reader.writeState() == WriteState::Timeout);
+	reader.ready_ = true;
+	// A write in progress can be neither rearmed nor cancelled underneath the reader.
+	reader.writeState_.store(WriteState::Writing);
+	reader.cancelWrite();
+	CHECK(reader.writeState() == WriteState::Writing);
+	CHECK(!reader.arm(TOKEN, strlen(TOKEN), uid7, 7, 60000) && !reader.armScan(60000));
+	g_nowUs += 120000000;
+	reader.checkDeadline();
+	CHECK(reader.writeState() == WriteState::Writing);  // only a waiting session times out
+	reader.writeState_.store(WriteState::Failed);
 	CHECK(reader.arm(TOKEN, strlen(TOKEN), uid7, 7, 60000));
 	reader.cancelWrite();
 	CHECK(reader.writeState() == WriteState::Cancelled);
@@ -379,6 +497,33 @@ static void testReader() {
 	g_nowUs += 700000;
 	reader.poll();
 
+	// A tag read before the session was armed is still held by loop(): its token points into the
+	// buffer the write's read-back uses, so the write waits for release().
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
+	writeClassic(msg, n);
+	chip.key[0] = 0xD3;
+	chip.tagPresent = true;
+	reader.poll();
+	tag = reader.take();
+	CHECK(tag && tag->token);
+	char before[64];
+	memcpy(before, tag->token, sizeof(before));
+	CHECK(reader.arm(TOKEN, strlen(TOKEN), chip.uid.data(), 4, 60000));
+	chip.exchanges = 0;
+	reader.poll();
+	reader.poll();
+	CHECK(reader.writeState() == WriteState::Armed && chip.exchanges == 0 && !memcmp(tag->token, before, sizeof(before)));
+	reader.release();
+	reader.poll();
+	CHECK(reader.writeState() == WriteState::Done && !reader.take());
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
+
 	// Scan mode reports any tag's UID and does not open the door.
 	chip.tagPresent = false;
 	reader.poll();
@@ -443,11 +588,19 @@ int main() {
 	chip.uid = {0x04, 0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6};
 	CHECK(pn.detect(t) == Pn532::Detect::Found && t.uidLen == 7 && t.sak == 0x00);
 	CHECK(pn.exchange(read4, 2, r, sizeof(r)) == 16 && !memcmp(r, chip.flat + 16, 16));
+	// FAST_READ through InCommunicateThru: 60 pages fill the largest normal frame the chip sends.
+	const uint8_t fast60[3] = {0x3A, 4, 63};
+	uint8_t big[241];
+	CHECK(pn.communicate(fast60, sizeof(fast60), big, sizeof(big)) == 240 && !memcmp(big, chip.flat + 16, 240));
+	CHECK(pn.communicate(fast60, sizeof(fast60), big, 100) == Pn532::kErrFrame);  // does not fit the caller's buffer
 
 	// An ISO-DEP tag appends a long ATS after the UID; that must not look like a bus error.
 	chip.ats.assign(40, 0x77);
 	chip.sak = 0x20;
 	CHECK(pn.detect(t) == Pn532::Detect::Found && t.sak == 0x20);
+	// Even one that pushes the answer far past 64 bytes (an emulator can send any ATS).
+	chip.ats.assign(200, 0x77);
+	CHECK(pn.detect(t) == Pn532::Detect::Found && t.sak == 0x20 && t.uidLen == 7);
 	chip.ats.clear();
 
 	// A response with a damaged checksum is rejected as a frame error, and the next command works.

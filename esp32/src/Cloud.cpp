@@ -12,6 +12,7 @@ namespace {
 constexpr uint32_t kHttpTimeoutMs = 8000;
 constexpr uint32_t kRestPollMs = 250;
 constexpr uint32_t kSyncEveryMs = 300000;     // safety net for missed realtime events
+constexpr uint8_t kMaxSupersededRuns = 3;      // overtaken syncs in a row before one is applied anyway
 constexpr uint32_t kMinSyncGapMs = 30000;     // a sync asked for by a reconnect never follows another this closely
 constexpr uint32_t kKeyRefreshMs = 6UL * 3600 * 1000;  // the public key only changes if the seed does
 constexpr uint32_t kPersistDelayMs = 2000;    // a burst of key changes is written to flash once
@@ -249,7 +250,7 @@ void Cloud::refreshSession(uint32_t ms) {
 
 bool Cloud::syncDue(uint32_t ms) const {
 	if (!syncBackoff_.due(ms)) return false;
-	if (!everSynced_) return true;
+	if (!everSynced_ || urgent_) return true;
 	uint32_t since = ms - lastSyncMs_;
 	return since >= kSyncEveryMs || (events_.resync.load(std::memory_order_acquire) && since >= kMinSyncGapMs);
 }
@@ -259,10 +260,12 @@ bool Cloud::syncDue(uint32_t ms) const {
 bool Cloud::syncBlacklist() {
 	// Cleared first: a request made while the download runs asks for another round.
 	events_.resync.store(false, std::memory_order_release);
+	urgent_ = false;
 	staging_.clear();
+	uint32_t edits = blacklist_->edits();
 
 	int code = request("POST", "/rest/v1/rpc/door_sync", "{}", 2, nullptr, true);
-	bool ok = false;
+	bool ok = false, superseded = false;
 	if (code == 200) {
 		SyncParser parser(staging_);
 		char chunk[256];
@@ -278,16 +281,33 @@ bool Cloud::syncBlacklist() {
 			if (n > 0) parser.feed(chunk, (size_t)n);
 		}
 		if (parser.complete()) {
+			// The server time comes over TLS: it corrects the clock, and it decides what has expired.
 			clock_->adoptServerTime(parser.now());
-			uint32_t now = clock_->now();
-			long skew = (long)now - (long)parser.now();
-			if (clock_->synced() && (skew > 60 || skew < -60)) LOG("Clock differs from the server by %ld s.", skew);
-			staging_.prune(now);
-			blacklist_->replaceWith(staging_);
-			events_.blacklistChanged.store(true, std::memory_order_release);
-			ok = true;
-			LOG("Blacklist synced: %u disabled keys%s.", (unsigned)blacklist_->size(),
-			    parser.truncated() ? " (the server has more than fit; the newest are kept)" : "");
+			if (parser.now()) staging_.prune(parser.now());
+			truncated_ = parser.truncated();
+			// A key change that arrived by realtime during the download is newer than this snapshot,
+			// so the snapshot only replaces the live list if nothing edited it in the meantime.
+			// After a few overtaken rounds in a row (a stream of key edits) the snapshot is applied
+			// anyway and another sync follows after the minimum gap, so key edits can never starve the
+			// full sync that repairs missed realtime events.
+			bool forced = false;
+			bool applied = blacklist_->replaceWithIfUnedited(staging_, edits);
+			if (!applied && supersededRuns_ >= kMaxSupersededRuns) {
+				blacklist_->replaceWith(staging_);
+				applied = forced = true;
+			}
+			if (applied) {
+				supersededRuns_ = 0;
+				events_.blacklistChanged.store(true, std::memory_order_release);
+				ok = true;
+				if (forced) events_.resync.store(true, std::memory_order_release);
+				LOG("Blacklist synced: %u disabled keys%s.", (unsigned)blacklist_->size(),
+				    truncated_ ? " (the server has more than fit; the newest are kept)" : "");
+			} else {
+				supersededRuns_++;
+				superseded = true;
+				LOG("A key changed during the blacklist download; fetching it again.");
+			}
 		} else {
 			LOG("Blacklist download was incomplete; keeping the stored list.");
 		}
@@ -302,6 +322,10 @@ bool Cloud::syncBlacklist() {
 		everSynced_ = true;
 		lastSyncMs_ = ms;
 		syncBackoff_.succeed();
+	} else if (superseded) {
+		// Not a failure: retry at once, without the backoff or the minimum gap between syncs.
+		events_.resync.store(true, std::memory_order_release);
+		urgent_ = true;
 	} else {
 		events_.resync.store(true, std::memory_order_release);
 		syncBackoff_.fail(ms, esp_random());
@@ -439,4 +463,7 @@ void Cloud::printStatus() {
 	    (unsigned long)Net::lowMemoryRefusals(), (unsigned)uxTaskGetStackHighWaterMark(restTask_), (unsigned)kTaskStack);
 	LOG("public key: %s", signingKey_->present() ? (keyFetched_ ? "fetched" : "from flash") : "none");
 	LOG("last sync : %s", everSynced_ ? "done" : "never");
+	if (truncated_ || blacklist_->overflowed())
+		LOG("blacklist : FULL, some disabled keys are not blocked at this door (%s)",
+		    truncated_ ? "the server list was cut short" : "realtime changes evicted entries");
 }

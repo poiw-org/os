@@ -370,7 +370,10 @@ void Realtime::onBroadcast(const JsonDocument& doc) {
 
 void Realtime::onKeyChange(const JsonDocument& doc) {
 	JsonObjectConst data = doc["payload"]["data"];
-	if (!strcmp(data["type"] | "", "DELETE")) return;  // a deleted key keeps its blacklist entry until it expires
+	// A DELETE is not applied here, but the next full sync (door_sync) only lists keys that still
+	// exist, so a deleted disabled key leaves the blacklist then. Keeping it blocked until its
+	// expiry is the backend's job (a tombstone in door_sync, or refusing the delete).
+	if (!strcmp(data["type"] | "", "DELETE")) return;
 	JsonObjectConst record = data["record"];
 	const char* id = record["id"] | "";
 	if (!*id) {

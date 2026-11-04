@@ -11,6 +11,7 @@ hacker-terminal minimal on midnight navy. Dark only.
 ## Layout
 
 - Full-width app shell: sticky translucent top bar, content up to 1500px, one-line footer.
+- Phones (below `md`): the bar is the brand plus the word "Menu". It unfolds a sheet from under the bar (`MobileMenu`) with the desktop header's actions; "Menu" becomes "Close" in place. It leaves the way it came: Close, Escape, a tap on the scrim, or a swipe up (spring with momentum projection, rubber-band past open; a fade under reduced motion).
 - Home: two columns from `lg` — users on the left, live entries feed on the right (sticky, own scroll). Stacked on mobile.
 - Hierarchy pages: users → user → key, each with a breadcrumb. Data streams in over Realtime with no visible indicator.
 

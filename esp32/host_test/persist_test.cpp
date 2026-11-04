@@ -101,6 +101,53 @@ static void testShedDuringUpload() {
 	CHECK(head[0].ts >= 72);
 }
 
+// An opening made offline cannot be flushed out of the journal by tapping invalid tags.
+static void testDenialsNeverShedOpenings() {
+	freshFlash();
+	JournalRecord open = record(1);
+	CHECK(Persist::journalAppend(open));
+	for (uint32_t i = 0; i < 2 * Persist::kJournalCapacity; i++) {
+		JournalRecord d = record(100 + i);
+		d.allowed = 0;
+		CHECK(Persist::journalAppend(d));  // accepted (counted) even when not stored
+	}
+	JournalRecord head[1];
+	uint32_t seq;
+	CHECK(Persist::journalRead(head, 1, &seq) == 1 && head[0].ts == 1 && head[0].allowed == 1);
+	CHECK(Persist::journalCount() == 1 + 64 && Persist::journalDropped() == 0);
+	CHECK(Persist::journalSuppressed() == 2 * Persist::kJournalCapacity - 64);
+
+	// The quota is rebuilt from flash after a reboot, and openings still have room.
+	CHECK(Persist::begin());
+	JournalRecord d = record(5000);
+	d.allowed = 0;
+	CHECK(Persist::journalAppend(d) && Persist::journalCount() == 1 + 64);
+	fill(6000, Persist::kJournalCapacity - 65);
+	CHECK(Persist::journalCount() == Persist::kJournalCapacity && Persist::journalDropped() == 0);
+
+	// Draining denials from the front frees quota again.
+	JournalRecord batch[8];
+	CHECK(Persist::journalRead(batch, 8, &seq) == 8);
+	CHECK(Persist::journalDrop(8, seq));
+	CHECK(Persist::journalAppend(d) && Persist::journalCount() == Persist::kJournalCapacity - 7);
+
+	// The shed counter survives a reboot.
+	fill(9000, 8);
+	uint32_t dropped = Persist::journalDropped();
+	CHECK(dropped == 32);
+	CHECK(Persist::begin() && Persist::journalDropped() == dropped);
+}
+
+// Replacing a file never deletes the old one first: the rename does it atomically.
+static void testReplaceKeepsOldUntilRename() {
+	freshFlash();
+	CHECK(Persist::saveClock(1767225600u));
+	g_fs.failWritesAfter = 4;  // the new version cannot be written in full
+	CHECK(!Persist::saveClock(1767225700u));
+	g_fs.failWritesAfter = -1;
+	CHECK(Persist::loadClock() == 1767225600u && !g_fs.files.count("/tmp.bin"));
+}
+
 static void testTornTailRepair() {
 	freshFlash();
 	fill(10, 3);
@@ -169,6 +216,8 @@ static void testClockFile() {
 int main() {
 	testJournalBasics();
 	testShedDuringUpload();
+	testDenialsNeverShedOpenings();
+	testReplaceKeepsOldUntilRename();
 	testTornTailRepair();
 	testFailedWrites();
 	testBlacklistFile();

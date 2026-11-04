@@ -21,6 +21,16 @@ void BlacklistSet::replaceWith(const BlacklistSet& other) {
 	overflowed_ = other.overflowed_;
 }
 
+bool BlacklistSet::replaceWithIfUnedited(const BlacklistSet& other, uint32_t seen) {
+	if (this == &other) return true;
+	std::scoped_lock hold(lock_, other.lock_);
+	if (edits_ != seen) return false;
+	memcpy(items_, other.items_, other.count_ * sizeof(BlockedKey));
+	count_ = other.count_;
+	overflowed_ = other.overflowed_;
+	return true;
+}
+
 // Index of the entry, or where it would be inserted.
 int BlacklistSet::find(const uint8_t* hash, bool* found) const {
 	int lo = 0, hi = (int)count_ - 1;
@@ -48,15 +58,18 @@ void BlacklistSet::upsert(const char* id, uint32_t exp) {
 	hashId(id, k.hash);
 	k.exp = exp;
 	std::lock_guard<std::mutex> hold(lock_);
+	edits_++;
 	bool found;
 	int at = find(k.hash, &found);
 	if (found) { items_[at].exp = exp; return; }
 	if (count_ == kCapacity) {
+		// The newest revocation matters most (an admin acting now): evict the oldest-expiring entry.
 		overflowed_ = true;
-		size_t victim = 0;
-		for (size_t i = 1; i < count_; i++)
-			if (items_[i].exp < items_[victim].exp) victim = i;
-		if (items_[victim].exp >= exp) return;  // the new key expires first; keep the old ones
+		size_t victim = count_;
+		for (size_t i = 0; i < count_; i++) {
+			if (!memcmp(items_[i].hash, lastAdded_, 16)) continue;
+			if (victim == count_ || items_[i].exp < items_[victim].exp) victim = i;
+		}
 		memmove(&items_[victim], &items_[victim + 1], (count_ - victim - 1) * sizeof(BlockedKey));
 		count_--;
 		at = find(k.hash, &found);
@@ -64,12 +77,14 @@ void BlacklistSet::upsert(const char* id, uint32_t exp) {
 	memmove(&items_[at + 1], &items_[at], (count_ - (size_t)at) * sizeof(BlockedKey));
 	items_[at] = k;
 	count_++;
+	memcpy(lastAdded_, k.hash, 16);
 }
 
 void BlacklistSet::remove(const char* id) {
 	uint8_t h[16];
 	hashId(id, h);
 	std::lock_guard<std::mutex> hold(lock_);
+	edits_++;
 	bool found;
 	int at = find(h, &found);
 	if (!found) return;

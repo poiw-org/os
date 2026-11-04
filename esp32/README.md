@@ -134,7 +134,7 @@ EEPROM. It restarts when you save.
 | Supabase publishable key     | Project Settings > API Keys (`sb_publishable_...` or the legacy anon key)   |
 | Door account email, password | The user you created above                                                  |
 | Door id                      | `main` unless you run several doors                                         |
-| Key signing secret           | The old `JWT_SIGNING_KEY`; only for v1 (HS256) keys. v2 keys need no secret |
+| Key signing secret           | The old `JWT_SIGNING_KEY`; only for v1 (HS256) keys. Optional: empty refuses v1 keys |
 | NTP server                   | `pool.ntp.org`                                                              |
 
 ### Console commands
@@ -158,6 +158,8 @@ make test   # builds host_test/ with the system C++ compiler
 ## Key versions
 
 - **v1** keys are HS256 tokens signed with the shared `JWT_SIGNING_KEY`, checked with the signing secret stored on the door.
+  Anyone can read a v1 tag and guess a weak secret offline, so clear the secret (`config`, then `-`) once every v1 tag
+  has been reissued as v2: the door then refuses HS256 tokens.
 - **v2** keys are RS256 tokens. The backoffice derives the key pair from its `RSA_KEY_SEED` secret each time it signs, and the door
   fetches only the public modulus from the `door-key` edge function after signing in. It is kept in flash, so v2 keys verify offline
   after the first fetch (it is refreshed every 6 hours). Until it has arrived, a v2 tag is denied with a log line saying so.

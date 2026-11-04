@@ -71,20 +71,20 @@ const uint8_t kDigestInfo[19] = {0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86,
                                  0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20};
 }  // namespace
 
-bool rsaVerifySha256(const uint8_t nBytes[kRsaBytes], const uint8_t sigBytes[kRsaBytes], const uint8_t hash[32]) {
+bool rsaPrepare(const uint8_t nBytes[kRsaBytes], RsaPublicKey& key) {
 	if (!(nBytes[0] & 0x80) || !(nBytes[kRsaBytes - 1] & 1)) return false;
-	uint32_t n[kLimbs], s[kLimbs];
+	uint32_t* n = key.n;
 	load(nBytes, n);
-	load(sigBytes, s);
-	if (geq(s, n)) return false;
 
 	// -n^-1 mod 2^32 by Newton iteration (n is odd).
 	uint32_t inv = n[0];
 	for (int i = 0; i < 5; i++) inv *= 2 - n[0] * inv;
-	uint32_t n0inv = 0u - inv;
+	key.n0inv = 0u - inv;
 
 	// R^2 mod n, where R = 2^2048: start from 1 and double 4096 times.
-	uint32_t r2[kLimbs] = {1};
+	uint32_t* r2 = key.r2;
+	memset(r2, 0, sizeof(key.r2));
+	r2[0] = 1;
 	for (int i = 0; i < 2 * kLimbs * 32; i++) {
 		uint32_t carry = 0;
 		for (int j = 0; j < kLimbs; j++) {
@@ -94,14 +94,22 @@ bool rsaVerifySha256(const uint8_t nBytes[kRsaBytes], const uint8_t sigBytes[kRs
 		}
 		if (carry || geq(r2, n)) sub(r2, n);
 	}
+	return true;
+}
+
+bool rsaVerifySha256(const RsaPublicKey& key, const uint8_t sigBytes[kRsaBytes], const uint8_t hash[32]) {
+	const uint32_t* n = key.n;
+	uint32_t s[kLimbs];
+	load(sigBytes, s);
+	if (geq(s, n)) return false;
 
 	// s^65537 = (s^(2^16)) * s, in Montgomery form.
 	uint32_t sm[kLimbs], acc[kLimbs], one[kLimbs] = {1};
-	montMul(s, r2, n, n0inv, sm);
+	montMul(s, key.r2, n, key.n0inv, sm);
 	memcpy(acc, sm, sizeof(acc));
-	for (int i = 0; i < 16; i++) montMul(acc, acc, n, n0inv, acc);
-	montMul(acc, sm, n, n0inv, acc);
-	montMul(acc, one, n, n0inv, acc);
+	for (int i = 0; i < 16; i++) montMul(acc, acc, n, key.n0inv, acc);
+	montMul(acc, sm, n, key.n0inv, acc);
+	montMul(acc, one, n, key.n0inv, acc);
 
 	uint8_t em[kRsaBytes], expected[kRsaBytes];
 	store(acc, em);

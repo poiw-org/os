@@ -165,6 +165,10 @@ export type Database = {
 				Args: { door: string; command_id: string; latency_ms: number };
 				Returns: number;
 			};
+			log_web_open_as: {
+				Args: { actor: string; door: string; command_id: string; latency_ms: number };
+				Returns: number;
+			};
 			set_admin: {
 				Args: { target: string; admin: boolean };
 				Returns: undefined;

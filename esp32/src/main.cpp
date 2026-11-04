@@ -56,8 +56,8 @@ void record(const JournalRecord& r) {
 // Called once the force-open countdown ended and the relay is already energised.
 // v1 tokens are checked against the shared secret, v2 tokens against the backoffice's public key.
 JwtResult verifyToken(const char* token, size_t len, KeyClaims& key) {
-	uint8_t n[kRsaBytes];
-	VerifyKeys keys{(const uint8_t*)settings.jwtSecret, strlen(settings.jwtSecret), signingKey.copyTo(n) ? n : nullptr};
+	RsaPublicKey rsa;
+	VerifyKeys keys{(const uint8_t*)settings.jwtSecret, strlen(settings.jwtSecret), signingKey.copyTo(rsa) ? &rsa : nullptr};
 	return jwtVerify(token, len, keys, key);
 }
 
@@ -144,7 +144,7 @@ void handleTag(const TagRead& tag) {
 		actuators.grant();
 		actuators.service();  // energize the relay now, before the flash write in record()
 		r.allowed = 1;
-		LOG("Door opened for key %s.", key.jti);
+		LOG("Door opened for key %s, %lu ms after the tag was found.", key.jti, (unsigned long)(millis() - tag.foundMs));
 		record(r);
 	} else {
 		actuators.deny();
@@ -164,10 +164,18 @@ void printStatus() {
 	    ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
 	LOG("clock     : %lu (%s)", (unsigned long)clock_.now(), clock_.synced() ? "synced" : "estimated");
 	LOG("blacklist : %u disabled keys", (unsigned)blacklist.size());
-	LOG("journal   : %u events waiting, %lu dropped", (unsigned)Persist::journalCount(),
-	    (unsigned long)Persist::journalDropped());
+	LOG("journal   : %u events waiting, %lu dropped, %lu denied taps not recorded", (unsigned)Persist::journalCount(),
+	    (unsigned long)Persist::journalDropped(), (unsigned long)Persist::journalSuppressed());
 	reader.printStatus();
 	cloud.printStatus();
+}
+
+// The door's own timers (relay, force open), for code that has to wait outside loop(): the serial
+// console's prompts must not hold the relay energised or a force open back.
+void serviceDoor() {
+	if (cloud.takeForceOpen()) actuators.forceOpen();
+	actuators.service();
+	if (actuators.takeForcedOpen()) onForcedOpened();
 }
 
 // Periodic upkeep that never matters to a tap.
@@ -175,7 +183,8 @@ void housekeeping(uint32_t ms) {
 	if (ms - lastHousekeepingMs < 60000) return;
 	lastHousekeepingMs = ms;
 
-	blacklist.prune(clock_.now());
+	// A time from SNTP alone could be forged into the future; pruning by it would unblock keys.
+	if (clock_.reliable()) blacklist.prune(clock_.now());
 
 	bool idle = !actuators.busy() && !writeActive(reader.writeState()) && ms - lastTapMs > 60000;
 	// A leak or fragmentation would eventually stop TLS from working. Everything that matters is
@@ -191,6 +200,9 @@ void housekeeping(uint32_t ms) {
 
 void setup() {
 	actuators.begin();  // outputs low before anything else
+	// Four tasks log. With a buffer a log line returns at once instead of waiting for the UART to
+	// drain what another task (often on the other core) is printing.
+	Serial.setTxBufferSize(1024);
 	Serial.begin(115200);
 	delay(200);
 	LOG("\nDoora | po/iw hackerspace | https://github.com/poiw-org/doora");
@@ -240,7 +252,7 @@ void loop() {
 	cloud.service();
 	clock_.service();
 	housekeeping(ms);
-	if (Console::poll(settings, printStatus)) {
+	if (Console::poll(settings, printStatus, serviceDoor)) {
 		LOG("Settings changed; restarting.");
 		delay(200);
 		ESP.restart();

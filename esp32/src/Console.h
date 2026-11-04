@@ -6,7 +6,8 @@ namespace Console {
 // Blocks until the user has entered a complete, saved configuration. Used on first boot.
 void firstRunSetup(Settings& s);
 
-// Non-blocking; call every loop. `printStatus` is shown for the `status` command.
+// Non-blocking; call every loop. `printStatus` is shown for the `status` command. The `config`
+// and `erase` prompts wait for input; `idle` is called all the while, so the door keeps working.
 // Returns true if the settings were changed (the caller should restart).
-bool poll(Settings& s, void (*printStatus)());
+bool poll(Settings& s, void (*printStatus)(), void (*idle)());
 }  // namespace Console

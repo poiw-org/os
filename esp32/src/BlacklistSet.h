@@ -35,9 +35,18 @@ class BlacklistSet {
 	}
 	// Makes this set an exact copy of `other`.
 	void replaceWith(const BlacklistSet& other);
+	// Counts upsert() and remove() calls: live edits, as opposed to wholesale replacement and pruning.
+	uint32_t edits() const {
+		std::lock_guard<std::mutex> hold(lock_);
+		return edits_;
+	}
+	// replaceWith(), but only if no upsert() or remove() happened since edits() returned `seen`.
+	// Checked and copied under one lock, so an edit is either refused the swap or applied after it.
+	bool replaceWithIfUnedited(const BlacklistSet& other, uint32_t seen);
 
 	bool contains(const char* id) const;
-	// Adds or refreshes a key. When full, the entry that expires first is dropped.
+	// Adds or refreshes a key. When full, the entry that expires first is dropped (never the key
+	// added just before, so a key listed under two ids keeps both): a fresh revocation is never refused.
 	void upsert(const char* id, uint32_t exp);
 	void remove(const char* id);
 	size_t prune(uint32_t now);
@@ -53,4 +62,6 @@ class BlacklistSet {
 	BlockedKey items_[kCapacity];
 	size_t count_ = 0;
 	bool overflowed_ = false;
+	uint32_t edits_ = 0;
+	uint8_t lastAdded_[16] = {0};  // hash of the key upsert() added last
 };

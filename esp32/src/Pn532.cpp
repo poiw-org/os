@@ -11,6 +11,7 @@ constexpr uint8_t kCmdRfConfig = 0x32;
 constexpr uint8_t kCmdSam = 0x14;
 constexpr uint8_t kCmdListTarget = 0x4A;
 constexpr uint8_t kCmdExchange = 0x40;
+constexpr uint8_t kCmdThrough = 0x42;
 
 constexpr uint32_t kAckMs = 50;
 constexpr uint32_t kConfigMs = 50;
@@ -61,6 +62,7 @@ bool Pn532::readAck() {
 	uint8_t got[sizeof(pn532::kAckFrame)];
 	for (size_t i = 0; i < sizeof(got); i++) got[i] = i2c_.read(i + 1 < sizeof(got));
 	i2c_.stop();
+	if (i2c_.stuck()) return false;
 	return memcmp(got, pn532::kAckFrame, sizeof(got)) == 0;
 }
 
@@ -69,6 +71,7 @@ bool Pn532::readAck() {
 int Pn532::readResponse(uint8_t cmd, uint8_t* resp, size_t cap) {
 	uint8_t head[5];
 	for (uint8_t& b : head) b = i2c_.read(true);
+	if (i2c_.stuck()) return kErrBus;  // every further byte would cost a full clock-stretch timeout
 	size_t len = head[3];  // TFI + response code + data
 	if (!pn532::headerValid(head) || len < 2) {  // includes the chip's 1-byte application error frame
 		i2c_.read(false);
@@ -81,6 +84,7 @@ int Pn532::readResponse(uint8_t cmd, uint8_t* resp, size_t cap) {
 	size_t dataLen = len - 2;
 	for (size_t i = 0; i < dataLen; i++) {
 		uint8_t b = i2c_.read(true);
+		if (i2c_.stuck()) return kErrBus;
 		sum = (uint8_t)(sum + b);
 		if (i < cap) resp[i] = b;
 	}
@@ -149,7 +153,9 @@ bool Pn532::begin(uint8_t sda, uint8_t scl) {
 
 Pn532::Detect Pn532::detect(Target& out) {
 	const uint8_t cmd[] = {kCmdListTarget, 0x01, 0x00};  // one target, 106 kbps type A
-	uint8_t r[64];  // ISO-DEP tags (phones, DESFire) append their ATS after the UID
+	// ISO-DEP tags (phones, DESFire, emulators) append their ATS after the UID, up to a full normal
+	// frame: an answer that does not fit would read as a bus error and keep resetting the chip.
+	uint8_t r[kMaxThroughData + 1];
 	int n = command(cmd, sizeof(cmd), r, sizeof(r), kDetectMs);
 	if (n < 0) return Detect::Error;
 	if (n < 1 || r[0] == 0) return Detect::None;
@@ -162,12 +168,21 @@ Pn532::Detect Pn532::detect(Target& out) {
 }
 
 int Pn532::exchange(const uint8_t* data, size_t n, uint8_t* out, size_t cap) {
+	return transceive(kCmdExchange, true, data, n, out, cap);
+}
+
+int Pn532::communicate(const uint8_t* data, size_t n, uint8_t* out, size_t cap) {
+	return transceive(kCmdThrough, false, data, n, out, cap);
+}
+
+int Pn532::transceive(uint8_t code, bool withTarget, const uint8_t* data, size_t n, uint8_t* out, size_t cap) {
 	uint8_t cmd[24];
-	if (n + 2 > sizeof(cmd)) return kErrFrame;
-	cmd[0] = kCmdExchange;
-	cmd[1] = 0x01;  // target number
-	memcpy(cmd + 2, data, n);
-	int got = command(cmd, n + 2, out, cap, kExchangeMs);
+	size_t head = withTarget ? 2 : 1;
+	if (n + head > sizeof(cmd)) return kErrFrame;
+	cmd[0] = code;
+	if (withTarget) cmd[1] = 0x01;  // target number
+	memcpy(cmd + head, data, n);
+	int got = command(cmd, n + head, out, cap, kExchangeMs);
 	if (got < 1) return got < 0 ? got : kErrFrame;
 	if (out[0] & 0x3F) return kErrTag;  // status byte: low 6 bits are the error code
 	memmove(out, out + 1, (size_t)got - 1);

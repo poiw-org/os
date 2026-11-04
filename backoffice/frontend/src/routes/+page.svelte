@@ -8,6 +8,7 @@
 	import { arrive } from '#lib/motion.ts';
 	import { nfcSupported, scanTag } from '#lib/nfc.ts';
 	import { toast } from '#lib/notify.svelte.ts';
+	import { canonicalSerial, serialDigits } from '#lib/serial.ts';
 	import { keyStatus } from '#lib/status.ts';
 	import { EntryType, type Entry, type UserOption } from '#lib/types.ts';
 	import Loading from '#lib/loading.svelte';
@@ -205,6 +206,9 @@
 	);
 
 	const query = $derived(searchQuery.trim().toLowerCase());
+	// A typed S/N matches however it is spelled ("04A2", "04:a2").
+	// Only for queries that look like a serial, so typing a name does not match stray hex digits.
+	const queryDigits = $derived(/^[0-9a-fx:\s-]+$/.test(query) ? serialDigits(query) : '');
 	const keyOwner = $derived(new Map((keys.items ?? []).map((key) => [key.id, key.userId])));
 	const emailById = $derived(new Map((users.items ?? []).map((user) => [user.id, user.email])));
 	// A web open belongs to the admin who gave it; a tag open to the key's owner.
@@ -237,7 +241,13 @@
 				if (!query) return showAll || keys.length > 0;
 				return (
 					user.email.toLowerCase().includes(query) ||
-					keys.some((key) => key.serialNumber?.toLowerCase().includes(query))
+					keys.some(
+						(key) =>
+							key.serialNumber?.toLowerCase().includes(query) ||
+							(queryDigits.length >= 2 &&
+								!!key.serialNumber &&
+								serialDigits(key.serialNumber).includes(queryDigits))
+					)
 				);
 			})
 			// Users with a key first, then those with an active key, then whoever came in last.
@@ -256,18 +266,37 @@
 	const loaded = $derived(users.items && keys.items);
 	const loadError = $derived(users.error || keys.error);
 
+	// A tag scan stops on its own after this long, so a forgotten scan does not linger.
+	const SCAN_TIMEOUT_MS = 60_000;
+	let stopScan: (() => void) | undefined;
 	const findByTag = async () => {
 		scanning = true;
-		await scanTag(
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		let ended = false;
+		const stop = await scanTag(
 			async (serialNumber, _ndef, stop) => {
 				stop();
-				const key = await getKeyBySerialNumber(serialNumber);
-				if (key) await goto(resolve(`/items?id=${key.id}`));
-				else toast.error('This key was not found on the database.');
+				try {
+					const key = await getKeyBySerialNumber(canonicalSerial(serialNumber) ?? serialNumber);
+					if (key) await goto(resolve(`/items?id=${key.id}`));
+					else toast.error('This key was not found on the database.');
+				} catch (e) {
+					toast.error(e instanceof Error ? e.message : 'Could not look up the tag.');
+				}
 			},
-			() => (scanning = false)
+			() => {
+				ended = true;
+				clearTimeout(timer);
+				stopScan = undefined;
+				scanning = false;
+			}
 		);
+		if (!stop || ended) return;
+		stopScan = stop;
+		timer = setTimeout(stop, SCAN_TIMEOUT_MS);
 	};
+	// Leaving the page ends the scan.
+	$effect(() => () => stopScan?.());
 </script>
 
 <svelte:head>
@@ -301,7 +330,10 @@
 				{/if}
 			</div>
 		{:else}
-			<span class="btn self-start">Hold the tag to the phone…</span>
+			<span class="flex items-center gap-2 self-start">
+				<span class="btn">Hold the tag to the phone…</span>
+				<button type="button" class="btn" onclick={() => stopScan?.()}>Cancel</button>
+			</span>
 		{/if}
 
 		{#if loadError}

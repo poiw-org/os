@@ -93,6 +93,9 @@ class Cloud {
 	bool keyFetched_ = false;
 	bool everSynced_ = false;
 	uint32_t lastSyncMs_ = 0;
+	bool urgent_ = false;     // the last sync was overtaken by a realtime change; sync again at once
+	uint8_t supersededRuns_ = 0;  // syncs in a row overtaken by a realtime change
+	bool truncated_ = false;  // the last sync had more disabled keys than the blacklist holds
 	bool dirtySeen_ = false;
 	uint32_t dirtySeenMs_ = 0;
 	BlacklistSet staging_;                                   // a download is built here, then swapped in

@@ -575,6 +575,8 @@ export async function writeCardViaDoor(
 
 	try {
 		await joinDoorChannel(channel, topic, emit, since);
+		// Cancelled while joining: never arm the door.
+		if (signal.aborted) throw new Error(WRITE_FAILURES.cancelled);
 
 		const command = {
 			type: 'broadcast' as const,

@@ -6,14 +6,17 @@
 namespace {
 
 constexpr uint32_t kWizardIdleMs = 180000;
+// Runs while a prompt waits (the door's relay and force-open timers); null during first-run setup.
+void (*gIdle)() = nullptr;
 
 // Reads one line from serial, echoing it. Returns its length, or -1 after `timeoutMs` without input
-// (0 = wait forever). Keeps the watchdog fed while waiting. `idleSubmitMs` > 0 also accepts the text
-// after that long a pause, for monitors set to "no line ending" (short answers only).
+// (0 = wait forever). Calls gIdle while waiting. `idleSubmitMs` > 0 also accepts the text after that
+// long a pause, for monitors set to "no line ending" (short answers only).
 int readLine(char* out, size_t cap, uint32_t timeoutMs, bool echo, uint32_t idleSubmitMs = 0) {
 	size_t n = 0;
 	uint32_t last = millis();
 	for (;;) {
+		if (gIdle) gIdle();
 		while (Serial.available()) {
 			int c = Serial.read();
 			last = millis();
@@ -68,8 +71,14 @@ const char* vDoorId(const char* v) {
 		if (!isalnum((unsigned char)v[i]) && v[i] != '_' && v[i] != '-') return "only letters, digits, '_' and '-'";
 	return nullptr;
 }
-// Legacy tags were signed with whatever passphrase the old config.h had, so any length is accepted.
-const char* vSecret(const char* v) { return (!*v || strlen(v) > 128) ? "1 to 128 characters" : nullptr; }
+// Legacy tags were signed with whatever passphrase the old config.h had, so a short one is accepted
+// with a warning. Empty (or '-') turns v1 keys off.
+const char* vSecret(const char* v) {
+	if (strlen(v) > 128) return "at most 128 characters";
+	if (strlen(v) < 32)
+		Serial.println(F("  Warning: a short secret can be guessed from any v1 tag. Clear it once every v1 tag is reissued as v2."));
+	return nullptr;
+}
 const char* vNtp(const char* v) { return (strlen(v) < 3 || strlen(v) > 39) ? "a host name" : nullptr; }
 
 // Cleans a pasted URL down to a bare host.
@@ -134,8 +143,9 @@ bool wizard(Settings& s) {
 	          ask("Door account password", "", draft.password, sizeof(draft.password), vPassword, true) &&
 	          ask("Door id", "The id of this door in public.doors; 'main' unless you run several.", draft.doorId,
 	              sizeof(draft.doorId), vDoorId, false) &&
-	          ask("Key signing secret (v1 keys)", "The old JWT_SIGNING_KEY, for HS256 keys issued before v2. v2 keys need no secret here.", draft.jwtSecret,
-	              sizeof(draft.jwtSecret), vSecret, true) &&
+	          ask("Key signing secret (v1 keys)",
+	              "The old JWT_SIGNING_KEY, for HS256 keys issued before v2. Leave empty (or '-' to clear) to refuse v1 keys.",
+	              draft.jwtSecret, sizeof(draft.jwtSecret), vSecret, true, true) &&
 	          ask("NTP server", "", draft.ntpServer, sizeof(draft.ntpServer), vNtp, false);
 	if (!ok) { Serial.println(F("\nSetup cancelled, nothing was changed.")); return false; }
 
@@ -156,9 +166,10 @@ bool wizard(Settings& s) {
 
 void showSettings(const Settings& s) {
 	Serial.printf("wifi ssid : %s\nwifi pass : %s\nsupabase  : %s\nanon key  : hidden (%u chars)\n"
-	                     "door user : %s\ndoor pass : hidden\ndoor id   : %s\nsecret    : hidden (%u chars)\nntp       : %s\n",
+	                     "door user : %s\ndoor pass : hidden\ndoor id   : %s\nv1 secret : %s (%u chars)\nntp       : %s\n",
 	                s.wifiSsid, s.wifiPass[0] ? "hidden" : "(open network)", s.supabaseHost, (unsigned)strlen(s.anonKey),
-	                s.email, s.doorId, (unsigned)strlen(s.jwtSecret), s.ntpServer);
+	                s.email, s.doorId, s.jwtSecret[0] ? "hidden" : "none, v1 keys refused", (unsigned)strlen(s.jwtSecret),
+	                s.ntpServer);
 }
 
 struct EraseTarget { const char* name; const char* what; Category cat; };
@@ -217,7 +228,8 @@ void firstRunSetup(Settings& s) {
 	}
 }
 
-bool poll(Settings& s, void (*printStatus)()) {
+bool poll(Settings& s, void (*printStatus)(), void (*idle)()) {
+	gIdle = idle;
 	static char line[24];
 	static size_t n = 0;
 	static uint32_t lastByteMs = 0;

@@ -27,11 +27,14 @@ bool saveSigningKey(const uint8_t n[kRsaBytes]);
 uint32_t loadClock();
 bool saveClock(uint32_t epoch);
 
-// Journal of door events. Capped; the oldest records are dropped first and counted.
+// Journal of door events. Capped; the oldest records are dropped first and counted (the count is
+// persisted). Denied taps take at most a fixed share of it: beyond that they are only counted, so
+// they can never push an opening out before it is uploaded.
 constexpr size_t kJournalCapacity = 256;
 bool journalAppend(JournalRecord record);
 size_t journalCount();
 uint32_t journalDropped();
+uint32_t journalSuppressed();  // denied taps not stored since boot
 // Copies up to `max` oldest records (valid or not; check journalValid). `seq` identifies the
 // journal's front at the time of the read; hand it back to journalDrop().
 size_t journalRead(JournalRecord* out, size_t max, uint32_t* seq);

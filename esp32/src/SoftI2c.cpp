@@ -3,12 +3,17 @@
 #include <driver/gpio.h>
 
 namespace {
-// Half a clock period: roughly 150 kHz with the GPIO overhead, inside the PN532's 400 kHz limit.
+// Bus timing, kept inside the PN532's 400 kHz (fast mode) limits. START, STOP and the low half of
+// each clock take kHalfUs (fast mode needs 1.3 us low); the high half of a data clock only needs
+// 0.6 us, so it takes kHighUs. The master waits for SCL to really rise before timing the high half,
+// so slow pull-ups stretch the clock instead of shortening it.
 constexpr uint32_t kHalfUs = 2;
+constexpr uint32_t kHighUs = 1;
 // Longest a slave may hold SCL low before the bus counts as stuck.
 constexpr uint32_t kStretchUs = 20000;
 
 inline void halfBit() { delayMicroseconds(kHalfUs); }
+inline void highHalf() { delayMicroseconds(kHighUs); }
 inline void level(int pin, int v) { gpio_set_level((gpio_num_t)pin, v); }
 inline int sample(int pin) { return gpio_get_level((gpio_num_t)pin); }
 }  // namespace
@@ -47,8 +52,11 @@ void SoftI2c::recover() {
 	halfBit();
 }
 
-// Lets SCL go high and waits while the slave stretches it.
+// Lets SCL go high and waits while the slave stretches it. Once the bus is stuck it fails at once,
+// so the rest of a transfer (read, write, stop) costs nothing instead of one timeout per call;
+// recover() clears it.
 bool SoftI2c::sclRelease() {
+	if (stuck_) return false;
 	level(scl_, 1);
 	uint32_t t0 = micros();
 	while (!sample(scl_)) {
@@ -78,13 +86,13 @@ bool SoftI2c::write(uint8_t b) {
 		level(sda_, (b >> i) & 1);
 		halfBit();
 		if (!sclRelease()) return false;
-		halfBit();
+		highHalf();
 		level(scl_, 0);
 	}
 	level(sda_, 1);  // hand SDA to the slave for its ACK
 	halfBit();
 	if (!sclRelease()) return false;
-	halfBit();
+	highHalf();
 	bool acked = !sample(sda_);
 	level(scl_, 0);
 	return acked;
@@ -96,14 +104,14 @@ uint8_t SoftI2c::read(bool ack) {
 	for (int i = 0; i < 8; i++) {
 		halfBit();
 		if (!sclRelease()) return 0xFF;
-		halfBit();
+		highHalf();
 		b = (uint8_t)(b << 1 | sample(sda_));
 		level(scl_, 0);
 	}
 	level(sda_, ack ? 0 : 1);
 	halfBit();
 	if (!sclRelease()) return 0xFF;
-	halfBit();
+	highHalf();
 	level(scl_, 0);
 	level(sda_, 1);
 	return b;

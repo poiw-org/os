@@ -94,15 +94,17 @@ JwtResult jwtVerify(const char* token, size_t len, const VerifyKeys& keys, KeyCl
 		uint8_t sig[kRsaBytes + 1];
 		if (sigLen != 342 || base64UrlDecode(dot2 + 1, sigLen, sig, sizeof(sig)) != (int)kRsaBytes)
 			return JwtResult::Malformed;
-		if (!keys.rsaModulus) return JwtResult::NoPublicKey;
+		if (!keys.rsaKey) return JwtResult::NoPublicKey;
 		uint8_t digest[32];
 		Sha256 sha;
 		sha.update((const uint8_t*)token, signedLen);
 		sha.final(digest);
-		if (!rsaVerifySha256(keys.rsaModulus, sig, digest)) return JwtResult::BadSignature;
+		if (!rsaVerifySha256(*keys.rsaKey, sig, digest)) return JwtResult::BadSignature;
 	} else if (strstr(header, "HS256")) {
 		uint8_t sig[33];
 		if (sigLen != 43 || base64UrlDecode(dot2 + 1, sigLen, sig, sizeof(sig)) != 32) return JwtResult::Malformed;
+		// No v1 secret configured: v1 keys are off. An empty HMAC key is public knowledge.
+		if (!keys.hmacSecret || !keys.hmacSecretLen) return JwtResult::BadSignature;
 		uint8_t expected[32];
 		hmacSha256(keys.hmacSecret, keys.hmacSecretLen, (const uint8_t*)token, signedLen, expected);
 		if (!constantTimeEqual(sig, expected, 32)) return JwtResult::BadSignature;

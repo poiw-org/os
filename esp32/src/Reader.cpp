@@ -15,6 +15,11 @@ constexpr uint32_t kHealthEveryMs = 300000;
 constexpr uint32_t kRetryEveryMs = 10000;
 // Consecutive bus or protocol failures before the chip is reset and reconfigured.
 constexpr uint8_t kMaxErrors = 5;
+// A read that fails on the radio link (tag at the edge of the field, slid away) is retried this
+// many times before the tap is handed out without a token.
+constexpr uint8_t kMaxReadRetries = 2;
+// While the chip is down, how often the reader task wakes to check a write session's deadline.
+constexpr uint32_t kDownTickMs = 250;
 
 constexpr uint8_t kTaskCore = 1;
 constexpr UBaseType_t kTaskPriority = 2;  // above loop(), which runs at 1 on the same core
@@ -23,6 +28,9 @@ constexpr uint32_t kTaskStack = 4096;
 // MIFARE Classic's public NDEF key (key A of every data sector).
 constexpr uint8_t kNdefKey[6] = {0xD3, 0xF7, 0xD3, 0xF7, 0xD3, 0xF7};
 constexpr uint8_t kLastPage = 230;   // Type 2 user memory ends at page 225 on an NTAG216
+// Pages per FAST_READ: 240 bytes, which keeps the answer inside one normal PN532 frame.
+constexpr size_t kFastPages = 60;
+static_assert(kFastPages * 4 <= Pn532::kMaxThroughData, "a FAST_READ answer must fit one frame");
 constexpr uint8_t kLastBlock = 63;   // MIFARE Classic 1K
 constexpr uint8_t kDefaultKey[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};  // factory key B
 constexpr size_t kClassicDataBlocks = 45;  // 3 data blocks in each of sectors 1 to 15
@@ -32,25 +40,61 @@ struct Fetch {
 	Pn532* pn;
 	const Pn532::Target* target;
 	uint8_t* area;
-	size_t have;   // bytes of the data area read so far (always a multiple of 16)
+	size_t have;   // bytes of the data area read so far (a multiple of 4; of 16 on Classic)
 	uint8_t next;  // next page (Type 2) or block (Classic) to read
+	bool fast = true;  // Type 2: the tag has not refused FAST_READ yet
+	bool ioError = false;  // a read failed on the link, as opposed to data that is not a key
 };
 
-// Reads 16 bytes at `address` (READ, 0x30) into the data area.
+// Reads 16 bytes at `address` (READ, 0x30) into the data area, as many as fit.
 bool readChunk(Fetch& f, uint8_t address) {
 	const uint8_t cmd[2] = {0x30, address};
 	uint8_t r[17];  // status byte + 16 data bytes
-	if (f.pn->exchange(cmd, sizeof(cmd), r, sizeof(r)) != 16) return false;
-	memcpy(f.area + f.have, r, 16);
-	f.have += 16;
+	if (f.pn->exchange(cmd, sizeof(cmd), r, sizeof(r)) != 16) { f.ioError = true; return false; }
+	size_t room = Reader::kAreaBytes - f.have;
+	size_t take = room < 16 ? room : 16;
+	memcpy(f.area + f.have, r, take);
+	f.have += take;
 	return true;
 }
 
-// Type 2 tags: one READ returns four pages.
+// FAST_READ (0x3A; NTAG and Ultralight EV1): `pages` pages from f.next in one exchange.
+bool fastRead(Fetch& f, size_t pages) {
+	const uint8_t cmd[3] = {0x3A, f.next, (uint8_t)(f.next + pages - 1)};
+	uint8_t r[kFastPages * 4 + 1];  // status byte + data
+	if (f.pn->communicate(cmd, sizeof(cmd), r, sizeof(r)) != (int)(pages * 4)) return false;
+	memcpy(f.area + f.have, r, pages * 4);
+	f.have += pages * 4;
+	f.next += (uint8_t)pages;
+	return true;
+}
+
+// Type 2 tags. FAST_READ takes up to 60 pages per exchange where READ takes 4, which is what
+// makes a tap fast: each exchange costs a few milliseconds of bus and chip time whatever its size.
+// FAST_READ reads exactly the pages asked for (READ would wrap past the end of the tag, FAST_READ
+// is refused), so it never asks for more than the NDEF data needs, but at least 4 pages so the
+// small TLV header reads at the start do not each cost an exchange.
 bool fillType2(void* ctx, size_t n) {
 	Fetch& f = *static_cast<Fetch*>(ctx);
 	if (n > Reader::kAreaBytes) return false;
 	while (f.have < n) {
+		if (f.fast) {
+			size_t pages = (n - f.have + 3) / 4;
+			if (pages < 4) pages = 4;
+			if (pages > kFastPages) pages = kFastPages;
+			if (f.have + pages * 4 > Reader::kAreaBytes) pages = (Reader::kAreaBytes - f.have) / 4;
+			if (f.next + pages - 1 > kLastPage) return false;
+			if (fastRead(f, pages)) continue;
+			// A tag without FAST_READ (the original Ultralight) answers with a NAK, which halts it:
+			// select it again and go on with READ.
+			f.fast = false;
+			Pn532::Target again;
+			if (f.pn->detect(again) != Pn532::Detect::Found || again.uidLen != f.target->uidLen ||
+			    memcmp(again.uid, f.target->uid, again.uidLen) != 0) {
+				f.ioError = true;
+				return false;
+			}
+		}
 		if (f.next > kLastPage || !readChunk(f, f.next)) return false;
 		f.next += 4;
 	}
@@ -70,7 +114,12 @@ bool fillClassic(void* ctx, size_t n) {
 			memcpy(cmd + 2, kNdefKey, sizeof(kNdefKey));
 			memcpy(cmd + 8, f.target->uid + f.target->uidLen - 4, 4);
 			uint8_t r[2];
-			if (f.pn->exchange(cmd, sizeof(cmd), r, sizeof(r)) < 0) return false;
+			// A refused key means the card is not NDEF formatted: final, not a link error.
+			int got = f.pn->exchange(cmd, sizeof(cmd), r, sizeof(r));
+			if (got < 0) {
+				if (got != Pn532::kErrTag) f.ioError = true;
+				return false;
+			}
 		}
 		if (!readChunk(f, f.next)) return false;
 		f.next++;
@@ -102,6 +151,7 @@ void Reader::begin(uint8_t sda, uint8_t scl) {
 	sda_ = sda;
 	scl_ = scl;
 	lastCheckMs_ = millis();
+	nextProbeMs_ = lastCheckMs_ + kRetryEveryMs;
 	ready_ = probe();
 	if (!ready_) LOG("PN532 not found; the door runs without NFC and keeps retrying.");
 	xTaskCreatePinnedToCore(&Reader::run, "nfc", kTaskStack, this, kTaskPriority, &task_, kTaskCore);
@@ -111,31 +161,55 @@ void Reader::run(void* self) { static_cast<Reader*>(self)->loop(); }
 
 void Reader::loop() {
 	for (;;) {
+		checkDeadline();
 		if (ready_) {
 			poll();
 			vTaskDelay(pdMS_TO_TICKS(kIdlePollMs));
-		} else {
-			vTaskDelay(pdMS_TO_TICKS(kRetryEveryMs));
+			if (!ready_) nextProbeMs_ = millis() + kRetryEveryMs;
+		} else if ((int32_t)(millis() - nextProbeMs_) >= 0) {
 			ready_ = probe();
 			if (ready_) errors_ = 0;
-			else LOG("PN532 still not answering.");
+			else {
+				LOG("PN532 still not answering.");
+				nextProbeMs_ = millis() + kRetryEveryMs;
+			}
+		} else {
+			vTaskDelay(pdMS_TO_TICKS(kDownTickMs));
 		}
 	}
+}
+
+bool Reader::leaveWaiting(WriteState to) {
+	WriteState s = writeState_.load(std::memory_order_acquire);
+	while (s == WriteState::Armed || s == WriteState::WrongTag)
+		if (writeState_.compare_exchange_weak(s, to, std::memory_order_acq_rel, std::memory_order_acquire)) return true;
+	return false;
+}
+
+void Reader::checkDeadline() {
+	WriteState s = writeState_.load(std::memory_order_acquire);
+	if ((s == WriteState::Armed || s == WriteState::WrongTag) && (int32_t)(millis() - jobDeadlineMs_) >= 0)
+		leaveWaiting(WriteState::Timeout);
 }
 
 void Reader::poll() {
 	uint32_t ms = millis();
 	if (ms - lastCheckMs_ >= kHealthEveryMs) {
 		lastCheckMs_ = ms;
+		// One missed answer on a bit-banged bus is not a dead chip: reset it at once (probe() retries
+		// itself) and only fall back to the slow background retry if that fails too.
 		if (!pn_.ping()) {
-			ready_ = false;
-			LOG("PN532 stopped answering; retrying in the background.");
-			return;
+			LOG("PN532 missed a health check; resetting it.");
+			ready_ = probe();
+			if (!ready_) {
+				LOG("PN532 stopped answering; retrying in the background.");
+				return;
+			}
+			errors_ = 0;
 		}
 	}
 
-	if (writeActive(writeState_.load(std::memory_order_acquire)) && (int32_t)(ms - jobDeadlineMs_) >= 0)
-		finishWrite(WriteState::Timeout);
+	if (rearm_.exchange(false, std::memory_order_acq_rel)) present_ = false;
 
 	Pn532::Target target;
 	switch (pn_.detect(target)) {
@@ -149,7 +223,12 @@ void Reader::poll() {
 			return;
 		case Pn532::Detect::None:
 			errors_ = 0;
-			if (present_ && ms - lastSeenMs_ > kReleaseMs) present_ = false;
+			// retries_ is reset even when present_ is already false (a failed read clears it), so
+			// the next tag gets its own retries.
+			if (ms - lastSeenMs_ > kReleaseMs) {
+				present_ = false;
+				retries_ = 0;
+			}
 			return;
 		case Pn532::Detect::Found:
 			break;
@@ -157,6 +236,9 @@ void Reader::poll() {
 	errors_ = 0;
 	lastSeenMs_ = millis();
 	if (writeActive(writeState_.load(std::memory_order_acquire))) {
+		// loop() still holds a tag read before the session was armed, and its token points into
+		// area_, which the write's read-back reuses: wait for release().
+		if (full_.load(std::memory_order_acquire)) return;
 		if (present_) return;  // already handled; it has to leave the reader first
 		present_ = true;
 		write(target);
@@ -170,6 +252,7 @@ void Reader::poll() {
 void Reader::read(const Pn532::Target& target) {
 	uint32_t startMs = millis();
 	memset(&slot_, 0, sizeof(slot_));
+	slot_.foundMs = startMs;
 	slot_.uidLen = target.uidLen;
 	memcpy(slot_.uid, target.uid, target.uidLen);
 
@@ -181,16 +264,43 @@ void Reader::read(const Pn532::Target& target) {
 		slot_.token = reinterpret_cast<const char*>(token);
 		slot_.tokenLen = len;
 	}
-	LOG("Tag read in %lu ms (uid %u bytes, %s).", (unsigned long)(millis() - startMs), (unsigned)slot_.uidLen,
-	    slot_.token ? "token found" : "no token");
-	full_.store(true, std::memory_order_release);
+	// A session armed while this read ran: nothing opens the door while armed, and the tag still
+	// on the reader is the one to write.
+	if (writeActive(writeState_.load(std::memory_order_acquire))) {
+		present_ = false;
+		retries_ = 0;
+		return;
+	}
+	// A radio-link failure is not a verdict on the key: read the tag again on the next poll.
+	if (!slot_.token && fetch.ioError && retries_ < kMaxReadRetries) {
+		retries_++;
+		present_ = false;
+		LOG("Tag read failed on the radio link; retrying.");
+		return;
+	}
+	retries_ = 0;
+	uint32_t tookMs = millis() - startMs;
+	uint8_t uidLen = slot_.uidLen;
+	bool found = slot_.token != nullptr;
+	full_.store(true, std::memory_order_release);  // hand it over before logging, which can wait on the UART
+	LOG("Tag read in %lu ms (uid %u bytes, %s).", (unsigned long)tookMs, (unsigned)uidLen,
+	    found ? "token found" : "no token");
+}
+
+bool Reader::quiet() {
+	WriteState s = writeState_.load(std::memory_order_acquire);
+	do {
+		if (s == WriteState::Writing) return false;
+	} while (!writeState_.compare_exchange_weak(s, WriteState::Idle, std::memory_order_acq_rel, std::memory_order_acquire));
+	return true;
 }
 
 bool Reader::arm(const char* token, size_t len, const uint8_t* uid, uint8_t uidLen, uint32_t windowMs) {
-	if (writeState_.load(std::memory_order_acquire) == WriteState::Writing || uidLen == 0 || uidLen > sizeof(jobUid_))
-		return false;
-	// The reader task only touches the job once it sees Armed, so quiet it first.
-	writeState_.store(WriteState::Idle, std::memory_order_release);
+	if (uidLen == 0 || uidLen > sizeof(jobUid_)) return false;
+	// The reader task only touches the job once it sees Armed, so quiet it first. The state is
+	// swapped in one step: a write the reader starts meanwhile makes this fail instead of being
+	// overwritten mid-way.
+	if (!quiet()) return false;
 	jobLen_ = ndefEncodeToken(token, len, job_, sizeof(job_));
 	if (!jobLen_) return false;
 	memset(job_ + jobLen_, 0, sizeof(job_) - jobLen_);
@@ -198,41 +308,37 @@ bool Reader::arm(const char* token, size_t len, const uint8_t* uid, uint8_t uidL
 	jobUidLen_ = uidLen;
 	scan_ = false;
 	jobDeadlineMs_ = millis() + windowMs;
-	present_ = false;  // a tag already resting on the reader is taken as the one to write
+	rearm_.store(true, std::memory_order_release);  // a tag already resting on the reader is taken as the one to write
 	writeState_.store(WriteState::Armed, std::memory_order_release);
 	return true;
 }
 
 bool Reader::armScan(uint32_t windowMs) {
-	if (writeState_.load(std::memory_order_acquire) == WriteState::Writing) return false;
-	writeState_.store(WriteState::Idle, std::memory_order_release);
+	if (!quiet()) return false;
 	scan_ = true;
 	jobUidLen_ = 0;
 	jobDeadlineMs_ = millis() + windowMs;
-	present_ = false;
+	rearm_.store(true, std::memory_order_release);
 	writeState_.store(WriteState::Armed, std::memory_order_release);
 	return true;
 }
 
-void Reader::cancelWrite() {
-	if (writeActive(writeState_.load(std::memory_order_acquire)) &&
-	    writeState_.load(std::memory_order_acquire) != WriteState::Writing)
-		finishWrite(WriteState::Cancelled);
-}
+void Reader::cancelWrite() { leaveWaiting(WriteState::Cancelled); }
 
 void Reader::write(const Pn532::Target& target) {
+	// Claims the session first (Writing), so loop() can neither rearm nor cancel it underneath.
 	if (scan_) {
+		if (!leaveWaiting(WriteState::Writing)) return;
 		jobUidLen_ = target.uidLen;
 		memcpy(jobUid_, target.uid, target.uidLen);
 		finishWrite(WriteState::Done);
 		return;
 	}
 	if (target.uidLen != jobUidLen_ || memcmp(target.uid, jobUid_, jobUidLen_) != 0) {
-		finishWrite(WriteState::WrongTag);
-		LOG("Writer: a different tag was presented.");
+		if (leaveWaiting(WriteState::WrongTag)) LOG("Writer: a different tag was presented.");
 		return;
 	}
-	finishWrite(WriteState::Writing);
+	if (!leaveWaiting(WriteState::Writing)) return;
 	uint32_t startMs = millis();
 	WriteState result = writeTo(target);
 	LOG("Writer: %s after %lu ms.", writeStateName(result), (unsigned long)(millis() - startMs));

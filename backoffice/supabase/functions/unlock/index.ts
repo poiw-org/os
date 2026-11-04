@@ -83,7 +83,7 @@ Deno.serve((req) =>
   handlePost(req, async () => {
     const token = accessToken(req);
     const db = serviceClient();
-    await callerId(db, token);
+    const uid = await callerId(db, token);
 
     // The caller's own identity decides, through the same rule the database applies when logging.
     const asCaller = createClient(
@@ -102,8 +102,10 @@ Deno.serve((req) =>
     const id = crypto.randomUUID();
     const { latencyMs, delayMs } = await commandDoor(db, id);
 
-    // The door has confirmed; a failure to log must not read as a failure to unlock.
-    const { error: logError } = await asCaller.rpc("log_web_open", {
+    // The door has confirmed; a failure to log must not read as a failure to unlock. Only this
+    // function (the service role) may log a member's open, and only after the door's ack.
+    const { error: logError } = await db.rpc("log_web_open_as", {
+      actor: uid,
       door: DOOR_ID,
       command_id: id,
       latency_ms: latencyMs,

@@ -17,6 +17,7 @@
 	import { arrive } from '#lib/motion.ts';
 	import { nfcSupported, scanTag } from '#lib/nfc.ts';
 	import { ask, toast } from '#lib/notify.svelte.ts';
+	import { sameSerial } from '#lib/serial.ts';
 	import { keyStatus } from '#lib/status.ts';
 	import Loading from '#lib/loading.svelte';
 	import { EntryType, type Entry, type Key } from '#lib/types.ts';
@@ -61,34 +62,53 @@
 	let status = $state('');
 	let loadError = $state('');
 
+	// A tag write stops on its own after this long, so a forgotten scan does not linger.
+	const WRITE_TIMEOUT_MS = 60_000;
+	let stopWrite = $state.raw<() => void>();
 	const checkOut = async () => {
-		if (!key?.serialNumber) return;
-		const current = key;
+		if (!key?.serialNumber || !key.jwt) return;
 
 		processing = true;
-		status = `Please approach the tag with S/N ${current.serialNumber}`;
+		status = `Please approach the tag with S/N ${key.serialNumber}`;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		let ended = false;
 		const done = () => {
+			ended = true;
+			clearTimeout(timer);
+			stopWrite = undefined;
 			processing = false;
 			status = '';
 		};
 
-		await scanTag(async (serialNumber, ndef, stop) => {
+		const stop = await scanTag(async (serialNumber, ndef, stop) => {
+			// The key as it is now: a renew while waiting replaces its JWT.
+			const live = key;
 			status = 'Validating the tag…';
-			if (current.serialNumber != serialNumber) {
+			if (!live?.serialNumber || !live.jwt) {
+				toast.error('This key no longer has anything to write.');
+				stop();
+				return;
+			}
+			if (!sameSerial(live.serialNumber, serialNumber)) {
 				toast.error("The tag's serial number has changed. Please re-issue the key.");
 				stop();
 				return;
 			}
-			status = `Writing key ${shortId(current.id)}`;
+			status = `Writing key ${shortId(live.id)}`;
 			try {
-				await ndef.write(current.jwt);
+				await ndef.write(live.jwt);
 				toast.success('Key written to the tag.');
 			} catch (e) {
 				toast.error(e instanceof Error ? e.message : 'Could not write to the tag.');
 			}
 			stop();
 		}, done);
+		if (!stop || ended) return;
+		stopWrite = stop;
+		timer = setTimeout(stop, WRITE_TIMEOUT_MS);
 	};
+	// Leaving the page ends a pending write.
+	$effect(() => () => stopWrite?.());
 
 	// Runs a key action, then continues. The key row is also streamed, so other admins' changes
 	// show up here without a reload.
@@ -161,7 +181,7 @@
 		const accepted = await ask({
 			title: 'Delete this key?',
 			message:
-				'Deleting a key does not disable it. It is verified cryptographically, so it can still unlock the door offline until it expires. Disable it first if you need access revoked.',
+				'This key has expired, so its tag no longer opens the door. Deleting it removes the key and its record here.',
 			confirmLabel: 'Delete key',
 			tone: 'danger'
 		});
@@ -226,6 +246,9 @@
 		<span class="flex w-full justify-center px-10 pt-20 text-red-500">{loadError}</span>
 	{:else if processing || !key}
 		<span class="w-full text-gray-400">{status}</span>
+		{#if stopWrite}
+			<button type="button" class="btn self-start" onclick={() => stopWrite?.()}>Cancel</button>
+		{/if}
 		<Loading />
 	{:else}
 		<Breadcrumb
@@ -246,8 +269,10 @@
 			</span>
 			<span class="flex flex-wrap items-center gap-2">
 				{#if admin}
-					<button onclick={goToRenew} class="btn">Renew</button>
-					{#if key.serialNumber}
+					{#if !key.disabled}
+						<button onclick={goToRenew} class="btn">Renew</button>
+					{/if}
+					{#if key.serialNumber && key.jwt}
 						{#if nfcSupported}
 							<button onclick={checkOut} class="btn">Write to tag</button>
 						{/if}
@@ -269,7 +294,7 @@
 				{:else}
 					<button onclick={disableKey} class="btn">Disable</button>
 				{/if}
-				{#if admin}
+				{#if admin && key.expiresAt <= new Date()}
 					<button onclick={deleteKey} class="btn tone-red">Delete</button>
 				{/if}
 			</span>
@@ -371,7 +396,7 @@
 	{/if}
 </div>
 
-{#if writerOpen && key?.serialNumber}
+{#if writerOpen && key?.serialNumber && key.jwt}
 	<WriteCardModal
 		token={key.jwt}
 		serialNumber={key.serialNumber}

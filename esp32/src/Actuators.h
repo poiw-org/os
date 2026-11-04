@@ -10,7 +10,7 @@ class Actuators {
  public:
 	void begin();
 	void service();
-	void grant(uint32_t openMs = 1000);  // energise the relay and play the unlock arpeggio
+	void grant();                // energise the relay and buzz for 3 s
 	void deny();                 // sad chord and the error LED
 	void forceOpen();            // attention tone for 3 s, then grant(); ignored while one is pending
 	// True once per force open whose countdown ended and whose relay was just energised.

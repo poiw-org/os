@@ -7,6 +7,7 @@
 	import { issueKey, listUsers } from '#lib/api.ts';
 	import { nfcSupported, scanTag } from '#lib/nfc.ts';
 	import { toast } from '#lib/notify.svelte.ts';
+	import { canonicalSerial } from '#lib/serial.ts';
 	import WriteCardModal from '#lib/header/WriteCardModal.svelte';
 	import Loading from '#lib/loading.svelte';
 	import type { UserOption } from '#lib/types.ts';
@@ -53,11 +54,17 @@
 			toast.error('The key must expire after it activates.');
 			return;
 		}
+		// One tag, one spelling: "04A2B3C4" and "04:a2:b3:c4" must not become two keys.
+		const serial = virtual ? undefined : canonicalSerial(serialNumber);
+		if (!virtual && !serial) {
+			toast.error('The S/N must be a 4, 7 or 10 byte tag ID in hex, e.g. 04:a2:b3:c4.');
+			return;
+		}
 		processing = true;
 		try {
 			const { id } = await issueKey({
 				userId: user.value,
-				serialNumber: virtual ? undefined : serialNumber,
+				serialNumber: serial,
 				notBefore,
 				expiresAt
 			});
@@ -154,7 +161,7 @@
 										autocomplete="off"
 										spellcheck="false"
 										bind:value={serialNumber}
-										maxlength="12"
+										maxlength="64"
 										class="w-full border-0! bg-transparent! p-3 font-mono text-base text-ink shadow-none! outline-none!"
 									/>
 								</label>

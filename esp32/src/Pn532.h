@@ -33,8 +33,14 @@ class Pn532 {
 	// Sends `data` to the tag found by detect(). On success returns the number of bytes written to
 	// `out`; `cap` must also have room for one status byte (data length + 1).
 	int exchange(const uint8_t* data, size_t n, uint8_t* out, size_t cap);
+	// Same, but the chip passes `data` to the tag as is (InCommunicateThru), for tag commands it
+	// does not know, such as FAST_READ. A response may carry up to kMaxThroughData bytes.
+	int communicate(const uint8_t* data, size_t n, uint8_t* out, size_t cap);
+	// A normal frame's LEN byte covers TFI, response code, status byte and data.
+	static constexpr size_t kMaxThroughData = 255 - 3;
 
  private:
+	int transceive(uint8_t code, bool withTarget, const uint8_t* data, size_t n, uint8_t* out, size_t cap);
 	uint32_t firmware();
 	int command(const uint8_t* payload, size_t n, uint8_t* resp, size_t cap, uint32_t timeoutMs);
 	bool writeFrame(const uint8_t* payload, size_t n);

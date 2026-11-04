@@ -21,7 +21,7 @@ enum class JwtResult : uint8_t { Ok, Malformed, BadSignature, BadClaims, NoPubli
 struct VerifyKeys {
 	const uint8_t* hmacSecret;  // v1 (HS256)
 	size_t hmacSecretLen;
-	const uint8_t* rsaModulus;  // v2 (RS256): kRsaBytes big-endian bytes, or null while unknown
+	const RsaPublicKey* rsaKey;  // v2 (RS256), or null while unknown
 };
 
 constexpr size_t kMaxTokenLen = 860;  // fills an NTAG216

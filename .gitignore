@@ -1,8 +1,9 @@
 .idea/
 
-backend/functions/dist/
+backoffice/functions/dist/
 
-backend/functions/firestore.creds.json
+**/firestore.creds.json
+**/*service-account*.json
 
 esp32/config.h
 esp32/.pio/

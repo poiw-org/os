@@ -14,6 +14,7 @@
 #include "../src/Ndef.h"
 #include "../src/Pn532Frame.h"
 #include "../src/Sha256.h"
+#include "../src/SigningKey.h"
 #include "../src/SyncParser.h"
 #include "../src/TimeUtil.h"
 #include "../src/WsFrame.h"
@@ -40,17 +41,19 @@ static const char* RSA_GOOD = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIx
 static const char* RSA_OTHER = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJqdGkiOiJhYWFhYWFhYS1iYmJiLWNjY2MtZGRkZC1lZWVlZWVlZWVlZWUiLCJhdWQiOiIwNGExYjJjM2Q0ZTVmNiIsImlhdCI6MTcwMDAwMDAwMCwibmJmIjoxNzAwMDAwMTAwLCJleHAiOjE4MDAwMDAwMDB9.GJjToRmh4G-QRMB6nFVVPkvUB5FLbNCWPmz-xm5VxxccN6cIxT-DTG-xk6bfu-xoEJ8t3y8CtmlSOeW30KHez7CObflh28Q3qRlbxY_QLyKoVFRrrdN_1N_CdK6t0FWn7wqrjgS9PGw_l92EMAiJPrVC9_jgrT4kp8PJh7S6F7WNFuYD1t4Hta_glL9ZIQx8aK9EANa-YUMa18EFGAiDh23HOJ2iBPDSOS33esgSmc5xE--7N2yjqJ9GVYCC0fjfhqf4RaeA092RRxchZjsrocYiRMQq7T4FfW3nN5EBtu0BQunWYxoQ1O5j-IBcGhfbtPEbxHfJ3FOzzVs-pDNfgQ";
 
 static void testRsaJwt() {
-	uint8_t n[kRsaBytes + 1], other[kRsaBytes + 1];
-	CHECK(base64UrlDecode(RSA_N, strlen(RSA_N), n, sizeof(n)) == (int)kRsaBytes);
-	CHECK(base64UrlDecode(RSA_OTHER_N, strlen(RSA_OTHER_N), other, sizeof(other)) == (int)kRsaBytes);
-	VerifyKeys keys{(const uint8_t*)SECRET, strlen(SECRET), n};
+	uint8_t nBytes[kRsaBytes + 1], otherBytes[kRsaBytes + 1];
+	CHECK(base64UrlDecode(RSA_N, strlen(RSA_N), nBytes, sizeof(nBytes)) == (int)kRsaBytes);
+	CHECK(base64UrlDecode(RSA_OTHER_N, strlen(RSA_OTHER_N), otherBytes, sizeof(otherBytes)) == (int)kRsaBytes);
+	static RsaPublicKey n, other;
+	CHECK(rsaPrepare(nBytes, n) && rsaPrepare(otherBytes, other));
+	VerifyKeys keys{(const uint8_t*)SECRET, strlen(SECRET), &n};
 	KeyClaims k;
 	CHECK(jwtVerify(RSA_GOOD, strlen(RSA_GOOD), keys, k) == JwtResult::Ok);
 	CHECK(!strcmp(k.jti, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee") && k.audLen == 7 && k.aud[0] == 0x04 && k.aud[6] == 0xf6);
 	CHECK(k.exp == 1800000000u && k.nbf == 1700000100u);
 	// Signed by another key pair, or checked against another public key.
 	CHECK(jwtVerify(RSA_OTHER, strlen(RSA_OTHER), keys, k) == JwtResult::BadSignature);
-	VerifyKeys wrong{(const uint8_t*)SECRET, strlen(SECRET), other};
+	VerifyKeys wrong{(const uint8_t*)SECRET, strlen(SECRET), &other};
 	CHECK(jwtVerify(RSA_GOOD, strlen(RSA_GOOD), wrong, k) == JwtResult::BadSignature);
 	// No public key known yet.
 	VerifyKeys none{(const uint8_t*)SECRET, strlen(SECRET), nullptr};
@@ -66,13 +69,44 @@ static void testRsaJwt() {
 	t.pop_back();
 	CHECK(jwtVerify(t.c_str(), t.size(), keys, k) == JwtResult::Malformed);
 	// An RS256 token never verifies with the shared secret, and an HS256 token never with the public key.
-	CHECK(jwtVerify(GOOD, strlen(GOOD), VerifyKeys{(const uint8_t*)"x", 1, n}, k) == JwtResult::BadSignature);
+	CHECK(jwtVerify(GOOD, strlen(GOOD), VerifyKeys{(const uint8_t*)"x", 1, &n}, k) == JwtResult::BadSignature);
 	CHECK(jwtVerify(GOOD, strlen(GOOD), hsKeys(), k) == JwtResult::Ok);
+	// No v1 secret configured: HS256 is refused, including a token signed with the empty key.
+	CHECK(jwtVerify(GOOD, strlen(GOOD), VerifyKeys{nullptr, 0, &n}, k) == JwtResult::BadSignature);
+	{
+		std::string forged = GOOD;
+		forged.resize(forged.rfind('.'));
+		uint8_t mac[32];
+		hmacSha256((const uint8_t*)"", 0, (const uint8_t*)forged.data(), forged.size(), mac);
+		static const char* kB64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+		std::string sig;
+		for (int i = 0; i < 32; i += 3) {
+			uint32_t v = (uint32_t)mac[i] << 16 | (i + 1 < 32 ? (uint32_t)mac[i + 1] << 8 : 0) | (i + 2 < 32 ? mac[i + 2] : 0);
+			int chars = i + 2 < 32 ? 4 : 3;  // 32 bytes encode to 43 characters
+			for (int c = 0; c < chars; c++) sig += kB64[(v >> (18 - 6 * c)) & 63];
+		}
+		forged += "." + sig;
+		CHECK(sig.size() == 43);
+		CHECK(jwtVerify(forged.c_str(), forged.size(), VerifyKeys{(const uint8_t*)"", 0, nullptr}, k) == JwtResult::BadSignature);
+	}
 	// A modulus that is not 2048 bits, or even, is refused.
+	static RsaPublicKey refused;
 	uint8_t bad[kRsaBytes];
-	memcpy(bad, n, sizeof(bad));
+	memcpy(bad, nBytes, sizeof(bad));
 	bad[kRsaBytes - 1] &= 0xfe;
-	CHECK(jwtVerify(RSA_GOOD, strlen(RSA_GOOD), VerifyKeys{nullptr, 0, bad}, k) == JwtResult::BadSignature);
+	CHECK(!rsaPrepare(bad, refused));
+	memcpy(bad, nBytes, sizeof(bad));
+	bad[0] &= 0x7f;
+	CHECK(!rsaPrepare(bad, refused));
+
+	// SigningKey prepares the key once; what it hands out verifies, and a refused modulus keeps the old key.
+	static SigningKey signing;
+	static RsaPublicKey copy;
+	CHECK(!signing.copyTo(copy) && !signing.set(bad) && !signing.present());
+	CHECK(signing.set(otherBytes) && signing.set(nBytes) && signing.sameAs(nBytes) && signing.copyTo(copy));
+	CHECK(jwtVerify(RSA_GOOD, strlen(RSA_GOOD), VerifyKeys{nullptr, 0, &copy}, k) == JwtResult::Ok);
+	CHECK(!signing.set(bad) && signing.sameAs(nBytes) && signing.copyTo(copy));
+	CHECK(jwtVerify(RSA_GOOD, strlen(RSA_GOOD), VerifyKeys{nullptr, 0, &copy}, k) == JwtResult::Ok);
 }
 
 static void hex(const uint8_t* d, size_t n, char* out) {
@@ -217,8 +251,13 @@ static void testBlacklist() {
 	CHECK(big.size() == BlacklistSet::kCapacity && !big.overflowed());
 	big.upsert("late", 9999);
 	CHECK(big.size() == BlacklistSet::kCapacity && big.overflowed() && big.contains("late") && !big.contains("k0"));
+	// A fresh revocation is never refused, even when it expires before everything kept.
 	big.upsert("early", 1);
-	CHECK(!big.contains("early") && big.contains("k1"));
+	CHECK(big.size() == BlacklistSet::kCapacity && big.contains("early") && !big.contains("k1") && big.contains("k2"));
+	// A key listed under two ids (v1: uuid and legacy id) keeps both even when it expires first.
+	big.upsert("uuid-x", 2);
+	big.upsert("legacy-x", 2);
+	CHECK(big.contains("uuid-x") && big.contains("legacy-x") && big.contains("late"));
 	uint8_t bigBuf[BlacklistSet::kMaxSerialized + 8];
 	size_t bn = big.serialize(bigBuf, sizeof(bigBuf));
 	BlacklistSet back;
@@ -696,6 +735,21 @@ static void testBlacklistReplace() {
 	CHECK(a.size() == 0 && !a.contains("shared"));
 	a.upsert("later", 5);
 	CHECK(a.contains("later") && a.size() == 1);
+
+	// A sync snapshot never overwrites a live edit made while it was downloading.
+	BlacklistSet live, snapshot;
+	snapshot.upsert("from-server", 100);
+	uint32_t seen = live.edits();
+	CHECK(live.replaceWithIfUnedited(snapshot, seen) && live.contains("from-server"));
+	seen = live.edits();
+	live.upsert("disabled-meanwhile", 200);  // realtime, during the download
+	CHECK(!live.replaceWithIfUnedited(snapshot, seen) && live.contains("disabled-meanwhile"));
+	seen = live.edits();
+	live.remove("from-server");              // re-enabled meanwhile
+	CHECK(!live.replaceWithIfUnedited(snapshot, seen) && !live.contains("from-server"));
+	seen = live.edits();
+	live.prune(1000);                        // pruning is not a live edit
+	CHECK(live.replaceWithIfUnedited(snapshot, seen) && live.contains("from-server"));
 }
 
 static void testChimes() {

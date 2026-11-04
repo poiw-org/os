@@ -20,6 +20,7 @@ struct TagRead {
 	uint8_t uidLen;
 	const char* token;  // inside the reader's buffer; nullptr when the tag carries no key
 	size_t tokenLen;
+	uint32_t foundMs;  // millis() when the tag was detected, to time a tap end to end
 };
 
 class Reader {
@@ -61,6 +62,13 @@ class Reader {
 	WriteState writeType2(const Pn532::Target& target);
 	WriteState writeClassic(const Pn532::Target& target);
 	void finishWrite(WriteState s) { writeState_.store(s, std::memory_order_release); }
+	// Moves an Armed or WrongTag session to `to`; false if it was not waiting (finished, being
+	// rearmed by loop(), or being written). Every transition out of waiting goes through here.
+	bool leaveWaiting(WriteState to);
+	// Ends a waiting session whose window has passed; runs whether or not the chip answers.
+	void checkDeadline();
+	// Quiets the session so loop() may rewrite the job; false while a write is in progress.
+	bool quiet();
 
 	Pn532 pn_;
 	TagRead slot_;
@@ -68,7 +76,10 @@ class Reader {
 	volatile bool ready_ = false;
 	uint8_t sda_ = 0, scl_ = 0;
 	uint8_t errors_ = 0;
-	bool present_ = false;  // a tag that was already handed out is still on the reader
+	bool present_ = false;  // a tag that was already handed out is still on the reader (reader task only)
+	std::atomic<bool> rearm_{false};  // set by arm(): forget present_, the resting tag is the write target
+	uint8_t retries_ = 0;   // reads of the present tag that failed on the radio link
+	uint32_t nextProbeMs_ = 0;
 	uint32_t lastSeenMs_ = 0;
 	uint32_t lastCheckMs_ = 0;
 	TaskHandle_t task_ = nullptr;

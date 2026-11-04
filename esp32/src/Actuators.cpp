@@ -4,11 +4,11 @@
 #include "Pins.h"
 
 namespace {
-constexpr uint32_t kForcedOpenMs = 3000;  // relay on time after a force open
+// Relay on time (the strike buzzes and the speaker plays the unlock tone meanwhile), the same for a
+// tap and a force open. Fixed, so a bug can never keep the relay energised.
+constexpr uint32_t kOpenMs = 3000;
 constexpr uint32_t kSuccessMs = 1300;
 constexpr uint32_t kDenyLedMs = 3300;
-// A relay must never stay energised because of a bug; this bounds any request.
-constexpr uint32_t kMaxOpenMs = 5000;
 constexpr uint8_t kToneChannel = 0;
 }  // namespace
 
@@ -33,10 +33,10 @@ void Actuators::begin() {
 	ledcWriteTone(kToneChannel, 0);
 }
 
-void Actuators::grant(uint32_t openMs) {
+void Actuators::grant() {
 	denying_ = false;
 	doorOn_ = true;
-	doorUntil_ = millis() + (openMs > kMaxOpenMs ? kMaxOpenMs : openMs);
+	doorUntil_ = millis() + kOpenMs;
 	eventStart_ = millis();
 }
 
@@ -96,7 +96,7 @@ void Actuators::service() {
 		if (t >= Chimes::kForceOpenDelayMs) {
 			forcing_ = false;
 			forcedOpened_ = true;
-			grant(kForcedOpenMs);
+			grant();
 		} else {
 			hz = Chimes::attention(t);
 			warning = hz != 0;

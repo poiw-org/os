@@ -11,14 +11,21 @@ const char* kBlacklist = "/blacklist.bin";
 const char* kClock = "/clock.bin";
 const char* kSigningKey = "/signing.bin";
 const char* kJournal = "/journal.bin";
+const char* kDropped = "/dropped.bin";
 const char* kTmp = "/tmp.bin";
-constexpr uint32_t kClockMagic = 0x314B4C43;  // "CLK1"
-constexpr size_t kShed = 32;                  // records dropped at once when the journal is full
+constexpr uint32_t kClockMagic = 0x314B4C43;    // "CLK1"
+constexpr uint32_t kDroppedMagic = 0x31504F44;  // "DOP1"
+constexpr size_t kShed = 32;                    // records dropped at once when the journal is full
+// Denied taps are capped in the journal, so a stream of them (anyone can tap a blank tag every few
+// seconds) can never push out the record of an opening before it is uploaded.
+constexpr size_t kDenialQuota = 64;
 
 std::mutex gLock;
 // Counts are read without the lock (status output, "is anything queued?"), so they are atomic.
 std::atomic<size_t> gJournalCount{0};
-std::atomic<uint32_t> gDropped{0};
+std::atomic<uint32_t> gDropped{0};     // records shed from a full journal; persisted
+std::atomic<uint32_t> gSuppressed{0};  // denied taps not journaled because of the quota; RAM only
+size_t gDenials = 0;                   // denied records in the journal; guarded by gLock
 uint32_t gFront = 0;  // records removed from the front of the journal since boot; guarded by gLock
 // Staging area for the blacklist file, shared by loading and saving: no heap use at runtime.
 uint8_t gBlacklistImage[BlacklistSet::kMaxSerialized];
@@ -30,7 +37,8 @@ bool replaceFile(const char* path, const uint8_t* data, size_t len) {
 	size_t written = len ? f.write(data, len) : 0;
 	f.close();
 	if (written != len) { LittleFS.remove(kTmp); return false; }
-	LittleFS.remove(path);
+	// lfs_rename replaces an existing target atomically; removing it first would open a window in
+	// which a power cut leaves only the temp file, which begin() then deletes.
 	return LittleFS.rename(kTmp, path);
 }
 
@@ -50,8 +58,19 @@ bool keepRange(const char* path, size_t offset, size_t len) {
 	in.close();
 	out.close();
 	if (!ok) { LittleFS.remove(kTmp); return false; }
-	LittleFS.remove(path);
-	return LittleFS.rename(kTmp, path);
+	return LittleFS.rename(kTmp, path);  // atomic replace, see replaceFile()
+}
+
+// Counts the denied records in the journal. The caller holds gLock.
+size_t countDenials() {
+	File f = LittleFS.open(kJournal, "r");
+	if (!f) return 0;
+	size_t n = 0;
+	JournalRecord r;
+	while (f.read((uint8_t*)&r, sizeof(r)) == sizeof(r))
+		if (!r.allowed) n++;
+	f.close();
+	return n;
 }
 
 // Removes the oldest `count` records. The caller holds gLock.
@@ -62,12 +81,30 @@ bool dropFront(size_t count) {
 		if (LittleFS.exists(kJournal) && !LittleFS.remove(kJournal)) return false;
 		gFront += (uint32_t)have;
 		gJournalCount = 0;
+		gDenials = 0;
 		return true;
 	}
 	if (!keepRange(kJournal, count * sizeof(JournalRecord), (have - count) * sizeof(JournalRecord))) return false;
 	gFront += (uint32_t)count;
 	gJournalCount = have - count;
+	gDenials = countDenials();
 	return true;
+}
+
+// The shed counter survives a reboot, so a gap in the uploaded history stays visible. The caller holds gLock.
+uint32_t loadDropped() {
+	File f = LittleFS.open(kDropped, "r");
+	if (!f || f.size() != 12) return 0;
+	uint32_t v[3];
+	bool ok = f.read((uint8_t*)v, 12) == 12;
+	f.close();
+	return (ok && v[0] == kDroppedMagic && v[2] == crc32((const uint8_t*)v, 8)) ? v[1] : 0;
+}
+
+void saveDropped(uint32_t n) {
+	uint32_t v[3] = {kDroppedMagic, n, 0};
+	v[2] = crc32((const uint8_t*)v, 8);
+	replaceFile(kDropped, (const uint8_t*)v, sizeof(v));
 }
 }  // namespace
 
@@ -77,6 +114,8 @@ bool begin() {
 	std::lock_guard<std::mutex> hold(gLock);
 	gJournalCount = 0;
 	gDropped = 0;
+	gSuppressed = 0;
+	gDenials = 0;
 	gFront = 0;
 	if (!LittleFS.begin(false)) {
 		// First boot or a damaged filesystem.
@@ -96,7 +135,9 @@ bool begin() {
 			LOG("Journal had a torn tail; repairing.");
 			keepRange(kJournal, 0, gJournalCount.load() * sizeof(JournalRecord));
 		}
+		gDenials = countDenials();
 	}
+	gDropped = loadDropped();
 	return true;
 }
 
@@ -168,9 +209,18 @@ bool journalDrop(size_t count, uint32_t seq) {
 bool journalAppend(JournalRecord record) {
 	journalSeal(record);
 	std::lock_guard<std::mutex> hold(gLock);
+	bool denial = !record.allowed;
+	if (denial && (gDenials >= kDenialQuota || gJournalCount.load() >= kJournalCapacity)) {
+		gSuppressed++;  // the quota is full: the denial is counted, never stored over an opening
+		return true;
+	}
 	if (gJournalCount.load() >= kJournalCapacity) {
+		// Only openings get here with a full journal, and at most kDenialQuota records are denials.
 		LOG("Journal full; dropping the %u oldest events.", (unsigned)kShed);
-		if (dropFront(kShed)) gDropped += (uint32_t)kShed;
+		if (dropFront(kShed)) {
+			gDropped += (uint32_t)kShed;
+			saveDropped(gDropped.load());
+		}
 	}
 	File f = LittleFS.open(kJournal, "a");
 	if (!f) return false;
@@ -178,11 +228,13 @@ bool journalAppend(JournalRecord record) {
 	f.close();
 	if (n != sizeof(record)) return false;
 	gJournalCount++;
+	if (denial) gDenials++;
 	return true;
 }
 
 size_t journalCount() { return gJournalCount.load(); }
 uint32_t journalDropped() { return gDropped.load(); }
+uint32_t journalSuppressed() { return gSuppressed.load(); }
 
 size_t journalRead(JournalRecord* out, size_t max, uint32_t* seq) {
 	std::lock_guard<std::mutex> hold(gLock);

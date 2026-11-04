@@ -19,8 +19,9 @@ constexpr size_t kTotal = sizeof(Header) + sizeof(Settings);
 namespace SettingsStore {
 
 bool complete(const Settings& s) {
+	// The v1 (HS256) secret is optional: without it the door accepts v2 keys only.
 	return s.wifiSsid[0] && s.supabaseHost[0] && s.anonKey[0] && s.email[0] && s.password[0] && s.doorId[0] &&
-	       s.jwtSecret[0] && s.ntpServer[0];
+	       s.ntpServer[0];
 }
 
 bool loadRaw(Settings& out) {

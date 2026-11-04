@@ -113,19 +113,24 @@
 		scene = 'connecting';
 		events = [];
 		error = '';
-		controller = new AbortController();
+		// Kept locally, so a retry that swaps the controller cannot revive this run's result.
+		const attempt = new AbortController();
+		controller = attempt;
 		try {
 			const result = await writeCardViaDoor(token, {
-				signal: controller.signal,
+				signal: attempt.signal,
 				onEvent: (e) => events.push(e),
 				onState
 			});
+			// Closed meanwhile: the result is stale and must not reach the form.
+			if (attempt.signal.aborted) return;
 			phase = 'done';
 			if (scanning) {
 				scanned = result?.serial ?? '';
 				onscanned?.(scanned);
 			} else onwritten?.();
 		} catch (e) {
+			if (attempt.signal.aborted) return;
 			stopTick();
 			error = e instanceof Error ? e.message : 'Could not write the tag.';
 			phase = 'failed';
@@ -133,10 +138,15 @@
 		}
 	};
 
-	// Closing while the door waits takes it out of writer mode.
-	const close = () => {
+	// Leaving the modal any way (buttons, backdrop, Escape, unmount) takes the door out of
+	// writer mode.
+	const abort = () => {
 		controller?.abort();
 		stopTick();
+	};
+	$effect(() => abort);
+	const close = () => {
+		abort();
 		dialog?.close();
 	};
 
@@ -146,7 +156,10 @@
 
 <dialog
 	bind:this={dialog}
-	{onclose}
+	onclose={() => {
+		abort();
+		onclose();
+	}}
 	onclick={(e) => e.target === dialog && close()}
 	aria-labelledby="write-card-title"
 	class="sheet m-auto w-[calc(100%-2rem)] max-w-xl overflow-hidden rounded-lg border bg-paper p-0 text-ink backdrop:bg-black/70"
