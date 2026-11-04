@@ -18,18 +18,89 @@
 		['Εξοπλισμός', '#equipment']
 	];
 
-	const board = [
-		['Κάββαλος Β.', 'Υπεύθυνος Ομάδας'],
-		['Μαστροκώστας Α.', 'Υπεύθυνος Αποθήκης & Ασφάλειας'],
-		['Θάνος Γ.', 'Υπεύθυνος Projects']
+	// [name, note?]. `many` groups hold quantities, not a single unit.
+	const equipment: { group: string; blurb: string; items: [string, string?][] }[] = [
+		{
+			group: 'Αναλώσιμα',
+			blurb: 'Ηλεκτρονικά και ηλεκτρολογικά, σε αποθέματα.',
+			items: [
+				['Αντιστάσεις'],
+				['Πυκνωτές'],
+				['Transistors'],
+				['Δίοδοι'],
+				['Αισθητήρια']
+			]
+		},
+		{
+			group: 'Μικροελεγκτές & υπολογιστές',
+			blurb: 'Σε πολλαπλές ποσότητες, όχι μόνο ένα από το καθένα.',
+			items: [
+				['ESP32'],
+				['ESP8266'],
+				['Raspberry Pi 4'],
+				['Raspberry Pi 5'],
+				['Raspberry Pi Pico'],
+				['Raspberry Pi Zero 2'],
+				['Workstation PCs', '8 CPUs, 8GB RAM']
+			]
+		},
+		{
+			group: 'Κατασκευή',
+			blurb: 'Για να γίνει η ιδέα αντικείμενο.',
+			items: [
+				['3D Printer'],
+				['Prototyping boards'],
+				['Ηλεκτρικά εργαλεία']
+			]
+		},
+		{
+			group: 'Συγκόλληση',
+			blurb: 'Κόλληση, αποκόλληση και καθαρός αέρας.',
+			items: [
+				['Κολλητήρια'],
+				['Σταθμός αποκόλλησης'],
+				['Heat gun'],
+				['Απορροφητήρες καπνού']
+			]
+		},
+		{
+			group: 'Μετρήσεις',
+			blurb: 'Για να δεις τι συμβαίνει στο κύκλωμα.',
+			items: [['Παλμογράφοι'], ['Γεννήτριες παλμών']]
+		},
+		{
+			group: 'Τροφοδοσία',
+			blurb: '',
+			items: [['Ισχυρά τροφοδοτικά DC'], ['Φωτοβολταϊκά', 'Μικρής τάσης']]
+		},
+		{
+			group: 'Έκπληξη',
+			blurb: '',
+			items: [['Ψυγειάκι με καλούδια', 'Καμία φορά']]
+		}
 	];
 
-	const equipment = [
-		'Παλμογράφοι',
-		'Γεννήτριες',
-		'Τροφοδοτικά Τάσης <= 20V, 1A',
-		'Workstation PCs (8CPUs, 8GB RAM)'
-	];
+	let query = $state('');
+	let only = $state<string | null>(null);
+
+	const norm = (s: string) =>
+		s
+			.toLowerCase()
+			.normalize('NFD')
+			.replace(/\p{M}/gu, '');
+
+	const shown = $derived.by(() => {
+		const q = norm(query.trim());
+		return equipment
+			.filter((g) => !only || g.group === only)
+			.map((g) => ({
+				...g,
+				items: g.items.filter(
+					([name, note]) => !q || norm(`${name} ${note ?? ''} ${g.group}`).includes(q)
+				)
+			}))
+			.filter((g) => g.items.length);
+	});
 </script>
 
 <svelte:head>
@@ -141,16 +212,8 @@
 							Ομάδα Διαχείρισης, ή Ο.Δ.), το οποίο εκλέγεται κάθε ακαδημαϊκό έτος βάσει του
 							<a href="https://eclass.hmu.gr/modules/document/?course=KARANASTASIS106"
 								>εσωτερικού κανονισμού λειτουργίας</a
-							>. Μέχρι και τις 29/03/2023, η Ο.Δ. αποτελείται από τα εξής μέλη:
+							>.
 						</p>
-						<ul class="readout">
-							{#each board as [name, role] (name)}
-								<li class="flex flex-wrap items-baseline justify-between gap-x-4 px-4 py-3">
-									<span class="font-bold">{name}</span>
-									<span class="label mute">{role}</span>
-								</li>
-							{/each}
-						</ul>
 					</div>
 					<div class="plate space-y-3 p-6">
 						<h3 class="text-xl">Πως θα βρείς το εργαστήριο</h3>
@@ -246,22 +309,68 @@
 		<section id="equipment" class="strip scroll-mt-14">
 			<div class="spine"><h2>Εξοπλισμός</h2></div>
 			<div class="strip-body">
-				<div class="plate max-w-3xl space-y-4 p-6">
-					<p>Ο εξοπλισμός που διαθέτει το εργαστήριο είναι ο εξής:</p>
-					<ul class="readout">
-						{#each equipment as item (item)}
-							<li class="px-4 py-3 font-bold">{item}</li>
-						{/each}
-						<li class="px-4 py-3">
-							<span class="font-bold">3D Printer</span>
-							<span class="mute block text-sm">
-								Σε συνεργασία με γειτονικό εργαστήριο. Απαιτείται ραντεβού/συζήτηση για το
-								αντικείμενο που θες να εκτυπώσεις. Στείλε στο
-								<a href="mailto:{email}">{email}</a>
-							</span>
-						</li>
-						<li class="mute px-4 py-3">Έρχεται περισσότερος & καλύτερος εξοπλισμός σύντομα :D</li>
-					</ul>
+				<div class="space-y-6">
+					<div class="flex flex-wrap items-center gap-3">
+						<input
+							type="search"
+							bind:value={query}
+							placeholder="Ψάξε εξοπλισμό: esp32, κολλητήρι, παλμογράφος…"
+							aria-label="Αναζήτηση εξοπλισμού"
+							class="slot min-w-0 flex-1 basis-72"
+						/>
+						<div class="flex flex-wrap gap-2">
+							<button
+								type="button"
+								class="key"
+								aria-pressed={only === null}
+								class:key-signal={only === null}
+								onclick={() => (only = null)}>Όλα</button
+							>
+							{#each equipment as g (g.group)}
+								<button
+									type="button"
+									class="key"
+									aria-pressed={only === g.group}
+									class:key-signal={only === g.group}
+									onclick={() => (only = only === g.group ? null : g.group)}>{g.group}</button
+								>
+							{/each}
+						</div>
+					</div>
+
+					{#if shown.length}
+						<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+							{#each shown as g (g.group)}
+								<section class="plate space-y-3 p-5">
+									<header>
+										<h3 class="text-lg">{g.group}</h3>
+										{#if g.blurb}<p class="mute text-sm">{g.blurb}</p>{/if}
+									</header>
+									<ul class="readout">
+										{#each g.items as [name, note] (name)}
+											<li class="flex flex-wrap items-baseline justify-between gap-x-4 px-4 py-2.5">
+												<span class="font-bold">{name}</span>
+												{#if note}<span class="label mute">{note}</span>{/if}
+											</li>
+										{/each}
+									</ul>
+								</section>
+							{/each}
+						</div>
+					{:else}
+						<p class="plate p-6">
+							Δεν βρήκαμε «{query}». Ρώτα μας στο <a href="mailto:{email}">{email}</a>, ίσως το
+							έχουμε.
+						</p>
+					{/if}
+
+					<div class="plate space-y-2 p-5 text-sm">
+						<p>
+							<span class="font-bold">3D εκτυπώσεις:</span> απαιτείται ραντεβού/συζήτηση για το αντικείμενο
+							που θες να εκτυπώσεις. Στείλε στο <a href="mailto:{email}">{email}</a>.
+						</p>
+						<p class="mute">Έρχεται περισσότερος & καλύτερος εξοπλισμός σύντομα :D</p>
+					</div>
 				</div>
 			</div>
 		</section>
@@ -276,7 +385,13 @@
 				<a
 					href="https://sketchfab.com/3d-models/3d-printer-3150a227e54a419e956daba61610e904"
 					class="underline">Michael V</a
-				>, CC BY 4.0.
+				>, CC BY 4.0. Logo by
+				<a
+					href="https://www.linkedin.com/in/mariadigenaki/"
+					target="_blank"
+					rel="noreferrer"
+					class="underline">Maria Digenaki</a
+				>.
 			</p>
 			<a href="https://hmu.gr" class="label hover:text-[var(--c-text)]"
 				>Ελληνικό Μεσογειακό Πανεπιστήμιο</a
