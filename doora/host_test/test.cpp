@@ -754,16 +754,16 @@ static void testBlacklistReplace() {
 
 static void testChimes() {
 	// 130 bpm sixteenths, rolling C E G C G E; a short silence ends each step.
-	CHECK(Chimes::unlocked(0) == 880 && Chimes::unlocked(100) == 1175 && Chimes::unlocked(200) == 0);
-	CHECK(Chimes::unlocked(300) == 880);  // loops
+	CHECK(Chimes::unlocked(0) == 2640 && Chimes::unlocked(100) == 3525 && Chimes::unlocked(200) == 0);
+	CHECK(Chimes::unlocked(300) == 2640);  // loops
 
-	CHECK(Chimes::denied(0) == 659 && Chimes::denied(150) == 523 && Chimes::denied(300) == 440);
-	CHECK(Chimes::denied(450) == 220 && Chimes::denied(Chimes::kDeniedMs - 1) == 220);
+	CHECK(Chimes::denied(0) == 2636 && Chimes::denied(150) == 2092 && Chimes::denied(300) == 1760);
+	CHECK(Chimes::denied(450) == 880 && Chimes::denied(Chimes::kDeniedMs - 1) == 880);
 	CHECK(Chimes::denied(Chimes::kDeniedMs) == 0 && Chimes::denied(100000) == 0);
 
 	// The countdown alert repeats for the whole delay.
-	CHECK(Chimes::attention(0) == 880 && Chimes::attention(200) == 1175 && Chimes::attention(400) == 0);
-	CHECK(Chimes::attention(600) == 880);
+	CHECK(Chimes::attention(0) == 2640 && Chimes::attention(200) == 3525 && Chimes::attention(400) == 0);
+	CHECK(Chimes::attention(600) == 2640);
 	CHECK(Chimes::kForceOpenDelayMs == 3000);
 }
 

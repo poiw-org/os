@@ -27,26 +27,26 @@ inline uint16_t at(const Note* notes, size_t count, uint32_t t, bool loop) {
 
 // The attention tones at double speed, repeating while the door is unlocked.
 inline uint16_t unlocked(uint32_t t) {
-	static constexpr Note kBuzz[] = {{880, 100}, {1175, 100}, {0, 100}};
+	static constexpr Note kBuzz[] = {{2640, 100}, {3525, 100}, {0, 100}};
 	return at(kBuzz, sizeof(kBuzz) / sizeof(kBuzz[0]), t, true);
 }
 
-// A minor chord (E C A) falling once, ending on a low A.
+// A minor chord (E C A) falling once, up where a piezo is loudest.
 constexpr uint32_t kDeniedMs = 1150;
 inline uint16_t denied(uint32_t t) {
-	static constexpr Note kSad[] = {{659, 150}, {523, 150}, {440, 150}, {220, 700}};
+	static constexpr Note kSad[] = {{2636, 150}, {2092, 150}, {1760, 150}, {880, 700}};
 	return at(kSad, sizeof(kSad) / sizeof(kSad[0]), t, false);
 }
 
 // Two alternating tones with a pause, repeating, for the countdown before a force open.
 inline uint16_t attention(uint32_t t) {
-	static constexpr Note kAlert[] = {{880, 200}, {1175, 200}, {0, 200}};
+	static constexpr Note kAlert[] = {{2640, 200}, {3525, 200}, {0, 200}};
 	return at(kAlert, sizeof(kAlert) / sizeof(kAlert[0]), t, true);
 }
 
 // The same two tones, four times as fast and without the pause, while a tag is being written.
 inline uint16_t writing(uint32_t t) {
-	static constexpr Note kFast[] = {{880, 50}, {1175, 50}};
+	static constexpr Note kFast[] = {{2640, 50}, {3525, 50}};
 	return at(kFast, sizeof(kFast) / sizeof(kFast[0]), t, true);
 }
 
