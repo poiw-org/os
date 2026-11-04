@@ -14,11 +14,6 @@
 	let forceOpenOpen = $state(false);
 	let menu = $state<MobileMenu>();
 
-	// A full navigation, not a client-side one: it also resets whatever the page was holding open.
-	const goToHome = (e: MouseEvent) => {
-		e.preventDefault();
-		window.location.href = '/os';
-	};
 	const logout = async () => {
 		await signOut();
 		window.location.href = '/login';
@@ -33,7 +28,7 @@
 </script>
 
 {#snippet brand()}
-	<a href={resolve('/os')} onclick={goToHome} class="label"><OsLabel /></a>
+	<a href={resolve('/os')} class="label"><OsLabel /></a>
 {/snippet}
 
 <header id="menu" class="bar full print:hidden">
