@@ -234,7 +234,7 @@
 					<h2 class="font-bold">Summary</h2>
 					{#if user}
 						<div class="flex items-center gap-3">
-							<Avatar email={user.label} size={40} />
+							<Avatar email={user.email} size={40} />
 							<span class="min-w-0 truncate">{user.label}</span>
 						</div>
 					{:else}

@@ -230,13 +230,13 @@
 							{@const e = latest[step]}
 							<li class="flex items-center gap-2 py-1">
 								<span
-									class="h-1.5 w-1.5 shrink-0 rounded-full {e?.state === 'done'
-										? 'bg-green-500'
+									class="lamp shrink-0 {e?.state === 'done'
+										? 'lamp-green'
 										: e?.state === 'failed'
-											? 'bg-red-500'
+											? 'lamp-red'
 											: e?.state === 'active'
-												? 'bg-brand-text'
-												: 'bg-gray-300'}"
+												? 'lamp-signal lamp-wait'
+												: 'lamp-gray lamp-off'}"
 								></span>
 								<span class="w-16 shrink-0 font-mono {e ? 'text-ink' : 'text-gray-400'}"
 									>{LABELS[step]}</span

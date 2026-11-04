@@ -309,9 +309,8 @@
 			<div class="panel border-yellow-500/50 px-4 py-3 text-sm text-yellow-500">
 				{#if serialHolder}
 					Tag {key.serialNumber} was released and now belongs to
-					<a
-						href={keyPath(serialHolder.id)}
-						class="font-mono underline underline-offset-4">{shortId(serialHolder.id)}</a
+					<a href={keyPath(serialHolder.id)} class="font-mono underline underline-offset-4"
+						>{shortId(serialHolder.id)}</a
 					>. This key cannot be enabled unless that key is removed.
 				{:else}
 					Tag {key.serialNumber} was released for reuse. Enabling this key will claim it again, if no
@@ -358,10 +357,7 @@
 						class="row cursor-pointer hover:bg-brand/10"
 					>
 						<span class="flex items-center gap-3"
-							><span
-								class="h-1.5 w-1.5 rounded-full {entry.type == EntryType.SUCCESSFUL
-									? 'bg-green-500'
-									: 'bg-red-500'}"
+							><span class="lamp {entry.type == EntryType.SUCCESSFUL ? 'lamp-green' : 'lamp-red'}"
 							></span>
 							<span class="tabular-nums">{formatDateTime(entry.timestamp)}</span></span
 						>

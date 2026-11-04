@@ -7,9 +7,9 @@
 		typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 	const dots: Record<ToastTone, string> = {
-		success: 'bg-green-500',
-		error: 'bg-red-500',
-		info: 'bg-gray-400'
+		success: 'lamp-green',
+		error: 'lamp-red',
+		info: 'lamp-blue'
 	};
 
 	let dialog = $state<HTMLDialogElement>();
@@ -39,7 +39,7 @@
 			animate:flip={{ duration: reduced() ? 0 : 200 }}
 			class="pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-lg border bg-paper-2 py-3 pr-3 pl-4"
 		>
-			<span class="mt-[0.45rem] h-1.5 w-1.5 shrink-0 rounded-full {dots[item.tone]}"></span>
+			<span class="lamp mt-[0.4rem] shrink-0 {dots[item.tone]}"></span>
 			<p class="min-w-0 flex-1 wrap-break-word">{item.message}</p>
 			<button
 				type="button"

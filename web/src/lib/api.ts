@@ -214,6 +214,7 @@ export async function listUsers(): Promise<UserOption[]> {
 	if (error) throw error;
 	return data.map((user) => ({
 		value: user.id,
+		email: user.email ?? '',
 		label: withName({ email: user.email ?? '', fullName: fullNameOf(user) })
 	}));
 }

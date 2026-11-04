@@ -65,7 +65,7 @@
 			class="flex items-center justify-between gap-3 rounded-lg border bg-paper-2 py-2 pr-2 pl-3"
 		>
 			<span class="flex min-w-0 items-center gap-3">
-				<Avatar email={value.label} size={36} />
+				<Avatar email={value.email} size={36} />
 				<span class="truncate">{value.label}</span>
 			</span>
 			<button type="button" onclick={change} class="btn">Change</button>
@@ -118,7 +118,7 @@
 						onmouseenter={() => (active = i)}
 						class="row cursor-pointer justify-start {i === active ? 'bg-brand/20' : ''}"
 					>
-						<Avatar email={user.label} size={28} />
+						<Avatar email={user.email} size={28} />
 						<span class="truncate"
 							>{text.before}{#if text.hit}<b class="font-semibold text-ink">{text.hit}</b
 								>{/if}{text.after}</span

@@ -86,7 +86,8 @@ export type Activity = {
 	expiresAt?: Date;
 };
 
-export type UserOption = { value: string; label: string };
+/** `label` is for reading and searching ("Full Name · email"); `email` is the address itself. */
+export type UserOption = { value: string; label: string; email: string };
 
 export type CurrentUser = {
 	id: string;

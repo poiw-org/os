@@ -21,7 +21,7 @@
 >
 	<span class="flex min-w-0 items-center gap-3">
 		<span
-			class="h-1.5 w-1.5 shrink-0 rounded-full {ok ? 'bg-green-500' : 'bg-red-500'}"
+			class="lamp shrink-0 {ok ? 'lamp-green' : 'lamp-red'}"
 			title={ok ? 'Door opened' : 'Denied'}
 		></span>
 		<span class="flex min-w-0 flex-col">

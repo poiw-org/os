@@ -68,7 +68,7 @@
 				in:fly={{ y: 4, duration: 140 }}
 				class="flex items-center gap-1.5 rounded-full border bg-paper py-0.5 pr-0.5 pl-1 text-xs text-ink"
 			>
-				<Avatar email={user.label} size={18} />
+				<Avatar email={user.email} size={18} />
 				<span class="max-w-40 truncate">{user.label}</span>
 				<button
 					type="button"
@@ -128,7 +128,7 @@
 					class="row cursor-pointer justify-between {i === active ? 'bg-brand/20' : ''}"
 				>
 					<span class="flex min-w-0 items-center gap-3">
-						<Avatar email={user.label} size={28} />
+						<Avatar email={user.email} size={28} />
 						<span class="truncate"
 							>{text.before}{#if text.hit}<b class="font-semibold text-ink">{text.hit}</b
 								>{/if}{text.after}</span

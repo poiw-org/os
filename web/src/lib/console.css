@@ -343,3 +343,89 @@
 		transition: none;
 	}
 }
+
+/* Status lamps: a recessed read-out chip with a square lamp that lights up, like a front-panel LED. */
+.console .readout-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.2rem 0.6rem 0.2rem 0.5rem;
+	background: oklch(15% 0.008 260);
+	border: 1px solid var(--c-seam);
+	box-shadow:
+		inset 0 1px 3px oklch(0% 0 0 / 0.7),
+		0 1px 0 var(--c-edge);
+	font-family: var(--font-mono);
+	font-size: 0.6875rem;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	line-height: 1.3;
+	color: var(--c-text);
+	white-space: nowrap;
+}
+.lamp {
+	--lamp: oklch(76% 0.14 162);
+	width: 0.5rem;
+	height: 0.5rem;
+	border-radius: 1px;
+	background: var(--lamp);
+	box-shadow:
+		0 0 6px 1px color-mix(in oklch, var(--lamp) 65%, transparent),
+		inset 0 1px 0 oklch(100% 0 0 / 0.5);
+}
+.lamp-green {
+	--lamp: oklch(76% 0.14 162);
+}
+.lamp-amber {
+	--lamp: oklch(80% 0.12 85);
+}
+.lamp-blue {
+	--lamp: oklch(72% 0.11 250);
+}
+.lamp-red {
+	--lamp: oklch(68% 0.17 22);
+}
+.lamp-signal {
+	--lamp: oklch(72% 0.17 295);
+}
+.lamp-gray {
+	--lamp: oklch(62% 0.01 260);
+}
+/* Dark lamp: the colour is still there, just unlit. */
+.lamp-off {
+	background: color-mix(in oklch, var(--lamp) 58%, oklch(15% 0.008 260));
+	box-shadow: inset 0 1px 2px oklch(0% 0 0 / 0.7);
+}
+.lamp-wait {
+	animation: lamp-breathe 2s ease-in-out infinite;
+}
+@keyframes lamp-breathe {
+	50% {
+		opacity: 0.35;
+		box-shadow: none;
+	}
+}
+
+/* Etched tag for a fact about a thing (key version, virtual): mono caps in a thin frame. */
+.console .tag {
+	display: inline-block;
+	padding: 0.1rem 0.4rem;
+	border: 1px solid var(--c-edge);
+	font-family: var(--font-mono);
+	font-size: 0.6875rem;
+	letter-spacing: 0.14em;
+	line-height: 1.3;
+	color: var(--c-mute);
+	cursor: help;
+}
+.console .tag-signal {
+	border-color: var(--c-signal);
+	color: oklch(80% 0.1 295);
+	background: oklch(47% 0.17 295 / 0.18);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.lamp-wait {
+		animation: none;
+	}
+}

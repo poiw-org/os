@@ -185,7 +185,7 @@
 	const pickable = $derived(
 		(users.items ?? [])
 			.filter((user) => user.email)
-			.map((user) => ({ value: user.id, label: withName(user) }))
+			.map((user) => ({ value: user.id, email: user.email, label: withName(user) }))
 	);
 	const shownEntries = $derived(filtered ? results : activity.items);
 
@@ -367,18 +367,14 @@
 									<span
 										class="inline-flex shrink-0 items-center gap-1.5 text-xs text-gray-600"
 										title={seen.toLocaleString('el-GR')}
-										><span class="h-1.5 w-1.5 rounded-full bg-green-500"></span>Last seen {timeAgo(
-											seen,
-											now
-										)}</span
+										><span class="lamp lamp-green"></span>Last seen {timeAgo(seen, now)}</span
 									>
 								{/if}
 							</span>
 							<span class="flex shrink-0 items-center gap-3 text-xs text-gray-400">
 								{#if keys.length}
 									<span class="flex items-center gap-1.5"
-										><span
-											class="h-1.5 w-1.5 rounded-full {active ? 'bg-green-500' : 'bg-gray-300'}"
+										><span class="lamp {active ? 'lamp-green' : 'lamp-gray lamp-off'}"
 										></span>{keys.length}
 										{keys.length === 1 ? 'key' : 'keys'}{#if active}<span class="hidden md:inline">
 												· {active} active</span
@@ -407,7 +403,7 @@
 	</section>
 
 	<aside
-		class="flex min-w-0 flex-col gap-2 border-t p-4 md:p-8 lg:sticky lg:top-[49px] lg:h-[calc(100vh-49px)] lg:overflow-y-auto lg:border-t-0 lg:border-l"
+		class="flex min-w-0 flex-col gap-2 border-t p-4 *:shrink-0 md:p-8 lg:sticky lg:top-[49px] lg:h-[calc(100vh-49px)] lg:overflow-y-auto lg:border-t-0 lg:border-l"
 	>
 		<div class="flex items-center justify-between gap-3 pb-1">
 			<h2 class="text-xl font-bold">Door entries</h2>
