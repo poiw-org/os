@@ -12,13 +12,19 @@
 	const ANCHOR_Y = 7;
 
 	async function start(host: HTMLDivElement) {
-		const [THREE, RAPIER, { MeshLineGeometry, MeshLineMaterial }, { RoundedBoxGeometry }] =
-			await Promise.all([
-				import('three'),
-				import('@dimforge/rapier3d-compat'),
-				import('meshline'),
-				import('three/examples/jsm/geometries/RoundedBoxGeometry.js')
-			]);
+		const [
+			THREE,
+			RAPIER,
+			{ MeshLineGeometry, MeshLineMaterial },
+			{ RoundedBoxGeometry },
+			{ token, tokenColour, canvasTexture }
+		] = await Promise.all([
+			import('three'),
+			import('@dimforge/rapier3d-compat'),
+			import('meshline'),
+			import('three/examples/jsm/geometries/RoundedBoxGeometry.js'),
+			import('#lib/three.ts')
+		]);
 		await RAPIER.init();
 		await document.fonts.load('700 48px "Space Mono"');
 		await document.fonts.load('400 32px "Space Mono"');
@@ -30,40 +36,13 @@
 		});
 
 		const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-		const css = getComputedStyle(document.documentElement);
-		const token = (name: string) => css.getPropertyValue(name).trim();
-
-		// Resolve a design token to an sRGB value three.js understands.
-		const swatch = document.createElement('canvas').getContext('2d', { willReadFrequently: true })!;
-		const colour = (name: string) => {
-			swatch.clearRect(0, 0, 1, 1);
-			swatch.fillStyle = token(name);
-			swatch.fillRect(0, 0, 1, 1);
-			const [r, g, b] = swatch.getImageData(0, 0, 1, 1).data;
-			return new THREE.Color().setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
-		};
-
-		const texture = (
-			width: number,
-			height: number,
-			draw: (c: CanvasRenderingContext2D) => void
-		) => {
-			const canvas = document.createElement('canvas');
-			canvas.width = width;
-			canvas.height = height;
-			draw(canvas.getContext('2d')!);
-			const map = new THREE.CanvasTexture(canvas);
-			map.colorSpace = THREE.SRGBColorSpace;
-			map.anisotropy = 8;
-			return map;
-		};
 
 		const roundRect = (c: CanvasRenderingContext2D, w: number, h: number, r: number) => {
 			c.beginPath();
 			c.roundRect(0, 0, w, h, r);
 		};
 
-		const front = texture(800, 1125, (c) => {
+		const front = canvasTexture(800, 1125, (c) => {
 			roundRect(c, 800, 1125, 56);
 			c.clip();
 			c.fillStyle = token('--color-ink');
@@ -84,7 +63,7 @@
 			c.fillText('Herakleion, Crete', 400, 1060);
 		});
 
-		const back = texture(800, 1125, (c) => {
+		const back = canvasTexture(800, 1125, (c) => {
 			roundRect(c, 800, 1125, 56);
 			c.clip();
 			c.fillStyle = token('--color-ink');
@@ -100,7 +79,7 @@
 			c.fillText('github.com/poiw-org', 400, 580);
 		});
 
-		const band = texture(1024, 128, (c) => {
+		const band = canvasTexture(1024, 128, (c) => {
 			c.fillStyle = token('--color-brand');
 			c.fillRect(0, 0, 1024, 128);
 			c.fillStyle = token('--color-ink');
@@ -129,7 +108,7 @@
 		const cardGroup = new THREE.Group();
 		const slab = new THREE.Mesh(
 			new RoundedBoxGeometry(CARD.w, CARD.h, CARD.d, 4, 0.1),
-			new THREE.MeshStandardMaterial({ color: colour('--color-ink'), roughness: 0.6 })
+			new THREE.MeshStandardMaterial({ color: tokenColour('--color-ink'), roughness: 0.6 })
 		);
 		const face = (map: Texture) =>
 			new THREE.MeshStandardMaterial({

@@ -7,6 +7,7 @@
 		type WriteCardState,
 		type WriteCardStep
 	} from '#lib/api.ts';
+	import TagStage, { type TagScene } from './TagStage.svelte';
 
 	let {
 		token,
@@ -33,16 +34,14 @@
 	};
 
 	type Phase = 'confirm' | 'running' | 'done' | 'failed';
-	type Scene = 'idle' | 'connecting' | WriteCardState;
 
 	let dialog = $state<HTMLDialogElement>();
 	let phase = $state<Phase>('confirm');
-	let scene = $state<Scene>('idle');
+	let scene = $state<TagScene>('idle');
 	let events = $state<WriteCardEvent[]>([]);
 	let error = $state('');
 	let remaining = $state(0);
 	let scanned = $state('');
-	// Alternates while the door waits, so the tag glides toward the reader and back.
 	let controller: AbortController | undefined;
 
 	$effect(() => dialog?.showModal());
@@ -54,7 +53,7 @@
 	);
 	const tail = $derived(serialNumber.slice(-5).toUpperCase());
 
-	const copyFor = (): Record<Scene, { title: string; hint: string }> => ({
+	const copyFor = (): Record<TagScene, { title: string; hint: string }> => ({
 		idle: scanning
 			? {
 					title: 'Read a tag with the door',
@@ -91,7 +90,7 @@
 		failed: { title: scanning ? 'The tag was not read' : 'The tag was not written', hint: '' }
 	});
 
-	// While the door waits: the countdown, and the tag gliding toward the reader and back.
+	// While the door waits: the countdown.
 	let tick: ReturnType<typeof setInterval> | undefined;
 	const stopTick = () => {
 		clearInterval(tick);
@@ -204,6 +203,8 @@
 				</li>
 			{/each}
 		</ol>
+
+		<TagStage {scene} label={scanning ? '···' : `···${tail}`} />
 
 		<div class="mt-5 min-h-16" aria-live="polite">
 			<p class="text-base font-bold">{copy.title}</p>

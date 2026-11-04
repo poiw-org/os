@@ -41,4 +41,6 @@ New live rows slide in 240ms; presses scale to 0.97; no pulses, pings or stagger
 
 Motion reports an event, never decorates. The one hero moment is the remote unlock: a ring around a lock fills a step at a time, the shackle springs open as the door unlocks (the only overshoot in the app), and a failure shakes once. Status text swaps in place (`swapIn`/`swapOut` in `src/lib/motion.ts`). Nothing loops.
 
+The second moment is writer mode (`TagStage`, three.js): the tag hovers over the PN532 reader, glides toward it and back while the door waits (waves rise off the coil, the light blinks), docks with a sweep while writing, shakes once for the wrong tag and pops a check when done. It is the one sanctioned 3D scene inside the app and loops only while the door is actually waiting or writing; reduced motion shows each state as a still frame.
+
 Command progress is shown as a headline plus one detail line, with a three-figure summary and the per-step breakdown behind a "Steps" disclosure. No terminal transcripts.
