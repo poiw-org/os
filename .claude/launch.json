@@ -6,7 +6,7 @@
 			"runtimeExecutable": "pnpm",
 			"runtimeArgs": [
 				"--dir",
-				"web/app",
+				"web",
 				"exec",
 				"vite",
 				"dev",

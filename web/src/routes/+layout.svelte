@@ -5,8 +5,12 @@
 	import Header from '#lib/header/Header.svelte';
 	import Notifications from '#lib/ui/Notifications.svelte';
 	import type { LayoutProps } from './$types';
+	import { onMount } from 'svelte';
+	import { startFaviconGalaxy } from '#lib/favicon-galaxy.ts';
 
 	let { children, data }: LayoutProps = $props();
+
+	onMount(startFaviconGalaxy);
 
 	// The auth screens bring their own full-bleed layout.
 	const bare = $derived(
