@@ -7,6 +7,7 @@
 	import ForceOpenModal from './ForceOpenModal.svelte';
 	import MobileMenu from './MobileMenu.svelte';
 	import SettingsModal from './SettingsModal.svelte';
+	import IssueKeyMenu from '#lib/ui/IssueKeyMenu.svelte';
 
 	let { user }: { user: CurrentUser | null } = $props();
 
@@ -52,7 +53,7 @@
 				>
 			{/if}
 			{#if user.isAdmin}
-				<a href={resolve('/os/items/create')} class="key key-signal">Issue key</a>
+				<IssueKeyMenu trigger="key key-signal" align="right" />
 			{/if}
 			<button
 				type="button"

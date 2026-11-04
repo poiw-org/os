@@ -28,8 +28,8 @@
 	let users = $state<UserOption[]>();
 	let user = $state<UserOption>();
 	let serialNumber = $state('');
-	// A virtual key has no tag: it only unlocks the door remotely.
-	let virtual = $state(false);
+	// Chosen in the Issue key menu. A virtual key has no tag: it only unlocks the door remotely.
+	const virtual = $derived(page.url.searchParams.get('type') === 'virtual');
 	let notBefore = $state(new Date());
 	let expiresAt = $state(addMonths(new Date(), 12));
 	let scanning = $state(false);
@@ -115,7 +115,11 @@
 		<Breadcrumb crumbs={[{ label: 'Users', href: '/os' }, { label: 'Issue a key' }]} />
 		<div class="flex flex-col gap-1">
 			<h1 class="text-xl font-bold">Issue a key</h1>
-			<p class="text-gray-400">Bind a new key to a user and a physical tag, or make it virtual.</p>
+			<p class="text-gray-400">
+				{virtual
+					? 'A virtual key with no tag, for remote unlock.'
+					: 'Bind a new key to a user and a physical NFC tag.'}
+			</p>
 		</div>
 	</div>
 
@@ -139,16 +143,13 @@
 				<section class="flex gap-4 border-t p-5 md:p-6">
 					<div class="flex min-w-0 flex-1 flex-col gap-4">
 						<div>
-							<h2 class="font-bold">Which tag?</h2>
+							<h2 class="font-bold">{virtual ? 'Virtual key' : 'Which tag?'}</h2>
 							<p class="text-gray-400">
 								{virtual
 									? 'A virtual key has no tag. It only unlocks the door remotely.'
 									: 'The key is bound to this serial number. It cannot be written to another tag.'}
 							</p>
 						</div>
-						<label class="flex items-center gap-2 text-sm">
-							<input type="checkbox" bind:checked={virtual} />Virtual key (no tag)
-						</label>
 						{#if !virtual}
 							<div class="flex flex-wrap items-center gap-3">
 								<label

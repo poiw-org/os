@@ -30,6 +30,7 @@
 	import Timeline from '#lib/ui/Timeline.svelte';
 	import V1Badge from '#lib/ui/V1Badge.svelte';
 	import VirtualBadge from '#lib/ui/VirtualBadge.svelte';
+	import IssueKeyMenu from '#lib/ui/IssueKeyMenu.svelte';
 
 	const userId = page.url.searchParams.get('id') ?? '';
 
@@ -202,9 +203,7 @@
 						>
 					{/if}
 					{#if !user.blocked}
-						<a href={resolve(`/os/items/create?user=${user.id}`)} class="btn btn-primary"
-							>Issue key</a
-						>
+						<IssueKeyMenu trigger="btn btn-primary" user={user.id} />
 					{/if}
 				</span>
 			</div>

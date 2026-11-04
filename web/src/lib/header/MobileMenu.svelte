@@ -2,10 +2,10 @@
 	import { withName } from '#lib/format.ts';
 	import type { Snippet } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
-	import { resolve } from '$app/paths';
 	import { reduced, springDriver } from '#lib/motion.ts';
 	import type { CurrentUser } from '#lib/types.ts';
 	import Avatar from '#lib/ui/Avatar.svelte';
+	import IssueKeyMenu from '#lib/ui/IssueKeyMenu.svelte';
 
 	// The phone header: one "Menu" word that unfolds a sheet from under the bar. The sheet carries
 	// the same actions as the desktop header and leaves the way it came: back up under the bar.
@@ -250,11 +250,7 @@
 						>
 					{/if}
 					{#if user.isAdmin}
-						<a
-							href={resolve('/os/items/create')}
-							onclick={close}
-							class="btn btn-primary py-3 text-sm">Issue key</a
-						>
+						<IssueKeyMenu trigger="btn btn-primary py-3 text-sm" inline onnavigate={close} />
 					{/if}
 				</div>
 			{/if}

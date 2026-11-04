@@ -197,7 +197,7 @@
 	};
 
 	const goToRenew = () => {
-		window.location.href = `/items/renew?id=${key?.id}`;
+		goto(resolve(`/os/items/renew?id=${key?.id}`));
 	};
 
 	onMount(() => {
