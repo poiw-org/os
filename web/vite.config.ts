@@ -13,7 +13,10 @@ export default defineConfig({
 				runes: ({ filename }) =>
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
-			adapter: adapter()
+			// Absolute asset paths, so one app shell works at any URL depth (/os/items/:id).
+			paths: { relative: false },
+			// The :id pages are not prerendered; the fallback shell serves them.
+			adapter: adapter({ fallback: '200.html' })
 		})
 	]
 });

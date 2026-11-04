@@ -1,0 +1,5 @@
+Classic Cursor Set by Vlazteron (http://www.rw-designer.com/user/83361)
+Source: http://www.rw-designer.com/cursor-set/classic
+License: Creative Commons Attribution + Share Alike
+Only five of the fifteen cursors are used here: normal, link, working (working in background),
+busy and unavailable. They are unmodified.

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { keyPath, userPath } from '#lib/routes.ts';
 	import { resolve } from '$app/paths';
 	import { formatDate, formatDateTime, shortId, timeAgo } from '#lib/format.ts';
 	import { arrive } from '#lib/motion.ts';
@@ -174,7 +175,7 @@
 					<div class="flex min-w-0 flex-col gap-0.5">
 						{#if item.keyId}
 							<a
-								href={resolve(`/os/items?id=${item.keyId}`)}
+								href={keyPath(item.keyId)}
 								class="leading-6 hover:text-brand-text">{item.title}</a
 							>
 						{:else}
@@ -187,7 +188,7 @@
 							<span class="text-xs text-gray-400"
 								>by
 								<a
-									href={resolve(`/os/users?id=${item.by.id}`)}
+									href={userPath(item.by.id)}
 									class="text-gray-600 hover:text-brand-text">{item.by.name}</a
 								></span
 							>

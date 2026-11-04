@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { keyPath } from '#lib/routes.ts';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { listAllKeys, toKeySummary } from '#lib/api.ts';
@@ -47,7 +48,7 @@
 	{:else}
 		<div class="panel">
 			{#each keys.items as key, at (key.id)}
-				<a href={resolve(`/os/items?id=${key.id}`)} in:arrive={{ index: at }} class="row">
+				<a href={keyPath(key.id)} in:arrive={{ index: at }} class="row">
 					<span class="flex min-w-0 flex-wrap items-baseline gap-x-4 gap-y-0.5">
 						<span class="font-mono text-[13px]">{shortId(key.id)}</span>
 						{#if key.serialNumber}<span class="font-mono text-xs text-gray-400"

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { keyPath, userPath } from '#lib/routes.ts';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
@@ -27,9 +28,10 @@
 	import V2Badge from '#lib/ui/V2Badge.svelte';
 	import VirtualBadge from '#lib/ui/VirtualBadge.svelte';
 	import WriteCardModal from '#lib/header/WriteCardModal.svelte';
+	import RenewModal from '#lib/header/RenewModal.svelte';
 
 	const PREVIEW = 50;
-	const keyId = page.url.searchParams.get('id') ?? '';
+	const keyId = page.params.id ?? '';
 	// Members see their own key and can disable it; everything else is for admins.
 	const admin = page.data.user.isAdmin as boolean;
 
@@ -37,6 +39,7 @@
 	let selectedId = $state<number>();
 	let showAllEntries = $state(false);
 	let writerOpen = $state(false);
+	let renewOpen = $state(false);
 	// Only meaningful while the key has released its serial: the key that holds it now.
 	let serialHolder = $state.raw<Key>();
 	$effect(() => {
@@ -196,9 +199,11 @@
 		);
 	};
 
-	const goToRenew = () => {
-		goto(resolve(`/os/items/renew?id=${key?.id}`));
+	const reload = async () => {
+		key = await getKey(keyId);
 	};
+	// The renewed token has to be written to the tag again.
+	const reflash = (via: 'door' | 'nfc') => (via === 'door' ? (writerOpen = true) : checkOut());
 
 	onMount(() => {
 		(async () => {
@@ -255,7 +260,7 @@
 			crumbs={admin
 				? [
 						{ label: 'Users', href: '/os' },
-						{ label: withName(key.user), href: `/os/users?id=${key.user.id}` },
+						{ label: withName(key.user), href: { user: key.user.id } },
 						{ label: shortId(key.id) }
 					]
 				: [{ label: 'My keys', href: '/os/keys' }, { label: shortId(key.id) }]}
@@ -270,7 +275,7 @@
 			<span class="flex flex-wrap items-center gap-2">
 				{#if admin}
 					{#if !key.disabled}
-						<button onclick={goToRenew} class="btn">Renew</button>
+						<button onclick={() => (renewOpen = true)} class="btn">Renew</button>
 					{/if}
 					{#if key.serialNumber && key.jwt}
 						{#if nfcSupported}
@@ -305,7 +310,7 @@
 				{#if serialHolder}
 					Tag {key.serialNumber} was released and now belongs to
 					<a
-						href={resolve(`/os/items?id=${serialHolder.id}`)}
+						href={keyPath(serialHolder.id)}
 						class="font-mono underline underline-offset-4">{shortId(serialHolder.id)}</a
 					>. This key cannot be enabled unless that key is removed.
 				{:else}
@@ -321,7 +326,7 @@
 					<dt class="text-gray-400">{label}</dt>
 					<dd class="min-w-0 text-right break-all {label === 'Tag S/N' ? 'font-mono' : ''}">
 						{#if label === 'User'}<a
-								href={resolve(`/os/users?id=${key.user.id}`)}
+								href={userPath(key.user.id)}
 								class="underline-offset-4 hover:underline">{value}</a
 							>{:else}{value}{/if}
 					</dd>
@@ -395,6 +400,10 @@
 		</div>
 	{/if}
 </div>
+
+{#if renewOpen && key}
+	<RenewModal {key} onclose={() => (renewOpen = false)} onrenewed={reload} onwrite={reflash} />
+{/if}
 
 {#if writerOpen && key?.serialNumber && key.jwt}
 	<WriteCardModal

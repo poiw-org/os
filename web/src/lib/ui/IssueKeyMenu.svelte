@@ -35,7 +35,7 @@
 	let root = $state<HTMLElement>();
 
 	const href = (type: string) =>
-		resolve(`/os/items/create?type=${type}${user ? `&user=${user}` : ''}`);
+		resolve(`/os/keys/create?type=${type}${user ? `&user=${user}` : ''}`);
 	const choose = () => {
 		open = false;
 		onnavigate?.();

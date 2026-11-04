@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { keyPath } from '#lib/routes.ts';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -69,7 +70,7 @@
 				expiresAt
 			});
 			toast.success(`Key issued for ${user.label}.`);
-			await goto(resolve(`/os/items?id=${id}`));
+			await goto(keyPath(id));
 		} catch (e) {
 			toast.error(
 				e instanceof Error ? e.message : 'An error occured while communicating with the server'

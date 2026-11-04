@@ -34,16 +34,16 @@ test.describe('signed in', () => {
 			.locator('#results')
 			.getByRole('link', { name: /bob@example\.test/ })
 			.click();
-		await expect(page).toHaveURL(new RegExp(`/os/users\\?id=${USERS[1].id}`));
+		await expect(page).toHaveURL(new RegExp(`/os/users/${USERS[1].id}`));
 		await expect(page.getByText('1 key', { exact: true })).toBeVisible();
 		await page.getByRole('link', { name: new RegExp(short(secondId)) }).click();
-		await expect(page).toHaveURL(new RegExp(`/os/items\\?id=${secondId}`));
+		await expect(page).toHaveURL(new RegExp(`/os/keys/${secondId}`));
 		await expect(page.getByText('ENABLED')).toBeVisible();
 		await page
 			.getByRole('navigation', { name: 'Breadcrumb' })
 			.getByRole('link', { name: 'bob@example.test' })
 			.click();
-		await expect(page).toHaveURL(/\/os\/users\?id=/);
+		await expect(page).toHaveURL(/\/os\/users\//);
 	});
 
 	test('home search finds users by tag serial number', async ({ page }) => {
@@ -60,15 +60,19 @@ test.describe('signed in', () => {
 	test('user page lists keys and recent entries and pre-selects the user for a new key', async ({
 		page
 	}) => {
-		await page.goto(`/os/users?id=${USERS[0].id}`);
-		await expect(page.getByText('Recent entries')).toBeVisible();
+		await page.goto(`/os/users/${USERS[0].id}`);
+		await expect(page.getByText('Timeline')).toBeVisible();
 		await expect(page.getByRole('link', { name: new RegExp(short(firstId)) })).toBeVisible();
-		await page.getByRole('main').getByRole('link', { name: 'Issue key' }).click();
+		// Issue key opens a menu: an NFC tag key or a virtual key, with the user carried along.
+		await page.getByRole('main').getByRole('button', { name: 'Issue key' }).click();
+		await expect(page.getByText('No tag. It unlocks the door remotely')).toBeVisible();
+		await page.getByRole('link', { name: /Virtual key/ }).click();
+		await expect(page).toHaveURL(/\/os\/keys\/create\?type=virtual&user=/);
 		await expect(page.getByText('alice@example.test').first()).toBeVisible();
 	});
 
 	test('changes stream in without a reload', async ({ page, api }) => {
-		await page.goto(`/os/items?id=${firstId}`);
+		await page.goto(`/os/keys/${firstId}`);
 		await page.locator('div.cursor-pointer').first().waitFor();
 		const before = await page.locator('div.cursor-pointer').count();
 
@@ -94,7 +98,7 @@ test.describe('signed in', () => {
 	});
 
 	test('key detail shows access log', async ({ page }) => {
-		await page.goto(`/os/items?id=${firstId}`);
+		await page.goto(`/os/keys/${firstId}`);
 		await expect(page.getByRole('heading', { name: 'Log' })).toBeVisible();
 		// Log rows are icon-only until expanded and newest first, so the first one is the failed entry.
 		await page.locator('div.cursor-pointer').first().click();
@@ -103,12 +107,12 @@ test.describe('signed in', () => {
 	});
 
 	test('unknown key shows a message', async ({ page }) => {
-		await page.goto('/os/items?id=00000000-0000-4000-8000-00000000dead');
+		await page.goto('/os/keys/00000000-0000-4000-8000-00000000dead');
 		await expect(page.getByText('Key not found.')).toBeVisible();
 	});
 
 	test('disable then enable a key', async ({ page, api }) => {
-		await page.goto(`/os/items?id=${firstId}`);
+		await page.goto(`/os/keys/${firstId}`);
 		await page.getByRole('button', { name: 'DISABLE' }).click();
 		await page.getByRole('dialog').getByRole('button', { name: 'Disable key' }).click();
 		await expect(page.getByText('DISABLED', { exact: true })).toBeVisible();
@@ -121,7 +125,7 @@ test.describe('signed in', () => {
 	});
 
 	test('delete a key', async ({ page, api }) => {
-		await page.goto(`/os/items?id=${secondId}`);
+		await page.goto(`/os/keys/${secondId}`);
 		await page.getByRole('button', { name: 'DELETE' }).click();
 		await page.getByRole('dialog').getByRole('button', { name: 'Delete key' }).click();
 		await expect(page).toHaveURL(/\/os$/);
@@ -130,12 +134,12 @@ test.describe('signed in', () => {
 	});
 
 	test('issue a new key', async ({ page, api }) => {
-		await page.goto('/os/items/create');
+		await page.goto('/os/keys/create');
 		await page.getByRole('combobox', { name: 'User' }).fill('bob');
 		await page.keyboard.press('Enter');
 		await page.getByPlaceholder('Tag S/N').fill('0499887766');
-		await page.getByRole('button', { name: 'Issue key' }).click();
-		await expect(page).toHaveURL(new RegExp(`/os/items\\?id=${KEY_IDS.created}`));
+		await page.locator('#issue').getByRole('button', { name: 'Issue key' }).click();
+		await expect(page).toHaveURL(new RegExp(`/os/keys/${KEY_IDS.created}`));
 		const issue = api.bodies.find((b) => b.call === 'POST /functions/v1/keys')?.body;
 		expect(issue).toMatchObject({
 			action: 'issue',
@@ -145,36 +149,36 @@ test.describe('signed in', () => {
 	});
 
 	test('issuing for a tag that is already bound shows the error', async ({ page }) => {
-		await page.goto('/os/items/create');
+		await page.goto('/os/keys/create');
 		await page.getByRole('combobox', { name: 'User' }).fill('bob');
 		await page.keyboard.press('Enter');
 		await page.getByPlaceholder('Tag S/N').fill('DUPLICATE');
-		await page.getByRole('button', { name: 'Issue key' }).click();
+		await page.locator('#issue').getByRole('button', { name: 'Issue key' }).click();
 		await expect(page.getByRole('alert')).toContainText('This tag is already bound to a key');
-		await expect(page).toHaveURL(/\/os\/items\/create/);
+		await expect(page).toHaveURL(/\/os\/keys\/create/);
 	});
 
 	test('creating without a user is refused', async ({ page, api }) => {
-		await page.goto('/os/items/create');
+		await page.goto('/os/keys/create');
 		await page.getByPlaceholder('Tag S/N').fill('0499887766');
-		await page.getByRole('button', { name: 'Issue key' }).click();
+		await page.locator('#issue').getByRole('button', { name: 'Issue key' }).click();
 		await expect(page.getByRole('alert')).toContainText('Select a user first.');
 		expect(api.calls).not.toContain('POST /functions/v1/keys');
 	});
 
 	test('cancelling a confirmation changes nothing', async ({ page, api }) => {
-		await page.goto(`/os/items?id=${secondId}`);
+		await page.goto(`/os/keys/${secondId}`);
 		await page.getByRole('button', { name: 'DELETE' }).click();
 		const dialog = page.getByRole('dialog');
 		await expect(dialog.getByText('Delete this key?')).toBeVisible();
 		await page.keyboard.press('Escape');
 		await expect(dialog).toBeHidden();
 		expect(api.calls).not.toContain('DELETE /rest/v1/keys');
-		await expect(page).toHaveURL(new RegExp(`/os/items\\?id=${secondId}`));
+		await expect(page).toHaveURL(new RegExp(`/os/keys/${secondId}`));
 	});
 
 	test('the user picker filters, supports the keyboard and can be changed', async ({ page }) => {
-		await page.goto('/os/items/create');
+		await page.goto('/os/keys/create');
 		const picker = page.getByRole('combobox', { name: 'User' });
 		await picker.click();
 		await expect(page.getByRole('option')).toHaveCount(3);
@@ -191,7 +195,7 @@ test.describe('signed in', () => {
 	});
 
 	test('validity presets set the expiry and the summary follows', async ({ page }) => {
-		await page.goto('/os/items/create');
+		await page.goto('/os/keys/create');
 		await page.getByRole('button', { name: '6 months' }).click();
 		await expect(page.getByRole('button', { name: '6 months' })).toHaveAttribute(
 			'aria-pressed',
@@ -201,11 +205,14 @@ test.describe('signed in', () => {
 	});
 
 	test('renew a key', async ({ page, api }) => {
-		await page.goto(`/os/items/renew?id=${firstId}`);
-		await expect(page.getByRole('heading', { name: `Renew ${short(firstId)}` })).toBeVisible();
-		await expect(page.getByText('alice@example.test')).toBeVisible();
-		await page.getByRole('button', { name: 'Renew' }).click();
-		await expect(page).toHaveURL(new RegExp(`/os/items\\?id=${firstId}`));
+		await page.goto(`/os/keys/${firstId}`);
+		await page.getByRole('button', { name: 'Renew', exact: true }).click();
+		const dialog = page.getByRole('dialog');
+		await expect(dialog.getByRole('heading', { name: `Renew ${short(firstId)}` })).toBeVisible();
+		await expect(dialog.getByText('alice@example.test')).toBeVisible();
+		await dialog.getByRole('button', { name: 'Renew', exact: true }).click();
+		// A key on a tag tells the admin the tag still carries the old token.
+		await expect(dialog.getByRole('status')).toContainText('Reflash the tag');
 		const renew = api.bodies.find((b) => b.call === 'POST /functions/v1/keys')?.body;
 		expect(renew).toMatchObject({ action: 'renew', id: firstId });
 	});
@@ -242,7 +249,7 @@ test.describe('signed in', () => {
 	});
 
 	test('the door writes a key to a tag and the modal follows it', async ({ page, api }) => {
-		await page.goto(`/os/items?id=${KEY_IDS.first}`);
+		await page.goto(`/os/keys/${KEY_IDS.first}`);
 		await page.getByRole('button', { name: 'Write at door' }).click();
 		const dialog = page.getByRole('dialog');
 		await dialog.getByRole('button', { name: 'Start writer mode' }).click();
@@ -259,7 +266,7 @@ test.describe('signed in', () => {
 	});
 
 	test('the door scans a tag and fills in its serial number', async ({ page, api }) => {
-		await page.goto('/os/items/create');
+		await page.goto('/os/keys/create');
 		await page.getByRole('button', { name: 'Scan at door' }).click();
 		const dialog = page.getByRole('dialog');
 		await dialog.getByRole('button', { name: 'START SCANNING' }).click();
@@ -321,7 +328,7 @@ test.describe('signed out', () => {
 	test.use({ signedIn: false });
 
 	test('protected pages redirect to sign-in', async ({ page }) => {
-		await page.goto('/os/items/create');
+		await page.goto('/os/keys/create');
 		await expect(page).toHaveURL(/\/login$/);
 		await expect(page.getByText('SIGN IN').first()).toBeVisible();
 	});
@@ -353,7 +360,7 @@ test.describe('signed out', () => {
 		await expect(page.getByRole('heading', { name: 'My keys' })).toBeVisible();
 		await expect(page.getByText('Issue key')).toHaveCount(0);
 		await expect(page.getByRole('button', { name: 'REMOTE UNLOCK' })).toHaveCount(0);
-		await page.goto('/os/items/create');
+		await page.goto('/os/keys/create');
 		await expect(page).toHaveURL(/\/os\/keys$/);
 	});
 

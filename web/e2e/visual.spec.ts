@@ -5,10 +5,9 @@ import { test, expect, KEY_IDS, USERS } from './fixtures';
 
 const screens: [name: string, path: string, ready: string][] = [
 	['home', '/os', 'Door entries'],
-	['user', `/os/users?id=${USERS[0].id}`, 'Recent entries'],
-	['key-detail', `/os/items?id=${KEY_IDS.first}`, 'Log'],
-	['create', '/os/items/create', 'Activate not before'],
-	['renew', `/os/items/renew?id=${KEY_IDS.first}`, 'Activate not before']
+	['user', `/os/users/${USERS[0].id}`, 'Recent entries'],
+	['key-detail', `/os/keys/${KEY_IDS.first}`, 'Log'],
+	['create', '/os/keys/create', 'Activate not before']
 ];
 
 for (const [name, path, ready] of screens) {

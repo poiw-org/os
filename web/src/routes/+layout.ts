@@ -4,13 +4,14 @@ import { openedRecoveryLink } from '#lib/supabase.ts';
 import type { LayoutLoad } from './$types';
 
 // Client-only app: no SSR. Routes are still prerendered as empty shells so static hosting
-// has a real file for every path (/os/items, /os/items/create, ...).
+// has a real file for every path (/os, /os/keys/create, ...). The :id pages are not prerendered;
+// the host serves the app shell for them.
 export const ssr = false;
 export const prerender = true;
 
 const publicRoutes = ['/', '/login', '/reset-password'];
 // Only admins manage users and keys; members see their own keys at /os/keys.
-const adminRoutes = ['/os/users', '/os/items/create', '/os/items/renew'];
+const adminRoutes = ['/os/users', '/os/keys/create'];
 
 // The one auth guard: every other route requires a signed-in user.
 export const load: LayoutLoad = async ({ url }) => {

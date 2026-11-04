@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { keyPath } from '#lib/routes.ts';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
@@ -32,7 +33,7 @@
 	import VirtualBadge from '#lib/ui/VirtualBadge.svelte';
 	import IssueKeyMenu from '#lib/ui/IssueKeyMenu.svelte';
 
-	const userId = page.url.searchParams.get('id') ?? '';
+	const userId = page.params.id ?? '';
 
 	let user = $state.raw<UserSummary>();
 	let admin = $state(false);
@@ -178,7 +179,7 @@
 	{:else if !user || !keys.items}
 		<Loading />
 	{:else}
-		<div class="flex max-w-4xl min-w-0 flex-1 flex-col gap-6">
+		<div class="relative z-10 flex max-w-4xl min-w-0 flex-1 flex-col gap-6">
 			<Breadcrumb
 				crumbs={[{ label: 'Users', href: '/os' }, { label: user.fullName || user.email }]}
 			/>
@@ -203,7 +204,7 @@
 						>
 					{/if}
 					{#if !user.blocked}
-						<IssueKeyMenu trigger="btn btn-primary" user={user.id} />
+						<IssueKeyMenu trigger="btn btn-primary" user={user.id} align="right" />
 					{/if}
 				</span>
 			</div>
@@ -276,7 +277,7 @@
 				<h2 class="font-bold">Keys</h2>
 				<div class="panel">
 					{#each keys.items as key, at (key.id)}
-						<a href={resolve(`/os/items?id=${key.id}`)} in:arrive={{ index: at }} class="row">
+						<a href={keyPath(key.id)} in:arrive={{ index: at }} class="row">
 							<span class="flex min-w-0 flex-wrap items-baseline gap-x-4 gap-y-0.5">
 								<span class="font-mono text-[13px]">{shortId(key.id)}</span>
 								{#if key.serialNumber}<span class="font-mono text-xs text-gray-400"

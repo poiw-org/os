@@ -2,5 +2,5 @@
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "doora-backoffice",
 	"compatibility_date": "2026-11-03",
-	"assets": { "directory": "./build" }
+	"assets": { "directory": "./build", "not_found_handling": "single-page-application" }
 }

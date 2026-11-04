@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { keyPath, userPath } from '#lib/routes.ts';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { getKeyBySerialNumber, listAllKeys, listAllUsers, listEntries } from '#lib/api.ts';
@@ -286,7 +287,7 @@
 				stop();
 				try {
 					const key = await getKeyBySerialNumber(canonicalSerial(serialNumber) ?? serialNumber);
-					if (key) await goto(resolve(`/os/items?id=${key.id}`));
+					if (key) await goto(keyPath(key.id));
 					else toast.error('This key was not found on the database.');
 				} catch (e) {
 					toast.error(e instanceof Error ? e.message : 'Could not look up the tag.');
@@ -354,7 +355,7 @@
 			<div class="flex flex-col gap-2" id="results">
 				<div class="panel">
 					{#each rows as { user, keys, active, seen }, at (user.id)}
-						<a href={resolve(`/os/users?id=${user.id}`)} in:arrive={{ index: at }} class="row">
+						<a href={userPath(user.id)} in:arrive={{ index: at }} class="row">
 							<span class="flex min-w-0 items-center gap-3">
 								<Avatar email={user.email} size={32} />
 								<span class="truncate">

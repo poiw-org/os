@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { keyPath, userPath } from '#lib/routes.ts';
 	import { formatDateTime, timeAgo } from '#lib/format.ts';
 	import { EntryType, type Entry } from '#lib/types.ts';
 
@@ -11,9 +12,11 @@
 </script>
 
 <a
-	href={resolve(
-		web ? `/os/users?id=${entry.openedBy}` : entry.keyId ? `/os/items?id=${entry.keyId}` : '/os'
-	)}
+	href={entry.openedBy !== null
+		? userPath(entry.openedBy)
+		: entry.keyId
+			? keyPath(entry.keyId)
+			: resolve('/os')}
 	class="row"
 >
 	<span class="flex min-w-0 items-center gap-3">

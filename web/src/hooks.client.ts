@@ -1,6 +1,9 @@
 import * as Sentry from '@sentry/svelte';
 import type { HandleClientError } from '@sveltejs/kit/hooks';
 import { config } from '#lib/config.ts';
+import { trackRequests } from '#lib/busy.ts';
+
+trackRequests();
 
 // Auth email links land with the session in the URL fragment (#access_token=...&refresh_token=...)
 // until supabase-js consumes it. Sentry keeps fragments, so drop them from every URL it records.

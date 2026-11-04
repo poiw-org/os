@@ -407,3 +407,51 @@ dialog.sheet[open]::backdrop {
 		opacity: 0;
 	}
 }
+
+/* Cursors: the classic arrow and hand (static/cursors, see CREDITS.txt). The loading state is set on
+   <html> by lib/busy.ts, so every page gets it without handling it. */
+:root {
+	--cursor-default: url('/cursors/normal.cur') 10 10, default;
+	--cursor-link: url('/cursors/link.cur') 10 10, pointer;
+	--cursor-refused: url('/cursors/unavailable.cur') 10 10, not-allowed;
+}
+:root[data-busy='work'] {
+	--cursor-default: url('/cursors/working.cur') 10 10, progress;
+}
+:root[data-busy='wait'] {
+	--cursor-default: url('/cursors/busy.cur') 10 10, wait;
+}
+html,
+body,
+.cursor-default {
+	cursor: var(--cursor-default);
+}
+/* Everything that can be clicked shows the hand. */
+:where(
+	a[href],
+	button,
+	summary,
+	select,
+	input[type='checkbox'],
+	input[type='radio'],
+	input[type='range'],
+	input[type='submit'],
+	input[type='button'],
+	input[type='file'],
+	label:has(input[type='checkbox'], input[type='radio']),
+	[role='button'],
+	[role='link'],
+	[role='tab'],
+	[role='option'],
+	[role='menuitem'],
+	.btn,
+	.key,
+	.cursor-pointer
+) {
+	cursor: var(--cursor-link);
+}
+:where(button, input, select, textarea):disabled,
+[aria-disabled='true'],
+.cursor-not-allowed {
+	cursor: var(--cursor-refused);
+}
