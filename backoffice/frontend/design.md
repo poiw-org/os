@@ -39,8 +39,11 @@ hacker-terminal minimal on midnight navy. Dark only.
 
 New live rows slide in 240ms; presses scale to 0.97; no pulses, pings or staggered entrances; everything collapses under `prefers-reduced-motion`.
 
-Motion reports an event, never decorates. The one hero moment is the remote unlock: a ring around a lock fills a step at a time, the shackle springs open as the door unlocks (the only overshoot in the app), and a failure shakes once. Status text swaps in place (`swapIn`/`swapOut` in `src/lib/motion.ts`). Nothing loops.
+Motion reports an event, never decorates. Status text swaps in place (`swapIn`/`swapOut` in `src/lib/motion.ts`). Outside the two door scenes below, nothing loops.
 
-The second moment is writer mode (`TagStage`, three.js): the tag hovers over the PN532 reader, glides toward it and back while the door waits (waves rise off the coil, the light blinks), docks with a sweep while writing, shakes once for the wrong tag and pops a check when done. It is the one sanctioned 3D scene inside the app and loops only while the door is actually waiting or writing; reduced motion shows each state as a still frame.
+The door commands are the two sanctioned 3D scenes, sharing one language in `src/lib/three.ts` (token colours, the same key/fill/rim lighting, springs in Apple's response/damping terms, a loop that sleeps when nothing moves). Travel is critically damped; bounce is kept for physical moments (the door's swing, the success check). Loops run only while the door is actually doing something; reduced motion shows each state as a still frame.
+
+- Remote unlock (`DoorStage`): a door with its NFC terminal on the wall, one cable to the internet (a wireframe globe) and one to the lock. The globe lights and spins while connecting, packets run down to the terminal while the command goes out, the terminal beats like a speaker with sound rings while the warning tone plays, then a packet runs to the lock, the bolt slides back and the door swings open onto a lit doorway. A failure knocks the side that failed.
+- Writer mode (`TagStage`): the tag drifts toward the PN532 reader while the door waits (waves rise off the coil), docks with a sweep while writing, is knocked back for the wrong tag and pops a check when done.
 
 Command progress is shown as a headline plus one detail line, with a three-figure summary and the per-step breakdown behind a "Steps" disclosure. No terminal transcripts.

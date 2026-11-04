@@ -9,6 +9,7 @@
 	} from '#lib/api.ts';
 	import { reveal, swapIn, swapOut } from '#lib/motion.ts';
 	import { toast } from '#lib/notify.svelte.ts';
+	import DoorStage, { type DoorScene } from './DoorStage.svelte';
 
 	// Admins talk to the door directly; members go through the server.
 	let { admin, onclose }: { admin: boolean; onclose: () => void } = $props();
@@ -50,7 +51,7 @@
 	const ackLatency = $derived(
 		events.find((e) => e.step === 'ack' && e.state === 'done')?.latencyMs
 	);
-	// The ring fills a sixth per checkpoint, half of one while it is under way.
+	// A sixth per checkpoint, half of one while it is under way.
 	const progress = $derived(
 		phase === 'opened'
 			? 1
@@ -59,6 +60,26 @@
 						sum + (latest[step]?.state === 'done' ? 1 : latest[step]?.state === 'active' ? 0.5 : 0),
 					0
 				) / FORCE_OPEN_STEPS.length
+	);
+
+	// The step under way, as the door scene shows it. A failure before the door answered is on the
+	// internet side; one after the command went out is the door's.
+	const doorScene = $derived<DoorScene>(
+		phase === 'confirm'
+			? 'idle'
+			: phase === 'opened'
+				? 'opened'
+				: phase === 'failed'
+					? last?.step === 'ack' || last?.step === 'unlock'
+						? 'failed_door'
+						: 'failed_net'
+					: !last || last.step === 'auth' || last.step === 'join'
+						? 'connecting'
+						: last.step === 'send' || last.step === 'ack'
+							? 'sending'
+							: last.step === 'unlock' && last.state === 'active'
+								? 'warning'
+								: 'opening'
 	);
 
 	const headline = $derived(
@@ -124,37 +145,17 @@
 		>
 	</div>
 
-	<div class="flex flex-col items-center px-6 pt-8 pb-6 text-center">
-		<!-- The lock: the ring fills per checkpoint, the shackle lifts when the door opens. -->
+	<div class="flex flex-col items-center px-6 pt-6 pb-6 text-center">
+		<!-- The door, its terminal and their cables follow the command step by step. -->
 		<div
-			class="lock {phase}"
+			class="w-full"
 			role="progressbar"
 			aria-label="Unlock progress"
 			aria-valuemin={0}
 			aria-valuemax={100}
 			aria-valuenow={Math.round(progress * 100)}
 		>
-			<svg viewBox="0 0 120 120" width="120" height="120" fill="none" aria-hidden="true">
-				<circle cx="60" cy="60" r="56" class="stroke-gray-200" stroke-width="2" />
-				<circle
-					cx="60"
-					cy="60"
-					r="56"
-					class="ring"
-					stroke-width="3"
-					stroke-linecap="round"
-					pathLength="1"
-					stroke-dasharray="1"
-					stroke-dashoffset={1 - progress}
-					opacity={progress ? 1 : 0}
-					transform="rotate(-90 60 60)"
-				/>
-				<g class="glyph" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-					<path class="shackle" d="M49 55v-8a11 11 0 0 1 22 0v16" />
-					<rect x="42" y="55" width="36" height="28" rx="6" class="fill-paper" />
-					<path d="M60 66v6" />
-				</g>
-			</svg>
+			<DoorStage scene={doorScene} />
 		</div>
 
 		<!-- Each line swaps in place as the command moves on. -->
@@ -269,75 +270,3 @@
 		</div>
 	</div>
 </dialog>
-
-<style>
-	/* Colour follows the outcome: purple while working, mint once open, red when it failed. */
-	.lock {
-		--tint: var(--color-brand-text);
-		color: var(--color-gray-600);
-	}
-	.lock.opened {
-		--tint: var(--color-green-500);
-		color: var(--color-green-500);
-	}
-	.lock.failed {
-		--tint: var(--color-red-500);
-		color: var(--color-red-500);
-	}
-	.ring {
-		stroke: var(--tint);
-		transition:
-			stroke-dashoffset 600ms var(--ease-out),
-			stroke 240ms var(--ease-out);
-	}
-	.glyph {
-		stroke: currentColor;
-		transition: color 240ms var(--ease-out);
-	}
-
-	/* The shackle lifts and swings about its right leg, with a little give, like the real thing. */
-	.shackle {
-		transform-origin: 71px 63px;
-		transition: transform 520ms cubic-bezier(0.34, 1.45, 0.64, 1);
-	}
-	.opened .shackle {
-		transform: translateY(-7px) rotate(-14deg);
-	}
-
-	/* The lock settles as it opens, and shakes its head once when it could not. */
-	.lock.opened svg {
-		animation: settle 520ms var(--ease-out);
-	}
-	.lock.failed svg {
-		animation: shake 420ms var(--ease-out);
-	}
-	@keyframes settle {
-		40% {
-			transform: scale(1.05);
-		}
-	}
-	@keyframes shake {
-		20% {
-			transform: translateX(-8px);
-		}
-		40% {
-			transform: translateX(6px);
-		}
-		60% {
-			transform: translateX(-4px);
-		}
-		80% {
-			transform: translateX(2px);
-		}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.ring,
-		.shackle {
-			transition: none;
-		}
-		.lock svg {
-			animation: none !important;
-		}
-	}
-</style>

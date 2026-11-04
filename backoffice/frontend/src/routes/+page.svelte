@@ -14,11 +14,16 @@
 	import ActivityRow from '#lib/ui/ActivityRow.svelte';
 	import Avatar from '#lib/ui/Avatar.svelte';
 	import DateRange from '#lib/ui/DateRange.svelte';
+	import UnlockChart from '#lib/ui/UnlockChart.svelte';
 	import UserMultiSelect from '#lib/ui/UserMultiSelect.svelte';
 
 	// Someone who opened the door more recently than this gets a "last seen" badge.
 	const RECENT_MS = 2 * 3_600_000;
 	const PAGE_SIZE = 50;
+	// The unlocks chart covers today and the days before it, in local time.
+	const CHART_DAYS = 30;
+	// PostgREST caps a response at 1000 rows, so the chart's window is read in pages of that.
+	const CHART_PAGE = 1000;
 
 	let searchQuery = $state('');
 	let showAll = $state(false);
@@ -54,6 +59,32 @@
 		map: toEntry,
 		accept: (entry) => entry.type === EntryType.SUCCESSFUL && entry.openedBy === null,
 		sort: (a, b) => b.timestamp.getTime() - a.timestamp.getTime()
+	});
+	// Every successful door open (tag or web) since the first day of the chart.
+	const chartStart = new Date();
+	const chartSince = new Date(
+		chartStart.getFullYear(),
+		chartStart.getMonth(),
+		chartStart.getDate() - (CHART_DAYS - 1)
+	);
+	const unlocks = liveRows({
+		table: 'entries',
+		load: async () => {
+			const all: Entry[] = [];
+			for (;;) {
+				const page = await listEntries({
+					type: EntryType.SUCCESSFUL,
+					since: chartSince,
+					limit: CHART_PAGE,
+					offset: all.length
+				});
+				all.push(...page);
+				// A row logged mid-read shifts the offsets and repeats one row across pages.
+				if (page.length < CHART_PAGE) return [...new Map(all.map((e) => [e.id, e])).values()];
+			}
+		},
+		map: toEntry,
+		accept: (entry) => entry.type === EntryType.SUCCESSFUL && entry.timestamp >= chartSince
 	});
 
 	// Entry search: any user or date filter replaces the latest-entries feed with a query.
@@ -175,6 +206,12 @@
 
 	const query = $derived(searchQuery.trim().toLowerCase());
 	const keyOwner = $derived(new Map((keys.items ?? []).map((key) => [key.id, key.userId])));
+	const emailById = $derived(new Map((users.items ?? []).map((user) => [user.id, user.email])));
+	// A web open belongs to the admin who gave it; a tag open to the key's owner.
+	const unlockedBy = (entry: Entry) => {
+		const userId = entry.openedBy ?? (entry.keyId ? keyOwner.get(entry.keyId) : undefined);
+		return userId ? emailById.get(userId) || undefined : undefined;
+	};
 	// Latest door open per user, only while it still counts as recent.
 	const lastSeen = $derived.by(() => {
 		const seen = new Map<string, Date>();
@@ -236,6 +273,10 @@
 <svelte:head>
 	<title>Users</title>
 </svelte:head>
+
+{#if unlocks.items && loaded}
+	<UnlockChart unlocks={unlocks.items} personOf={unlockedBy} days={CHART_DAYS} {now} />
+{/if}
 
 <div class="lg:grid lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
 	<section class="flex min-w-0 flex-col gap-5 p-4 md:p-8">
