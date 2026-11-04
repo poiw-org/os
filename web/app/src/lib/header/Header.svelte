@@ -2,7 +2,7 @@
 	import { signOut } from '#lib/auth.ts';
 	import type { CurrentUser } from '#lib/types.ts';
 	import Avatar from '#lib/ui/Avatar.svelte';
-	import Brand from '#lib/ui/Brand.svelte';
+	import { resolve } from '$app/paths';
 	import OsLabel from '#lib/ui/OsLabel.svelte';
 	import ForceOpenModal from './ForceOpenModal.svelte';
 	import MobileMenu from './MobileMenu.svelte';
@@ -14,8 +14,11 @@
 	let forceOpenOpen = $state(false);
 	let menu = $state<MobileMenu>();
 
-	const goToHome = () => (window.location.href = '/os');
-	const createKey = () => (window.location.href = '/os/items/create');
+	// A full navigation, not a client-side one: it also resets whatever the page was holding open.
+	const goToHome = (e: MouseEvent) => {
+		e.preventDefault();
+		window.location.href = '/os';
+	};
 	const logout = async () => {
 		await signOut();
 		window.location.href = '/login';
@@ -30,45 +33,41 @@
 </script>
 
 {#snippet brand()}
-	<a onclick={goToHome} class="flex cursor-pointer items-center gap-2.5">
-		<Brand size={28} />
-		<span class="font-mono text-sm font-bold"><OsLabel /></span>
-	</a>
+	<a href={resolve('/os')} onclick={goToHome} class="label"><OsLabel /></a>
 {/snippet}
 
-<header id="menu" class="sticky top-0 z-20 border-b bg-void print:hidden">
-	<div
-		class="mx-auto flex w-full max-w-[1500px] items-center justify-between gap-4 px-4 py-2.5 md:px-8"
-	>
-		{@render brand()}
-		{#if user}
-			<span class="md:hidden">
-				<MobileMenu
-					bind:this={menu}
-					{user}
-					{brand}
-					onunlock={() => (fromMenu = forceOpenOpen = true)}
-					onsettings={() => (fromMenu = settingsOpen = true)}
-					onlogout={logout}
-				/>
-			</span>
-			<span class="hidden items-center gap-1.5 md:flex md:gap-2">
-				{#if user.canUnlock}
-					<button type="button" onclick={() => (forceOpenOpen = true)} class="btn"
-						>Remote unlock</button
-					>
-				{/if}
-				{#if user.isAdmin}<a onclick={createKey} class="btn btn-primary">Issue key</a>{/if}
-				<button
-					type="button"
-					onclick={() => (settingsOpen = true)}
-					aria-label="Settings"
-					class="ml-1 rounded-full hover:opacity-80"><Avatar email={user.email} size={28} /></button
+<header id="menu" class="bar full print:hidden">
+	{@render brand()}
+	<div class="grow"></div>
+	{#if user}
+		<span class="only-sm">
+			<MobileMenu
+				bind:this={menu}
+				{user}
+				{brand}
+				onunlock={() => (fromMenu = forceOpenOpen = true)}
+				onsettings={() => (fromMenu = settingsOpen = true)}
+				onlogout={logout}
+			/>
+		</span>
+		<span class="only-md">
+			{#if user.canUnlock}
+				<button type="button" onclick={() => (forceOpenOpen = true)} class="key"
+					>Remote unlock</button
 				>
-				<button type="button" class="btn border-transparent" onclick={logout}>Log out</button>
-			</span>
-		{/if}
-	</div>
+			{/if}
+			{#if user.isAdmin}
+				<a href={resolve('/os/items/create')} class="key key-signal">Issue key</a>
+			{/if}
+			<button
+				type="button"
+				onclick={() => (settingsOpen = true)}
+				aria-label="Settings"
+				class="ml-1 rounded-full hover:opacity-80"><Avatar email={user.email} size={28} /></button
+			>
+			<button type="button" class="label" onclick={logout}>Log out</button>
+		</span>
+	{/if}
 </header>
 
 {#if user && forceOpenOpen}

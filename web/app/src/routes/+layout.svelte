@@ -17,7 +17,7 @@
 {#if bare}
 	{@render children()}
 {:else}
-	<div class="flex min-h-screen w-full flex-col bg-paper/90">
+	<div class="console flex min-h-screen w-full flex-col">
 		<Header user={data.user} />
 		<main class="mx-auto w-full max-w-[1500px] flex-1">
 			{@render children()}

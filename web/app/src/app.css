@@ -10,15 +10,15 @@
 	--font-sans: 'Space Grotesk Variable', system-ui, sans-serif;
 	--font-mono: 'Space Mono', ui-monospace, monospace;
 
-	--radius-md: 0.1875rem;
-	--radius-lg: 0.25rem;
-	--radius-xl: 0.25rem;
+	--radius-md: 0;
+	--radius-lg: 0;
+	--radius-xl: 0;
 
-	--color-backing: #03030d;
-	--color-void: oklch(10.5% 0.03 285);
-	--color-paper: oklch(14% 0.035 285);
-	--color-paper-2: oklch(18% 0.04 285);
-	--color-ink: oklch(97% 0.008 285);
+	--color-backing: oklch(15% 0.008 260);
+	--color-void: oklch(22% 0.008 260);
+	--color-paper: oklch(27% 0.008 260);
+	--color-paper-2: oklch(32% 0.008 260);
+	--color-ink: oklch(94% 0.005 260);
 
 	/* the brand purple and its lighter text-safe companion */
 	--color-brand: oklch(47% 0.17 295);
@@ -26,11 +26,11 @@
 	--color-brand-text: oklch(74% 0.14 295);
 
 	/* surface, hairline, strong hairline, muted, secondary ink */
-	--color-gray-50: oklch(17% 0.04 285);
-	--color-gray-200: oklch(26% 0.045 285);
-	--color-gray-300: oklch(36% 0.06 285);
-	--color-gray-400: oklch(65% 0.035 285);
-	--color-gray-600: oklch(78% 0.025 285);
+	--color-gray-50: oklch(25% 0.008 260);
+	--color-gray-200: oklch(14% 0.008 260);
+	--color-gray-300: oklch(42% 0.008 260);
+	--color-gray-400: oklch(72% 0.01 260);
+	--color-gray-600: oklch(84% 0.008 260);
 
 	--color-green-700: oklch(80% 0.15 162); /* accent */
 	--color-green-500: oklch(76% 0.14 162);
@@ -67,17 +67,14 @@
 		font-size: 0.875rem;
 		line-height: 1.5;
 		-webkit-font-smoothing: antialiased;
-		background-image: radial-gradient(oklch(100% 0 0 / 0.07) 1px, transparent 1px);
-		background-size: 24px 24px;
-		background-attachment: fixed;
 	}
 
 	h1,
 	h2,
 	h3 {
-		font-family: var(--font-mono);
+		font-family: var(--font-sans);
 		font-weight: 700;
-		letter-spacing: -0.02em;
+		letter-spacing: -0.01em;
 	}
 
 	a:not(.btn):not(.row) {
@@ -97,9 +94,12 @@
 	input:not([type='checkbox']),
 	textarea,
 	select {
-		background-color: var(--color-paper-2);
+		background-color: var(--color-backing);
 		border: 1px solid var(--color-gray-200);
-		border-radius: 0.5rem;
+		border-radius: 0;
+		box-shadow:
+			inset 1px 1px 3px oklch(0% 0 0 / 0.4),
+			inset -1px -1px 0 oklch(100% 0 0 / 0.08);
 		color: var(--color-ink);
 		transition:
 			border-color 120ms var(--ease-out),
@@ -120,7 +120,9 @@
 	textarea:focus-visible {
 		outline: none;
 		border-color: var(--color-brand-text);
-		box-shadow: 0 0 0 3px oklch(47% 0.17 295 / 0.35);
+		box-shadow:
+			inset 1px 1px 3px oklch(0% 0 0 / 0.4),
+			0 0 0 2px oklch(47% 0.17 295 / 0.55);
 	}
 
 	::selection {
@@ -140,19 +142,21 @@
 
 @layer components {
 	/* A white surface inside the dark app: the same tokens, inverted, with square corners. */
-	.light {
+	.light,
+	dialog.sheet {
 		color-scheme: light;
 		--radius-md: 0;
 		--radius-lg: 0;
 		--radius-xl: 0;
-		--color-void: oklch(98.5% 0.006 285);
-		--color-paper: oklch(96% 0.01 285);
-		--color-paper-2: oklch(99.5% 0.003 285);
-		--color-ink: oklch(16% 0.04 285);
-		--color-gray-200: oklch(88% 0.015 285);
-		--color-gray-300: oklch(76% 0.02 285);
-		--color-gray-400: oklch(48% 0.03 285);
-		--color-gray-600: oklch(36% 0.035 285);
+		--color-void: oklch(81% 0.006 260);
+		--color-paper: oklch(88% 0.005 260);
+		--color-paper-2: oklch(93% 0.004 260);
+		--color-backing: oklch(96% 0.003 260);
+		--color-ink: oklch(17% 0.01 260);
+		--color-gray-200: oklch(58% 0.01 260);
+		--color-gray-300: oklch(46% 0.01 260);
+		--color-gray-400: oklch(36% 0.01 260);
+		--color-gray-600: oklch(26% 0.01 260);
 		--color-brand-text: oklch(45% 0.17 295);
 		--color-green-700: oklch(42% 0.12 162);
 		--color-green-500: oklch(52% 0.13 162);
@@ -164,7 +168,10 @@
 
 	/* Field and section label. */
 	.eyebrow {
-		font-size: 0.75rem;
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
 		color: var(--color-gray-400);
 	}
 
@@ -173,6 +180,7 @@
 		border: 1px solid var(--color-gray-200);
 		border-radius: var(--radius-xl);
 		background: var(--color-paper);
+		box-shadow: inset 1px 1px 0 oklch(100% 0 0 / 0.1);
 		overflow: hidden;
 	}
 	.panel > .row + .row,
@@ -190,10 +198,16 @@
 		gap: 0.5rem;
 		border: 1px solid var(--color-gray-200);
 		border-radius: var(--radius-lg);
-		background: transparent;
+		background: var(--color-paper-2);
+		box-shadow:
+			inset 1px 1px 0 oklch(100% 0 0 / 0.14),
+			inset -1px -1px 0 oklch(0% 0 0 / 0.25);
 		padding: 0.4375rem 0.75rem;
 		color: var(--tone);
-		font-size: 0.8125rem;
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
 		transition:
 			background-color 120ms var(--ease-out),
 			border-color 120ms var(--ease-out),
@@ -201,12 +215,14 @@
 			transform 100ms var(--ease-out);
 	}
 	.btn:hover:not(:disabled) {
-		background: var(--color-paper-2);
-		border-color: var(--color-gray-300);
+		background: oklch(37% 0.008 260);
 		color: var(--color-ink);
 	}
 	.btn:active:not(:disabled) {
-		transform: scale(0.97);
+		transform: translateY(1px);
+		box-shadow:
+			inset 1px 1px 3px oklch(0% 0 0 / 0.4),
+			inset -1px -1px 0 oklch(100% 0 0 / 0.1);
 	}
 	.btn:disabled {
 		opacity: 0.45;
@@ -240,8 +256,9 @@
 		align-items: center;
 		justify-content: center;
 		border: 1px solid var(--color-gray-300);
-		border-radius: 9999px;
+		border-radius: 0;
 		color: var(--color-gray-600);
+		font-family: var(--font-mono);
 		font-size: 0.75rem;
 		font-weight: 500;
 	}
@@ -249,10 +266,14 @@
 	/* Toggle pill, e.g. date presets. */
 	.chip {
 		border: 1px solid var(--color-gray-200);
-		border-radius: 9999px;
+		border-radius: 0;
+		background: var(--color-paper-2);
 		padding: 0.25rem 0.75rem;
 		color: var(--color-gray-600);
-		font-size: 0.75rem;
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
 		transition:
 			background-color 120ms var(--ease-out),
 			border-color 120ms var(--ease-out),
@@ -264,7 +285,7 @@
 		color: var(--color-ink);
 	}
 	.chip:active {
-		transform: scale(0.96);
+		transform: translateY(1px);
 	}
 	.chip[aria-pressed='true'] {
 		background: var(--color-brand);

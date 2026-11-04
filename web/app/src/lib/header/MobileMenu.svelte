@@ -205,16 +205,17 @@
 		></div>
 
 		<!-- Sits exactly over the real header, so "Menu" simply becomes "Close" in place. -->
-		<div class="relative z-10 border-b bg-void">
-			<div class="flex items-center justify-between gap-4 px-4 py-2.5">
-				{@render brand()}
+		<div class="bar full relative z-10">
+			{@render brand()}
+			<div class="grow"></div>
+			<span class="only-sm">
 				<button
 					type="button"
 					onclick={() => (shown ? close() : open())}
 					aria-label={shown ? 'Close menu' : 'Open menu'}
 					class="btn w-[4.75rem]">{shown ? 'Close' : 'Menu'}</button
 				>
-			</div>
+			</span>
 		</div>
 
 		<!-- The void above the panel extends upward, so pulling it down past open never shows a gap. -->

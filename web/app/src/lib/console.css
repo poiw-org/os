@@ -113,6 +113,23 @@
 	padding: 0;
 }
 
+/* A bar cell that exists only below or only from the md breakpoint. */
+.console .bar > .only-md {
+	display: none;
+	gap: 0.5rem;
+}
+.console .bar > .only-sm {
+	display: flex;
+}
+@media (min-width: 768px) {
+	.console .bar > .only-md {
+		display: flex;
+	}
+	.console .bar > .only-sm {
+		display: none;
+	}
+}
+
 /* A faceplate: pale, square, bevelled. Dark text on it. */
 .console .plate {
 	background: var(--c-plate);
