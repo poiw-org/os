@@ -8,6 +8,6 @@ web/functions/dist/
 doora/config.h
 doora/.pio/
 
-web/app/build/
+web/build/
 
-web/app/.svelte-kit/
+web/.svelte-kit/
