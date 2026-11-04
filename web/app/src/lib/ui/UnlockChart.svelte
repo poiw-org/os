@@ -72,7 +72,9 @@
 		date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 	const month = (date: Date) => date.toLocaleDateString('en-GB', { month: 'short' });
 	const plural = (count: number) => (count === 1 ? 'unlock' : 'unlocks');
-	const barHeight = (count: number) => (count ? Math.max(4, (count / peak) * MAX_BAR) : 2);
+	// Whole plaques only: heights snap to the 8px pitch of .bar-fill.
+	const barHeight = (count: number) =>
+		count ? Math.max(1, Math.round((count / peak) * (MAX_BAR / 8))) * 8 : 2;
 
 	const readout = $derived(
 		focused
@@ -126,17 +128,19 @@
 		<div class="flex flex-col gap-2">
 			<span class="eyebrow">{readout.label}</span>
 			<span class="flex items-baseline gap-2.5">
-				<span class="text-5xl leading-none font-bold tracking-tight">{readout.count}</span>
-				<span class="text-sm text-gray-400">{plural(readout.count)}</span>
-				{#if readout.note}<span class="text-sm text-gray-400">· {readout.note}</span>{/if}
+				<span class="font-mono text-5xl leading-none font-bold tracking-tight tabular-nums"
+					>{readout.count}</span
+				>
+				<span class="eyebrow">{plural(readout.count)}</span>
+				{#if readout.note}<span class="eyebrow">· {readout.note}</span>{/if}
 			</span>
 		</div>
 		<ul class="flex min-h-6 flex-wrap items-center gap-x-5 gap-y-2 text-sm">
 			{#each readout.people.slice(0, LISTED) as [email, count] (email)}
 				<li class="flex items-center gap-2" title={email}>
-					<Avatar {email} size={22} />
+					<Avatar {email} size={22} square />
 					<span class="max-w-36 truncate">{email.split('@')[0]}</span>
-					<span class="text-xs text-gray-400">{count}</span>
+					<span class="font-mono text-xs text-gray-400 tabular-nums">{count}</span>
 				</li>
 			{/each}
 			{#if readout.people.length > LISTED}
@@ -189,13 +193,15 @@
 						aria-hidden="true"
 					>
 						{#if hidden > 0}
-							<span class="text-[10px] leading-3 text-gray-400">+{hidden}</span>
+							<span class="font-mono text-[10px] leading-3 tracking-widest text-gray-400"
+								>+{hidden}</span
+							>
 						{/if}
 						<!-- Reversed so the most frequent visitor sits right on the bar. -->
 						<span class="flex flex-col-reverse items-center">
 							{#each column.people.slice(0, STACKED) as [email] (email)}
-								<span class="-mt-2 rounded-full ring-2 ring-paper last:mt-0">
-									<Avatar {email} size={22} />
+								<span class="-mt-2 ring-2 ring-paper last:mt-0">
+									<Avatar {email} size={22} square />
 								</span>
 							{/each}
 						</span>
@@ -211,10 +217,12 @@
 			<div class="flex gap-1 pt-2 pr-9" aria-hidden="true">
 				{#each columns as column, i (column.date.getTime())}
 					<span
-						class="flex min-w-0 flex-1 flex-col items-center font-mono text-[10px] leading-4 {column.today ||
-						selected === i
+						class="flex min-w-0 flex-1 flex-col items-center font-mono text-[10px] leading-4 tabular-nums {selected ===
+						i
 							? 'font-bold text-ink'
-							: 'text-gray-400'}"
+							: column.today && selected === null
+								? 'font-bold text-brand-text'
+								: 'text-gray-400'}"
 					>
 						{column.date.getDate()}
 						{#if i === 0 || column.date.getDate() === 1}

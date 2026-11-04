@@ -25,7 +25,11 @@
 </script>
 
 <script lang="ts">
-	let { email, size = 32 }: { email: string; size?: number } = $props();
+	let {
+		email,
+		size = 32,
+		square = false
+	}: { email: string; size?: number; square?: boolean } = $props();
 
 	const address = $derived(email.trim().toLowerCase());
 	const hue = $derived(seed(address) % 360);
@@ -47,7 +51,9 @@
 </script>
 
 <span
-	class="relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full text-white select-none"
+	class="relative inline-flex shrink-0 items-center justify-center overflow-hidden text-white select-none {square
+		? ''
+		: 'rounded-full'}"
 	style="width:{size}px;height:{size}px;font-size:{Math.round(
 		size * 0.4
 	)}px;background:oklch(42% 0.09 {hue})"
