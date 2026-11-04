@@ -1,13 +1,13 @@
 .idea/
 
-backoffice/functions/dist/
+web/functions/dist/
 
 **/firestore.creds.json
 **/*service-account*.json
 
-esp32/config.h
-esp32/.pio/
+doora/config.h
+doora/.pio/
 
-backoffice/frontend/build/
+web/app/build/
 
-backoffice/frontend/.svelte-kit/
+web/app/.svelte-kit/

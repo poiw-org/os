@@ -6,7 +6,7 @@
 			"runtimeExecutable": "pnpm",
 			"runtimeArgs": [
 				"--dir",
-				"backoffice/frontend",
+				"web/app",
 				"exec",
 				"vite",
 				"dev",

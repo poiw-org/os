@@ -1,0 +1,183 @@
+<title>Doora ESP32 Wiring</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one A4 sheet. Schematic on top, wire table below, notes at the foot. Print sheet, deliberately light-only. */
+:root {
+  color-scheme: light;
+  --paper: #ffffff;
+  --ink: #1d2226;
+  --muted: #5d6870;
+  --rule: #c9d0d5;
+  --tint: #eef2f4;
+  --accent: #0f5f7a;
+  --sans: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@page { size: A4; margin: 10mm; }
+html, body { background: #dfe4e7; }
+body { color: var(--ink); font-family: var(--sans); font-size: 10.5px; line-height: 1.4;
+  padding-block: 24px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.sheet { background: var(--paper); max-width: 190mm; margin: 0 auto; padding: 10mm; box-shadow: 0 2px 12px rgba(0,0,0,.12); display: grid; gap: 12px; }
+header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; border-bottom: 2px solid var(--ink); padding-bottom: 6px; }
+h1 { font-size: 20px; margin: 0; text-wrap: balance; }
+h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; margin: 0 0 4px; color: var(--accent); }
+.meta { font-family: var(--mono); color: var(--muted); font-size: 9.5px; }
+.diagram { overflow-x: auto; }
+.diagram svg { width: 100%; min-width: 560px; height: auto; display: block; }
+svg text { font-family: var(--mono); font-size: 10px; fill: var(--ink); }
+svg .lbl { font-family: var(--sans); font-weight: 600; font-size: 11px; }
+svg .small { font-size: 8.5px; fill: var(--muted); }
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--rule); vertical-align: middle; }
+th { font-size: 9px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); border-bottom: 1.5px solid var(--ink); }
+td.mono { font-family: var(--mono); }
+.sw { display: inline-block; width: 26px; height: 8px; border: 1px solid var(--ink); border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+.sw.thin { height: 4px; }
+.sw.none { background: repeating-linear-gradient(90deg, #8a8a8a 0 4px, transparent 4px 7px); border-color: #8a8a8a; }
+.tag { font-size: 8.5px; font-weight: 600; padding: 0 5px; border-radius: 8px; background: var(--tint); color: var(--accent); white-space: nowrap; }
+.notes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; }
+.notes p { margin: 0; min-width: 0; }
+@media (max-width: 520px) { .notes { grid-template-columns: 1fr; } }
+@media print {
+  html, body { background: #fff; padding: 0; }
+  .sheet { box-shadow: none; padding: 0; max-width: none; }
+  .diagram svg { min-width: 0; }
+}
+</style>
+
+<div class="sheet">
+  <header>
+    <h1>Κλειδαριά — ESP32 wiring</h1>
+    <span class="meta">board esp32dev · pins from doora/config.h · rev 2026-11-04</span>
+  </header>
+
+  <section class="diagram" aria-label="Wiring schematic">
+    <svg viewBox="0 0 720 600" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <g id="gnd"><line x1="-8" y1="0" x2="8" y2="0" stroke="#1d2226" stroke-width="1.5"/><line x1="-5" y1="3" x2="5" y2="3" stroke="#1d2226" stroke-width="1.5"/><line x1="-2" y1="6" x2="2" y2="6" stroke="#1d2226" stroke-width="1.5"/></g>
+        <g id="led">
+          <rect x="300" y="-5" width="36" height="10" fill="#ffffff" stroke="#1d2226"/><line x1="336" y1="0" x2="420" y2="0" stroke="#1d2226" stroke-width="1.5"/>
+          <polygon points="420,-8 420,8 434,0" fill="#ffffff" stroke="#1d2226" stroke-width="1.5"/><line x1="434" y1="-8" x2="434" y2="8" stroke="#1d2226" stroke-width="1.5"/>
+          <line x1="434" y1="0" x2="470" y2="0" stroke="#1d2226" stroke-width="1.5"/><use href="#gnd" x="470" y="0"/>
+          <text x="302" y="-9" class="small">220Ω</text>
+        </g>
+      </defs>
+
+      <!-- ESP32 board -->
+      <rect x="30" y="40" width="160" height="460" rx="6" fill="#eef2f4" stroke="#1d2226" stroke-width="1.5"/>
+      <text class="lbl" x="34" y="30">ESP32 DevKit (esp32dev)</text>
+      <text class="small" x="44" y="486">pins grouped by function,</text>
+      <text class="small" x="44" y="496">not in header order</text>
+      <g text-anchor="end">
+        <text x="182" y="74">3V3</text>
+        <text x="182" y="114">GND</text>
+        <text x="182" y="154">GPIO21 SDA</text>
+        <text x="182" y="194">GPIO22 SCL</text>
+        <text x="182" y="234">GPIO23</text>
+        <text x="182" y="274">GPIO25</text>
+        <text x="182" y="314">GPIO26</text>
+        <text x="182" y="354">GPIO27</text>
+        <text x="182" y="394">GPIO32</text>
+        <text x="182" y="434">GPIO33</text>
+        <text x="182" y="474">VIN 5V</text>
+      </g>
+
+      <!-- Wires: dark outline under the colour so white wires stay visible on paper -->
+      <g stroke-linecap="round" fill="none">
+        <line x1="190" y1="70" x2="430" y2="70" stroke="#1d2226" stroke-width="4"/>
+        <line x1="190" y1="70" x2="430" y2="70" stroke="#ffffff" stroke-width="2"/>
+        <line x1="190" y1="110" x2="430" y2="110" stroke="#1d2226" stroke-width="7"/>
+        <line x1="190" y1="110" x2="430" y2="110" stroke="#5db4e6" stroke-width="5"/>
+        <line x1="190" y1="150" x2="430" y2="150" stroke="#1d2226" stroke-width="6"/>
+        <line x1="190" y1="150" x2="430" y2="150" stroke="#f08a1c" stroke-width="4"/>
+        <line x1="190" y1="190" x2="430" y2="190" stroke="#1d2226" stroke-width="7"/>
+        <line x1="190" y1="190" x2="430" y2="190" stroke="#ffffff" stroke-width="5"/>
+        <line x1="190" y1="230" x2="300" y2="230" stroke="#111111" stroke-width="5"/>
+        <line x1="190" y1="270" x2="430" y2="270" stroke="#8a8a8a" stroke-width="4" stroke-dasharray="7 4"/>
+        <line x1="190" y1="310" x2="433" y2="310" stroke="#1d2226" stroke-width="7"/>
+        <line x1="190" y1="310" x2="433" y2="310" stroke="#f2a1c2" stroke-width="5"/>
+        <line x1="190" y1="350" x2="300" y2="350" stroke="#8e5bb5" stroke-width="4" stroke-dasharray="2 4"/>
+        <line x1="190" y1="390" x2="300" y2="390" stroke="#7a4a25" stroke-width="5"/>
+        <line x1="190" y1="430" x2="300" y2="430" stroke="#2f8f3a" stroke-width="5"/>
+        <polyline points="190,470 250,470 250,545 300,545" stroke="#c0392b" stroke-width="3"/>
+      </g>
+
+      <!-- PN532 -->
+      <rect x="430" y="50" width="130" height="160" rx="4" fill="#ffffff" stroke="#1d2226" stroke-width="1.5"/>
+      <text class="lbl" x="440" y="44">PN532 NFC (I2C mode)</text>
+      <text x="438" y="74">VCC</text><text x="438" y="114">GND</text><text x="438" y="154">SDA</text><text x="438" y="194">SCL</text>
+      <text class="small" x="486" y="134">mode: I2C</text>
+
+      <!-- LEDs -->
+      <use href="#led" y="230"/><text class="lbl" x="490" y="234">SUCCESS LED</text>
+      <use href="#led" y="350"/><text class="lbl" x="490" y="354">IDLE LED</text><text class="small" x="560" y="354">new</text>
+      <use href="#led" y="390"/><text class="lbl" x="490" y="394">BUSY LED</text>
+      <use href="#led" y="430"/><text class="lbl" x="490" y="434">ERROR LED</text>
+
+      <!-- Relay and lock -->
+      <rect x="430" y="252" width="110" height="36" rx="3" fill="#ffffff" stroke="#1d2226" stroke-width="1.5"/>
+      <text x="438" y="274">IN</text><text class="lbl" x="470" y="274">RELAY</text>
+      <text class="small" x="432" y="298">DC+ → 5V · DC− → GND</text>
+      <text x="544" y="255" class="small">COM</text><text x="544" y="292" class="small">NO</text>
+      <g stroke="#1d2226" stroke-width="1.5" fill="none">
+        <polyline points="540,260 610,260 610,240 640,240"/>
+        <polyline points="540,280 700,280 700,240 680,240"/>
+      </g>
+      <rect x="640" y="228" width="40" height="24" fill="#ffffff" stroke="#1d2226" stroke-width="1.5"/>
+      <text class="small" x="647" y="244">LOCK</text>
+      <text class="small" x="590" y="220">+ 9V supply 2 in loop</text>
+
+      <!-- Buzzer -->
+      <circle cx="445" cy="310" r="12" fill="#ffffff" stroke="#1d2226" stroke-width="1.5"/>
+      <text x="441" y="313" class="small">+</text>
+      <line x1="457" y1="310" x2="476" y2="310" stroke="#1d2226" stroke-width="1.5"/><use href="#gnd" x="476" y="310"/>
+      <text class="lbl" x="490" y="314">BUZZER</text>
+
+      <!-- Power -->
+      <rect x="300" y="525" width="90" height="40" rx="3" fill="#ffffff" stroke="#1d2226" stroke-width="1.5"/>
+      <text class="lbl" x="316" y="549">L7805CV</text>
+      <text class="small" x="300" y="590">10µF in · 1µF out · diode on IN+</text>
+      <line x1="390" y1="545" x2="440" y2="545" stroke="#1d2226" stroke-width="1.5"/>
+      <rect x="440" y="530" width="80" height="30" rx="3" fill="#ffffff" stroke="#1d2226" stroke-width="1.5"/>
+      <text class="lbl" x="456" y="549">12V DC</text>
+      <text class="small" x="440" y="575">supply 1 (logic)</text>
+      <text class="small" x="196" y="520">5V → ESP32 VIN</text>
+      <text class="small" x="196" y="530">and relay DC+</text>
+      <line x1="345" y1="565" x2="345" y2="572" stroke="#1d2226" stroke-width="1.5"/><use href="#gnd" x="345" y="572"/>
+    </svg>
+  </section>
+
+  <section class="tbl">
+    <h2>Wire map</h2>
+    <table>
+      <thead><tr><th>Wire</th><th>Legacy pin</th><th>ESP32 pin</th><th>Goes to</th><th>Code</th></tr></thead>
+      <tbody>
+        <tr><td><span class="sw" style="background:#fff"></span>white, thick</td><td class="mono">D1</td><td class="mono">GPIO22</td><td>PN532 SCL</td><td class="mono">NFC_SCL</td></tr>
+        <tr><td><span class="sw" style="background:#f08a1c"></span>orange</td><td class="mono">D2</td><td class="mono">GPIO21</td><td>PN532 SDA</td><td class="mono">NFC_SDA</td></tr>
+        <tr><td><span class="sw thin" style="background:#fff"></span>white, thin</td><td class="mono">3V</td><td class="mono">3V3</td><td>PN532 VCC</td><td class="mono">—</td></tr>
+        <tr><td><span class="sw" style="background:#5db4e6"></span>light blue, thick</td><td class="mono">G</td><td class="mono">GND</td><td>PN532 GND, common ground</td><td class="mono">—</td></tr>
+        <tr><td><span class="sw" style="background:#f2a1c2"></span>pink, thick</td><td class="mono">D4</td><td class="mono">GPIO26</td><td>Buzzer +</td><td class="mono">SPEAKER</td></tr>
+        <tr><td><span class="sw none"></span>not recorded</td><td class="mono">D5 (was D0)</td><td class="mono">GPIO25</td><td>Relay IN (HIGH = open)</td><td class="mono">DOOR_PIN</td></tr>
+        <tr><td><span class="sw" style="background:#7a4a25"></span>brown</td><td class="mono">D6</td><td class="mono">GPIO32</td><td>Busy LED</td><td class="mono">BUSY_LED</td></tr>
+        <tr><td><span class="sw" style="background:#2f8f3a"></span>green</td><td class="mono">D7</td><td class="mono">GPIO33</td><td>Error LED</td><td class="mono">ERROR_LED</td></tr>
+        <tr><td><span class="sw" style="background:#111"></span>black</td><td class="mono">D8</td><td class="mono">GPIO23</td><td>Success LED</td><td class="mono">SUCCESS_LED</td></tr>
+        <tr><td><span class="sw" style="background:repeating-linear-gradient(90deg,#8e5bb5 0 3px,transparent 3px 6px);border-color:#8e5bb5"></span>new wire</td><td class="mono">—</td><td class="mono">GPIO27</td><td>Idle LED <span class="tag">add</span></td><td class="mono">IDLE_LED</td></tr>
+        <tr><td><span class="sw" style="background:#c0392b"></span>5V</td><td class="mono">VIN</td><td class="mono">VIN</td><td>L7805 out, relay DC+</td><td class="mono">—</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Notes</h2>
+    <div class="notes">
+      <p><b>Colours.</b> Each colour keeps the job it had on the legacy sheet. Only the pin at the board end changes: move it to the GPIO in the table.</p>
+      <p><b>Idle LED is back.</b> The legacy sheet merged Idle into Busy. The firmware drives a separate Idle LED on GPIO27 (on when online, blinking when offline). Pick any free colour and write it here: ________</p>
+      <p><b>Relay on GPIO25.</b> D0 moved to D5 because it went HIGH at boot and opened the lock. GPIO25 is not a strapping pin, so the lock stays shut on boot. Never use GPIO 0, 2, 5, 12 or 15 for the relay.</p>
+      <p><b>GND wire.</b> The legacy legend has the light blue G line crossed out. Check which wire carries ground before re-soldering. All grounds (ESP32, PN532, relay DC−, LEDs, buzzer, L7805) must be common.</p>
+      <p><b>Exit switch.</b> The legacy sheet ties the push switch into the relay input line. ESP32 GPIOs are 3.3V only: pressing the switch must never put 5V onto GPIO25.</p>
+      <p><b>PN532.</b> Runs in I2C mode on 3V3. Change the pins with NFC_SDA / NFC_SCL in config.h.</p>
+    </div>
+  </section>
+</div>
