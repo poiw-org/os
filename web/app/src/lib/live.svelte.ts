@@ -2,7 +2,7 @@ import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import { supabase } from '#lib/supabase.ts';
 
 export type LiveStatus = 'connecting' | 'live' | 'offline';
-type Table = 'profiles' | 'keys' | 'entries';
+type Table = 'profiles' | 'keys' | 'entries' | 'activity';
 type Row = Record<string, unknown>;
 
 let channels = 0;

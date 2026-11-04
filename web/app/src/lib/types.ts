@@ -58,6 +58,34 @@ export type Entry = {
 	openedBy: string | null;
 };
 
+export type ActivityKind =
+	| 'registered'
+	| 'onboarded'
+	| 'answers_edited'
+	| 'user_blocked'
+	| 'user_unblocked'
+	| 'admin_granted'
+	| 'admin_revoked'
+	| 'key_issued'
+	| 'key_renewed'
+	| 'key_disabled'
+	| 'key_enabled'
+	| 'key_tag_released'
+	| 'key_deleted';
+
+/** A change to a member or their keys, logged by the database when it happened. */
+export type Activity = {
+	id: number;
+	timestamp: Date;
+	userId: string;
+	/** Who made the change; null for the member's own sign-up and automatic changes. */
+	actorId: string | null;
+	kind: ActivityKind;
+	keyId: string | null;
+	serialNumber: string | null;
+	expiresAt?: Date;
+};
+
 export type UserOption = { value: string; label: string };
 
 export type CurrentUser = {

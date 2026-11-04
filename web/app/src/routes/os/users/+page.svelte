@@ -7,9 +7,12 @@
 		getUser,
 		isAdmin,
 		listAllKeys,
+		listActivity,
+		listAllUsers,
 		listEntries,
 		saveAnswers,
 		setAdmin,
+		toActivity,
 		toEntry,
 		toKeySummary
 	} from '#lib/api.ts';
@@ -21,10 +24,10 @@
 	import Loading from '#lib/loading.svelte';
 	import type { OnboardingAnswers } from '#lib/auth.ts';
 	import type { UserSummary } from '#lib/types.ts';
-	import ActivityRow from '#lib/ui/ActivityRow.svelte';
 	import Avatar from '#lib/ui/Avatar.svelte';
 	import Breadcrumb from '#lib/ui/Breadcrumb.svelte';
 	import KeyStatusBadge from '#lib/ui/KeyStatusBadge.svelte';
+	import Timeline from '#lib/ui/Timeline.svelte';
 	import V1Badge from '#lib/ui/V1Badge.svelte';
 	import VirtualBadge from '#lib/ui/VirtualBadge.svelte';
 
@@ -59,6 +62,19 @@
 		sort: (a, b) => b.timestamp.getTime() - a.timestamp.getTime(),
 		limit: 25
 	});
+
+	// Changes made to this member, written by database triggers; admins only (RLS).
+	const activity = liveRows({
+		table: 'activity',
+		filter: `user_id=eq.${userId}`,
+		load: () => listActivity(userId),
+		map: toActivity,
+		sort: (a, b) => b.timestamp.getTime() - a.timestamp.getTime(),
+		limit: 50
+	});
+	// Names for the people behind the changes.
+	let people = $state.raw(new Map<string, string>());
+	const actorName = (id: string) => people.get(id) ?? 'Unknown user';
 
 	let now = $state(Date.now());
 	$effect(() => {
@@ -100,6 +116,9 @@
 	};
 
 	onMount(async () => {
+		listAllUsers()
+			.then((all) => (people = new Map(all.map((u) => [u.id, withName(u)]))))
+			.catch(() => {});
 		getAnswers(userId)
 			.then((loaded) => {
 				answers = loaded;
@@ -152,146 +171,152 @@
 	<title>{user ? user.fullName || user.email : 'User'}</title>
 </svelte:head>
 
-<div class="flex max-w-4xl flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
+<div class="flex flex-col gap-8 px-4 py-6 md:px-8 md:py-10 lg:flex-row lg:items-start">
 	{#if loadError}
 		<span class="flex w-full justify-center px-10 pt-20 text-red-500">{loadError}</span>
 	{:else if !user || !keys.items}
 		<Loading />
 	{:else}
-		<Breadcrumb
-			crumbs={[{ label: 'Users', href: '/os' }, { label: user.fullName || user.email }]}
-		/>
+		<div class="flex max-w-4xl min-w-0 flex-1 flex-col gap-6">
+			<Breadcrumb
+				crumbs={[{ label: 'Users', href: '/os' }, { label: user.fullName || user.email }]}
+			/>
 
-		<div class="flex flex-wrap items-center justify-between gap-4">
-			<span class="flex items-center gap-4">
-				<Avatar email={user.email} size={56} />
-				<span class="flex flex-col">
-					<span class="text-xl font-bold break-all">{user.fullName || user.email}</span>
-					{#if user.fullName}<span class="break-all text-gray-400">{user.email}</span>{/if}
-					<span class="text-gray-400"
-						>{#if admin}<span class="text-ink">admin</span> ·
-						{/if}{keys.items.length} key{keys.items.length === 1 ? '' : 's'}{#if user.blocked}
-							· <span class="text-red-500">blocked</span>{/if}</span
-					>
-				</span>
-			</span>
-			<span class="flex flex-wrap gap-2">
-				{#if !self}
-					<button class="btn" onclick={toggleAdmin} disabled={changingRole}
-						>{admin ? 'Remove admin' : 'Make admin'}</button
-					>
-				{/if}
-				{#if !user.blocked}
-					<a href={resolve(`/os/items/create?user=${user.id}`)} class="btn btn-primary">Issue key</a
-					>
-				{/if}
-			</span>
-		</div>
-
-		<div class="flex flex-col gap-2">
-			<h2 class="font-bold">Questionnaire</h2>
-			{#if draft}
-				<form onsubmit={saveDraft} class="panel grid gap-4 p-4 sm:grid-cols-2">
-					<label class="flex flex-col gap-1.5">
-						<span class="eyebrow">First name</span>
-						<input required bind:value={draft.firstName} class="px-3 py-2" />
-					</label>
-					<label class="flex flex-col gap-1.5">
-						<span class="eyebrow">Last name</span>
-						<input required bind:value={draft.lastName} class="px-3 py-2" />
-					</label>
-					<label class="flex flex-col gap-1.5">
-						<span class="eyebrow">Studies</span>
-						<select bind:value={draft.studies} class="px-3 py-2">
-							<option value={true}>Yes</option>
-							<option value={false}>No</option>
-						</select>
-					</label>
-					{#if draft.studies}
-						<label class="flex flex-col gap-1.5">
-							<span class="eyebrow">Department</span>
-							<input required bind:value={draft.department} class="px-3 py-2" />
-						</label>
-					{/if}
-					<label class="flex flex-col gap-1.5">
-						<span class="eyebrow">How they found the lab</span>
-						<select bind:value={draft.referralSource} class="px-3 py-2">
-							{#each REFERRALS as [value, text] (value)}
-								<option {value}>{text}</option>
-							{/each}
-						</select>
-					</label>
-					<label class="flex flex-col gap-1.5">
-						<span class="eyebrow">Familiar with DIY equipment</span>
-						<select bind:value={draft.diyFamiliar} class="px-3 py-2">
-							<option value={true}>Yes</option>
-							<option value={false}>No</option>
-						</select>
-					</label>
-					<div class="flex gap-2 sm:col-span-2">
-						<button
-							type="submit"
-							class="btn btn-primary"
-							disabled={!answersChanged || savingAnswers}
+			<div class="flex flex-wrap items-center justify-between gap-4">
+				<span class="flex items-center gap-4">
+					<Avatar email={user.email} size={56} />
+					<span class="flex flex-col">
+						<span class="text-xl font-bold break-all">{user.fullName || user.email}</span>
+						{#if user.fullName}<span class="break-all text-gray-400">{user.email}</span>{/if}
+						<span class="text-gray-400"
+							>{#if admin}<span class="text-ink">admin</span> ·
+							{/if}{keys.items.length} key{keys.items.length === 1 ? '' : 's'}{#if user.blocked}
+								· <span class="text-red-500">blocked</span>{/if}</span
 						>
-							{savingAnswers ? 'Saving…' : 'Save answers'}
-						</button>
-						{#if answersChanged}
-							<button type="button" class="btn" onclick={() => answers && (draft = { ...answers })}
-								>Reset</button
-							>
+					</span>
+				</span>
+				<span class="flex flex-wrap gap-2">
+					{#if !self}
+						<button class="btn" onclick={toggleAdmin} disabled={changingRole}
+							>{admin ? 'Remove admin' : 'Make admin'}</button
+						>
+					{/if}
+					{#if !user.blocked}
+						<a href={resolve(`/os/items/create?user=${user.id}`)} class="btn btn-primary"
+							>Issue key</a
+						>
+					{/if}
+				</span>
+			</div>
+
+			<div class="flex flex-col gap-2">
+				<h2 class="font-bold">Questionnaire</h2>
+				{#if draft}
+					<form onsubmit={saveDraft} class="panel grid gap-4 p-4 sm:grid-cols-2">
+						<label class="flex flex-col gap-1.5">
+							<span class="eyebrow">First name</span>
+							<input required bind:value={draft.firstName} class="px-3 py-2" />
+						</label>
+						<label class="flex flex-col gap-1.5">
+							<span class="eyebrow">Last name</span>
+							<input required bind:value={draft.lastName} class="px-3 py-2" />
+						</label>
+						<label class="flex flex-col gap-1.5">
+							<span class="eyebrow">Studies</span>
+							<select bind:value={draft.studies} class="px-3 py-2">
+								<option value={true}>Yes</option>
+								<option value={false}>No</option>
+							</select>
+						</label>
+						{#if draft.studies}
+							<label class="flex flex-col gap-1.5">
+								<span class="eyebrow">Department</span>
+								<input required bind:value={draft.department} class="px-3 py-2" />
+							</label>
 						{/if}
-					</div>
-				</form>
-			{:else if answers === null}
-				<div class="panel">
-					<span class="block p-8 text-gray-400">Has not completed the questionnaire yet.</span>
-				</div>
-			{/if}
-		</div>
-
-		<div class="flex flex-col gap-2">
-			<h2 class="font-bold">Keys</h2>
-			<div class="panel">
-				{#each keys.items as key (key.id)}
-					<a href={resolve(`/os/items?id=${key.id}`)} in:arrive class="row">
-						<span class="flex min-w-0 flex-wrap items-baseline gap-x-4 gap-y-0.5">
-							<span class="font-mono text-[13px]">{shortId(key.id)}</span>
-							{#if key.serialNumber}<span class="font-mono text-xs text-gray-400"
-									>{key.serialNumber}</span
-								>{:else}<VirtualBadge />{/if}
-							{#if key.v1}<V1Badge />{/if}
-						</span>
-						<span class="flex shrink-0 items-center gap-4">
-							<span class="hidden text-xs text-gray-400 md:inline"
-								>until {formatDate(key.expiresAt).split(',')[0]}</span
+						<label class="flex flex-col gap-1.5">
+							<span class="eyebrow">How they found the lab</span>
+							<select bind:value={draft.referralSource} class="px-3 py-2">
+								{#each REFERRALS as [value, text] (value)}
+									<option {value}>{text}</option>
+								{/each}
+							</select>
+						</label>
+						<label class="flex flex-col gap-1.5">
+							<span class="eyebrow">Familiar with DIY equipment</span>
+							<select bind:value={draft.diyFamiliar} class="px-3 py-2">
+								<option value={true}>Yes</option>
+								<option value={false}>No</option>
+							</select>
+						</label>
+						<div class="flex gap-2 sm:col-span-2">
+							<button
+								type="submit"
+								class="btn btn-primary"
+								disabled={!answersChanged || savingAnswers}
 							>
-							<KeyStatusBadge status={keyStatus(key, new Date(now))} />
-						</span>
-					</a>
-				{:else}
-					<span class="block p-8 text-gray-400">This user has no keys yet.</span>
-				{/each}
+								{savingAnswers ? 'Saving…' : 'Save answers'}
+							</button>
+							{#if answersChanged}
+								<button
+									type="button"
+									class="btn"
+									onclick={() => answers && (draft = { ...answers })}>Reset</button
+								>
+							{/if}
+						</div>
+					</form>
+				{:else if answers === null}
+					<div class="panel">
+						<span class="block p-8 text-gray-400">Has not completed the questionnaire yet.</span>
+					</div>
+				{/if}
+			</div>
+
+			<div class="flex flex-col gap-2">
+				<h2 class="font-bold">Keys</h2>
+				<div class="panel">
+					{#each keys.items as key (key.id)}
+						<a href={resolve(`/os/items?id=${key.id}`)} in:arrive class="row">
+							<span class="flex min-w-0 flex-wrap items-baseline gap-x-4 gap-y-0.5">
+								<span class="font-mono text-[13px]">{shortId(key.id)}</span>
+								{#if key.serialNumber}<span class="font-mono text-xs text-gray-400"
+										>{key.serialNumber}</span
+									>{:else}<VirtualBadge />{/if}
+								{#if key.v1}<V1Badge />{/if}
+							</span>
+							<span class="flex shrink-0 items-center gap-4">
+								<span class="hidden text-xs text-gray-400 md:inline"
+									>until {formatDate(key.expiresAt).split(',')[0]}</span
+								>
+								<KeyStatusBadge status={keyStatus(key, new Date(now))} />
+							</span>
+						</a>
+					{:else}
+						<span class="block p-8 text-gray-400">This user has no keys yet.</span>
+					{/each}
+				</div>
 			</div>
 		</div>
 
-		<div class="flex flex-col gap-2">
-			<h2 class="font-bold">Recent entries</h2>
-			<div class="panel">
-				{#each entries.items ?? [] as entry (entry.id)}
-					<div in:arrive>
-						<ActivityRow
-							{entry}
-							{now}
-							label={entry.openedBy
-								? 'Web UI'
-								: (entry.keyId && serialByKey.get(entry.keyId)) || 'Deleted key'}
-						/>
-					</div>
-				{:else}
-					<span class="block p-8 text-gray-400">No entries for this user's keys yet.</span>
-				{/each}
+		<aside class="w-full lg:sticky lg:top-6 lg:w-80 lg:shrink-0 xl:w-96">
+			<div class="panel flex flex-col lg:max-h-[calc(100vh-6rem)]">
+				<div class="flex items-center justify-between border-b px-4 py-2.5">
+					<h2 class="eyebrow">Timeline</h2>
+					<span class="eyebrow"
+						>{(activity.items?.length ?? 0) + (entries.items?.length ?? 0)} events</span
+					>
+				</div>
+				<div class="overflow-y-auto p-4">
+					<Timeline
+						activity={activity.items ?? []}
+						entries={entries.items ?? []}
+						{now}
+						{actorName}
+						{serialByKey}
+					/>
+				</div>
 			</div>
-		</div>
+		</aside>
 	{/if}
 </div>

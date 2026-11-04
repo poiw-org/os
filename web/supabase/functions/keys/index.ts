@@ -127,7 +127,7 @@ async function issue(db: Db, callerId: string, body: Record<string, unknown>) {
   return { id };
 }
 
-async function renew(db: Db, body: Record<string, unknown>) {
+async function renew(db: Db, callerId: string, body: Record<string, unknown>) {
   const id = typeof body.id === "string" ? body.id : "";
   if (!id) throw new HttpError(400, "id is required");
   const { notBefore, expiresAt } = parseRange(body);
@@ -175,6 +175,7 @@ async function renew(db: Db, body: Record<string, unknown>) {
       not_before: notBefore.toISOString(),
       expires_at: expiresAt.toISOString(),
       jwt,
+      renewed_by: callerId, // the activity log's actor: the service role has no auth.uid()
     })
     .eq("id", id)
     .eq("disabled", false)
@@ -193,7 +194,7 @@ Deno.serve((req) =>
     const callerId = await requireAdmin(req, db);
 
     if (body.action === "issue") return await issue(db, callerId, body);
-    if (body.action === "renew") return await renew(db, body);
+    if (body.action === "renew") return await renew(db, callerId, body);
     throw new HttpError(400, "Unknown action");
   }),
 );

@@ -3,6 +3,8 @@ import type { OnboardingAnswers } from '#lib/auth.ts';
 import { withName } from '#lib/format.ts';
 import { supabase } from '#lib/supabase.ts';
 import {
+	type Activity,
+	type ActivityKind,
 	type EntryType,
 	type Entry,
 	type FailReason,
@@ -53,6 +55,20 @@ export const toEntry = (row: Raw): Entry => {
 		timestamp: new Date(row.created_at as string),
 		serialNumberFromTag: metadata.serialNumberFromTag,
 		openedBy: (row.opened_by as string | null) ?? null
+	};
+};
+
+export const toActivity = (row: Raw): Activity => {
+	const expires = ((row.detail ?? {}) as { expires_at?: string }).expires_at;
+	return {
+		id: row.id as number,
+		timestamp: new Date(row.created_at as string),
+		userId: row.user_id as string,
+		actorId: (row.actor_id as string | null) ?? null,
+		kind: row.kind as ActivityKind,
+		keyId: (row.key_id as string | null) ?? null,
+		serialNumber: (row.serial_number as string | null) ?? null,
+		expiresAt: expires ? new Date(expires) : undefined
 	};
 };
 
@@ -237,6 +253,18 @@ export async function listEntries(
 	const { data, error } = await query;
 	if (error) throw error;
 	return data.map(toEntry);
+}
+
+/** Newest first: the changes made to one member and their keys. */
+export async function listActivity(userId: string, limit = 50) {
+	const { data, error } = await supabase
+		.from('activity')
+		.select('id, created_at, user_id, actor_id, kind, key_id, serial_number, detail')
+		.eq('user_id', userId)
+		.order('created_at', { ascending: false })
+		.limit(limit);
+	if (error) throw error;
+	return data.map(toActivity);
 }
 
 // Edge functions answer failures with { error }, which is the message worth showing.

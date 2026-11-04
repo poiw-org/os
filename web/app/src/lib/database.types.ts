@@ -14,6 +14,21 @@ export type Database = {
 				Update: { user_id?: string };
 				Relationships: [];
 			};
+			activity: {
+				Row: {
+					actor_id: string | null;
+					created_at: string;
+					detail: Json;
+					id: number;
+					key_id: string | null;
+					kind: string;
+					serial_number: string | null;
+					user_id: string;
+				};
+				Insert: never;
+				Update: never;
+				Relationships: [];
+			};
 			doors: {
 				Row: { force_open: boolean; id: string; name: string | null };
 				Insert: { force_open?: boolean; id: string; name?: string | null };
@@ -79,6 +94,7 @@ export type Database = {
 					not_before: string;
 					serial_number: string | null;
 					serial_released: boolean;
+					renewed_by: string | null;
 					user_id: string;
 				};
 				Insert: {
@@ -95,6 +111,7 @@ export type Database = {
 					not_before: string;
 					serial_number?: string | null;
 					serial_released?: boolean;
+					renewed_by?: string | null;
 					user_id: string;
 				};
 				Update: {
@@ -111,6 +128,7 @@ export type Database = {
 					not_before?: string;
 					serial_number?: string | null;
 					serial_released?: boolean;
+					renewed_by?: string | null;
 					user_id?: string;
 				};
 				Relationships: [
