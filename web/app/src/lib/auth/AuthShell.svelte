@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import OsLabel from '#lib/ui/OsLabel.svelte';
-	import DotGrid from './DotGrid.svelte';
+	import Dither from './Dither.svelte';
 	import Lanyard from './Lanyard.svelte';
 
 	let { title, subtitle, children }: { title: string; subtitle?: string; children: Snippet } =
@@ -9,7 +9,20 @@
 </script>
 
 <div class="console">
-	<DotGrid />
+	<div class="fixed inset-0">
+		<Dither
+			waveColor="var(--color-brand-text)"
+			backgroundColor="var(--color-backing)"
+			ditherMode="bayer"
+			colorNum={4}
+			pixelSize={3}
+			waveSpeed={0.04}
+			waveFrequency={2.4}
+			waveAmplitude={0.35}
+			brightness={-0.12}
+			mouseRadius={0.35}
+		/>
+	</div>
 	<div class="fixed inset-0 hidden lg:block"><Lanyard /></div>
 	<header class="bar full fixed inset-x-0 top-0 z-10">
 		<a href="/" class="label"><OsLabel /></a>

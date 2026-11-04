@@ -1,4 +1,6 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
+import type { OnboardingAnswers } from '#lib/auth.ts';
+import { withName } from '#lib/format.ts';
 import { supabase } from '#lib/supabase.ts';
 import {
 	type EntryType,
@@ -15,14 +17,19 @@ import {
 export const DOOR_ID = 'front';
 
 const KEY_COLUMNS =
-	'id, serial_number, not_before, expires_at, issued_at, disabled, serial_released, jwt, legacy_id, user:profiles!user_id(id, email), issuer:profiles!issued_by(email)';
+	'id, serial_number, not_before, expires_at, issued_at, disabled, serial_released, jwt, legacy_id, user:profiles!user_id(id, email, first_name, last_name, onboarded_at), issuer:profiles!issued_by(email)';
 
 // Rows arrive in the same snake_case shape from queries and from realtime events.
 type Raw = Record<string, unknown>;
 
+// A name only counts once the member has completed the questionnaire.
+const fullNameOf = (row: Raw) =>
+	row.onboarded_at ? `${row.first_name ?? ''} ${row.last_name ?? ''}`.trim() : '';
+
 export const toUserSummary = (row: Raw): UserSummary => ({
 	id: row.id as string,
 	email: (row.email as string | null) ?? '',
+	fullName: fullNameOf(row),
 	blocked: row.blocked as boolean
 });
 
@@ -49,6 +56,7 @@ export const toEntry = (row: Raw): Entry => {
 	};
 };
 
+const USER_COLUMNS = 'id, email, blocked, first_name, last_name, onboarded_at';
 const KEY_SUMMARY_COLUMNS =
 	'id, user_id, serial_number, not_before, expires_at, disabled, legacy_id';
 const ENTRY_COLUMNS = 'id, key_id, type, reason, created_at, metadata, opened_by';
@@ -56,7 +64,7 @@ const ENTRY_COLUMNS = 'id, key_id, type, reason, created_at, metadata, opened_by
 export async function listAllUsers(): Promise<UserSummary[]> {
 	const { data, error } = await supabase
 		.from('profiles')
-		.select('id, email, blocked')
+		.select(USER_COLUMNS)
 		.not('email', 'is', null);
 	if (error) throw error;
 	return data.map(toUserSummary);
@@ -73,7 +81,7 @@ export async function listAllKeys(userId?: string): Promise<KeySummary[]> {
 export async function getUser(id: string): Promise<UserSummary | undefined> {
 	const { data, error } = await supabase
 		.from('profiles')
-		.select('id, email, blocked')
+		.select(USER_COLUMNS)
 		.eq('id', id)
 		.maybeSingle();
 	if (error) throw error;
@@ -118,12 +126,18 @@ function toKey(row: {
 	serial_released: boolean;
 	jwt: string | null;
 	legacy_id: string | null;
-	user: { id: string; email: string | null };
+	user: {
+		id: string;
+		email: string | null;
+		first_name: string | null;
+		last_name: string | null;
+		onboarded_at: string | null;
+	};
 	issuer: { email: string | null } | null;
 }): Key {
 	return {
 		id: row.id,
-		user: { id: row.user.id, email: row.user.email ?? '' },
+		user: { id: row.user.id, email: row.user.email ?? '', fullName: fullNameOf(row.user) },
 		serialNumber: row.serial_number,
 		notBefore: new Date(row.not_before),
 		expiresAt: new Date(row.expires_at),
@@ -177,12 +191,15 @@ export async function deleteKey(id: string) {
 export async function listUsers(): Promise<UserOption[]> {
 	const { data, error } = await supabase
 		.from('profiles')
-		.select('id, email')
+		.select('id, email, first_name, last_name, onboarded_at')
 		.eq('blocked', false)
 		.not('email', 'is', null)
 		.order('email');
 	if (error) throw error;
-	return data.map((user) => ({ value: user.id, label: user.email ?? '' }));
+	return data.map((user) => ({
+		value: user.id,
+		label: withName({ email: user.email ?? '', fullName: fullNameOf(user) })
+	}));
 }
 
 /**
@@ -660,4 +677,45 @@ export async function writeCardViaDoor(
 		// Give the cancel a moment to leave the socket before the channel goes away.
 		setTimeout(() => void supabase.removeChannel(channel), signal.aborted ? 300 : 0);
 	}
+}
+
+/** A member's questionnaire answers, or null until they have completed it. */
+export async function getAnswers(userId: string): Promise<OnboardingAnswers | null> {
+	const { data, error } = await supabase
+		.from('profiles')
+		.select(
+			'first_name, last_name, studies, department, referral_source, diy_familiar, onboarded_at'
+		)
+		.eq('id', userId)
+		.maybeSingle();
+	if (error) throw error;
+	if (!data?.onboarded_at) return null;
+	return {
+		firstName: data.first_name ?? '',
+		lastName: data.last_name ?? '',
+		studies: Boolean(data.studies),
+		department: data.department ?? '',
+		referralSource: data.referral_source as OnboardingAnswers['referralSource'],
+		diyFamiliar: Boolean(data.diy_familiar)
+	};
+}
+
+/** Admins correct a member's answers; the row stays onboarded and the database refuses gaps. */
+export async function saveAnswers(userId: string, a: OnboardingAnswers) {
+	const { data, error } = await supabase
+		.from('profiles')
+		.update({
+			first_name: a.firstName.trim(),
+			last_name: a.lastName.trim(),
+			studies: a.studies,
+			department: a.studies ? a.department.trim() : null,
+			referral_source: a.referralSource,
+			diy_familiar: a.diyFamiliar
+		})
+		.eq('id', userId)
+		.select('id');
+	if (error) throw error;
+	// Row-level security hides rows from an update instead of failing it, so an empty result means
+	// the database did not let this user change them.
+	if (!data?.length) throw new Error('Not allowed to edit this profile.');
 }

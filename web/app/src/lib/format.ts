@@ -23,3 +23,7 @@ export function timeAgo(date: Date, now = Date.now()) {
 	}
 	return 'just now';
 }
+
+/** "Full Name · email" once the member has a name on file, else just the email. */
+export const withName = (user: { email: string; fullName?: string }) =>
+	user.fullName ? `${user.fullName} · ${user.email}` : user.email;

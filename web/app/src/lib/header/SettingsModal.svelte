@@ -9,7 +9,7 @@
 		setPassword,
 		signOut
 	} from '#lib/auth.ts';
-	import { timeAgo } from '#lib/format.ts';
+	import { timeAgo, withName } from '#lib/format.ts';
 	import type { CurrentUser } from '#lib/types.ts';
 	import Avatar from '#lib/ui/Avatar.svelte';
 
@@ -135,7 +135,7 @@
 			<h2 id="settings-title" class="truncate text-base font-bold">
 				{user.nickname}
 			</h2>
-			<span class="truncate text-gray-400">{user.email}</span>
+			<span class="truncate text-gray-400">{withName(user)}</span>
 		</span>
 		<button
 			type="button"

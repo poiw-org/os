@@ -63,7 +63,7 @@ test.describe('signed in', () => {
 		await page.goto(`/os/users?id=${USERS[0].id}`);
 		await expect(page.getByText('Recent entries')).toBeVisible();
 		await expect(page.getByRole('link', { name: new RegExp(short(firstId)) })).toBeVisible();
-		await page.getByRole('link', { name: 'Issue key' }).click();
+		await page.getByRole('main').getByRole('link', { name: 'Issue key' }).click();
 		await expect(page.getByText('alice@example.test').first()).toBeVisible();
 	});
 

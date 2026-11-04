@@ -3,7 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { getKeyBySerialNumber, listAllKeys, listAllUsers, listEntries } from '#lib/api.ts';
 	import { toEntry, toKeySummary, toUserSummary } from '#lib/api.ts';
-	import { timeAgo } from '#lib/format.ts';
+	import { timeAgo, withName } from '#lib/format.ts';
 	import { liveRows } from '#lib/live.svelte.ts';
 	import { arrive } from '#lib/motion.ts';
 	import { nfcSupported, scanTag } from '#lib/nfc.ts';
@@ -184,7 +184,7 @@
 	const pickable = $derived(
 		(users.items ?? [])
 			.filter((user) => user.email)
-			.map((user) => ({ value: user.id, label: user.email }))
+			.map((user) => ({ value: user.id, label: withName(user) }))
 	);
 	const shownEntries = $derived(filtered ? results : activity.items);
 
@@ -195,12 +195,19 @@
 		return () => clearInterval(timer);
 	});
 
+	const withNameOrFallback = (
+		user: { email: string; fullName: string } | undefined,
+		fallback: string
+	) => (user ? withName(user) : fallback);
 	const keysByUser = $derived(Map.groupBy(keys.items ?? [], (key) => key.userId));
 	const emailByKey = $derived(
 		new Map(
 			(keys.items ?? []).map((key) => [
 				key.id,
-				users.items?.find((user) => user.id === key.userId)?.email ?? 'Unknown user'
+				withNameOrFallback(
+					users.items?.find((user) => user.id === key.userId),
+					'Unknown user'
+				)
 			])
 		)
 	);
@@ -241,6 +248,7 @@
 				if (!query) return showAll || keys.length > 0;
 				return (
 					user.email.toLowerCase().includes(query) ||
+					user.fullName.toLowerCase().includes(query) ||
 					keys.some(
 						(key) =>
 							key.serialNumber?.toLowerCase().includes(query) ||
@@ -349,7 +357,10 @@
 						<a href={resolve(`/os/users?id=${user.id}`)} in:arrive class="row">
 							<span class="flex min-w-0 items-center gap-3">
 								<Avatar email={user.email} size={32} />
-								<span class="truncate">{user.email}</span>
+								<span class="truncate">
+									{#if user.fullName}<span class="font-bold">{user.fullName}</span>
+										<span class="text-gray-400">{user.email}</span>{:else}{user.email}{/if}
+								</span>
 								{#if user.blocked}<span class="text-xs text-red-500">blocked</span>{/if}
 								{#if seen}
 									<span
@@ -417,7 +428,10 @@
 						{entry}
 						{now}
 						label={entry.openedBy
-							? (users.items?.find((user) => user.id === entry.openedBy)?.email ?? 'An admin')
+							? withNameOrFallback(
+									users.items?.find((user) => user.id === entry.openedBy),
+									'An admin'
+								)
 							: (entry.keyId && emailByKey.get(entry.keyId)) || 'Deleted key'}
 					/>
 				</div>

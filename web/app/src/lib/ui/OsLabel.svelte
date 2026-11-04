@@ -29,7 +29,7 @@
 		display: inline-block;
 		vertical-align: bottom;
 		overflow: hidden;
-		max-width: 6em;
+		max-width: 9em;
 		opacity: 1;
 		transition:
 			max-width 700ms cubic-bezier(0.22, 1, 0.36, 1),

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { withName } from '#lib/format.ts';
 	import type { Snippet } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -232,7 +233,7 @@
 				<Avatar email={user.email} size={40} />
 				<span class="flex min-w-0 flex-1 flex-col">
 					<span class="truncate font-mono font-bold">{user.nickname}</span>
-					<span class="truncate text-gray-400">{user.email}</span>
+					<span class="truncate text-gray-400">{withName(user)}</span>
 				</span>
 				<span class="shrink-0 text-gray-400">Settings</span>
 			</button>

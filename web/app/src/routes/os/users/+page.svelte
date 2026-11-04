@@ -3,20 +3,23 @@
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import {
+		getAnswers,
 		getUser,
 		isAdmin,
 		listAllKeys,
 		listEntries,
+		saveAnswers,
 		setAdmin,
 		toEntry,
 		toKeySummary
 	} from '#lib/api.ts';
-	import { formatDate, shortId } from '#lib/format.ts';
+	import { formatDate, shortId, withName } from '#lib/format.ts';
 	import { liveRows } from '#lib/live.svelte.ts';
 	import { ask, toast } from '#lib/notify.svelte.ts';
 	import { arrive } from '#lib/motion.ts';
 	import { keyStatus } from '#lib/status.ts';
 	import Loading from '#lib/loading.svelte';
+	import type { OnboardingAnswers } from '#lib/auth.ts';
 	import type { UserSummary } from '#lib/types.ts';
 	import ActivityRow from '#lib/ui/ActivityRow.svelte';
 	import Avatar from '#lib/ui/Avatar.svelte';
@@ -67,7 +70,42 @@
 		new Map((keys.items ?? []).map((key) => [key.id, key.serialNumber]))
 	);
 
+	const REFERRALS: [OnboardingAnswers['referralSource'], string][] = [
+		['friend', 'A friend'],
+		['welcome_day', 'Freshmen welcome day'],
+		['newsletter', 'Newsletter'],
+		['campaign', 'Promotional campaign']
+	];
+	// The member's questionnaire answers: undefined while loading, null when not yet completed.
+	let answers = $state<OnboardingAnswers | null>();
+	let draft = $state<OnboardingAnswers>();
+	let savingAnswers = $state(false);
+	const answersChanged = $derived(
+		Boolean(answers && draft && JSON.stringify(answers) !== JSON.stringify(draft))
+	);
+
+	const saveDraft = async (event: SubmitEvent) => {
+		event.preventDefault();
+		if (!draft || !user) return;
+		savingAnswers = true;
+		try {
+			await saveAnswers(userId, draft);
+			answers = { ...draft };
+			user = { ...user, fullName: `${draft.firstName} ${draft.lastName}`.trim() };
+			toast.success('Answers saved.');
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'Could not save the answers.');
+		}
+		savingAnswers = false;
+	};
+
 	onMount(async () => {
+		getAnswers(userId)
+			.then((loaded) => {
+				answers = loaded;
+				draft = loaded ? { ...loaded } : undefined;
+			})
+			.catch(() => (answers = null));
 		try {
 			[user, admin] = userId
 				? await Promise.all([getUser(userId), isAdmin(userId)])
@@ -84,13 +122,13 @@
 			admin
 				? {
 						title: 'Remove admin?',
-						message: `${user.email} will no longer manage users, keys or the door. Their own keys keep working.`,
+						message: `${withName(user)} will no longer manage users, keys or the door. Their own keys keep working.`,
 						confirmLabel: 'Remove admin',
 						tone: 'danger'
 					}
 				: {
 						title: 'Make admin?',
-						message: `${user.email} will be able to manage every user, key and the door, including other admins.`,
+						message: `${withName(user)} will be able to manage every user, key and the door, including other admins.`,
 						confirmLabel: 'Make admin'
 					}
 		);
@@ -100,7 +138,7 @@
 			await setAdmin(user.id, !admin);
 			admin = !admin;
 			toast.success(
-				admin ? `${user.email} is now an admin.` : `${user.email} is no longer an admin.`
+				admin ? `${withName(user)} is now an admin.` : `${withName(user)} is no longer an admin.`
 			);
 		} catch (e) {
 			toast.error(e instanceof Error ? e.message : 'Could not change the role.');
@@ -111,7 +149,7 @@
 </script>
 
 <svelte:head>
-	<title>{user?.email ?? 'User'}</title>
+	<title>{user ? user.fullName || user.email : 'User'}</title>
 </svelte:head>
 
 <div class="flex max-w-4xl flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
@@ -120,13 +158,16 @@
 	{:else if !user || !keys.items}
 		<Loading />
 	{:else}
-		<Breadcrumb crumbs={[{ label: 'Users', href: '/os' }, { label: user.email }]} />
+		<Breadcrumb
+			crumbs={[{ label: 'Users', href: '/os' }, { label: user.fullName || user.email }]}
+		/>
 
 		<div class="flex flex-wrap items-center justify-between gap-4">
 			<span class="flex items-center gap-4">
 				<Avatar email={user.email} size={56} />
 				<span class="flex flex-col">
-					<span class="text-xl font-bold break-all">{user.email}</span>
+					<span class="text-xl font-bold break-all">{user.fullName || user.email}</span>
+					{#if user.fullName}<span class="break-all text-gray-400">{user.email}</span>{/if}
 					<span class="text-gray-400"
 						>{#if admin}<span class="text-ink">admin</span> ·
 						{/if}{keys.items.length} key{keys.items.length === 1 ? '' : 's'}{#if user.blocked}
@@ -145,6 +186,68 @@
 					>
 				{/if}
 			</span>
+		</div>
+
+		<div class="flex flex-col gap-2">
+			<h2 class="font-bold">Questionnaire</h2>
+			{#if draft}
+				<form onsubmit={saveDraft} class="panel grid gap-4 p-4 sm:grid-cols-2">
+					<label class="flex flex-col gap-1.5">
+						<span class="eyebrow">First name</span>
+						<input required bind:value={draft.firstName} class="px-3 py-2" />
+					</label>
+					<label class="flex flex-col gap-1.5">
+						<span class="eyebrow">Last name</span>
+						<input required bind:value={draft.lastName} class="px-3 py-2" />
+					</label>
+					<label class="flex flex-col gap-1.5">
+						<span class="eyebrow">Studies</span>
+						<select bind:value={draft.studies} class="px-3 py-2">
+							<option value={true}>Yes</option>
+							<option value={false}>No</option>
+						</select>
+					</label>
+					{#if draft.studies}
+						<label class="flex flex-col gap-1.5">
+							<span class="eyebrow">Department</span>
+							<input required bind:value={draft.department} class="px-3 py-2" />
+						</label>
+					{/if}
+					<label class="flex flex-col gap-1.5">
+						<span class="eyebrow">How they found the lab</span>
+						<select bind:value={draft.referralSource} class="px-3 py-2">
+							{#each REFERRALS as [value, text] (value)}
+								<option {value}>{text}</option>
+							{/each}
+						</select>
+					</label>
+					<label class="flex flex-col gap-1.5">
+						<span class="eyebrow">Familiar with DIY equipment</span>
+						<select bind:value={draft.diyFamiliar} class="px-3 py-2">
+							<option value={true}>Yes</option>
+							<option value={false}>No</option>
+						</select>
+					</label>
+					<div class="flex gap-2 sm:col-span-2">
+						<button
+							type="submit"
+							class="btn btn-primary"
+							disabled={!answersChanged || savingAnswers}
+						>
+							{savingAnswers ? 'Saving…' : 'Save answers'}
+						</button>
+						{#if answersChanged}
+							<button type="button" class="btn" onclick={() => answers && (draft = { ...answers })}
+								>Reset</button
+							>
+						{/if}
+					</div>
+				</form>
+			{:else if answers === null}
+				<div class="panel">
+					<span class="block p-8 text-gray-400">Has not completed the questionnaire yet.</span>
+				</div>
+			{/if}
 		</div>
 
 		<div class="flex flex-col gap-2">

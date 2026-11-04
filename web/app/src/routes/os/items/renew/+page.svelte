@@ -5,7 +5,7 @@
 	import { onMount } from 'svelte';
 	import { DateInput } from 'date-picker-svelte';
 	import { getKey, renewKey } from '#lib/api.ts';
-	import { shortId } from '#lib/format.ts';
+	import { shortId, withName } from '#lib/format.ts';
 	import { toast } from '#lib/notify.svelte.ts';
 	import Loading from '#lib/loading.svelte';
 	import type { Key } from '#lib/types.ts';
@@ -48,7 +48,7 @@
 		class="flex flex-col items-start justify-start px-4 py-6 md:px-8 md:py-10"
 	>
 		<h1 class="text-xl font-bold">Renew {shortId(key.id)}</h1>
-		<p class="mt-1 text-gray-400">{key.user.email}</p>
+		<p class="mt-1 text-gray-400">{withName(key.user)}</p>
 		<span class="mt-10 flex gap-4">
 			<span class="flex flex-col gap-2">
 				<span>Activate not before</span>

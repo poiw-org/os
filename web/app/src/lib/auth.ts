@@ -23,7 +23,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 
 	const { data: profile } = await supabase
 		.from('profiles')
-		.select('nickname, onboarded_at')
+		.select('nickname, onboarded_at, first_name, last_name')
 		.eq('id', session.user.id)
 		.maybeSingle();
 
@@ -33,6 +33,9 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 		email,
 		nickname: profile?.nickname ?? email,
 		isAdmin,
+		fullName: profile?.onboarded_at
+			? `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim()
+			: '',
 		onboarded: Boolean(profile?.onboarded_at),
 		canUnlock: Boolean(canUnlock),
 		pendingEmail: session.user.new_email,

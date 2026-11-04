@@ -12,7 +12,7 @@
 		setKeyDisabled,
 		toEntry
 	} from '#lib/api.ts';
-	import { formatDate, formatDateTime, shortId } from '#lib/format.ts';
+	import { formatDate, formatDateTime, shortId, withName } from '#lib/format.ts';
 	import { liveRows, watchTable } from '#lib/live.svelte.ts';
 	import { arrive } from '#lib/motion.ts';
 	import { nfcSupported, scanTag } from '#lib/nfc.ts';
@@ -255,7 +255,7 @@
 			crumbs={admin
 				? [
 						{ label: 'Users', href: '/os' },
-						{ label: key.user.email, href: `/os/users?id=${key.user.id}` },
+						{ label: withName(key.user), href: `/os/users?id=${key.user.id}` },
 						{ label: shortId(key.id) }
 					]
 				: [{ label: 'My keys', href: '/os/keys' }, { label: shortId(key.id) }]}
@@ -316,7 +316,7 @@
 		{/if}
 
 		<dl class="panel text-sm">
-			{#each [['User', key.user.email], ['Tag S/N', key.serialNumber ? key.serialNumber + (key.serialReleased ? ' (released)' : '') : 'Virtual (no tag)'], ['Valid not before', formatDate(key.notBefore)], ['Expires at', formatDate(key.expiresAt)], ['Issued at', formatDate(key.issuedAt)], ['Issued by', key.issuedBy || '-']] as [label, value] (label)}
+			{#each [['User', withName(key.user)], ['Tag S/N', key.serialNumber ? key.serialNumber + (key.serialReleased ? ' (released)' : '') : 'Virtual (no tag)'], ['Valid not before', formatDate(key.notBefore)], ['Expires at', formatDate(key.expiresAt)], ['Issued at', formatDate(key.issuedAt)], ['Issued by', key.issuedBy || '-']] as [label, value] (label)}
 				<div class="row">
 					<dt class="text-gray-400">{label}</dt>
 					<dd class="min-w-0 text-right break-all {label === 'Tag S/N' ? 'font-mono' : ''}">

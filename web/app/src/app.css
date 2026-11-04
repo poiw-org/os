@@ -293,6 +293,30 @@
 		color: #fff;
 	}
 
+	/* Chart bar: a level-meter column of lit purple segments on a recessed track; an empty day is
+	   just the dark track. */
+	.bar-fill,
+	.bar-empty {
+		border: 1px solid var(--color-gray-200);
+		border-bottom-width: 0;
+		border-radius: 0;
+	}
+	.bar-fill {
+		background-color: var(--color-brand);
+		background-image: repeating-linear-gradient(
+			to top,
+			transparent 0 6px,
+			var(--color-gray-200) 6px 8px
+		);
+		box-shadow:
+			inset 2px 0 0 oklch(100% 0 0 / 0.45),
+			inset -2px 0 0 oklch(0% 0 0 / 0.35);
+	}
+	.bar-empty {
+		background: var(--color-backing);
+		box-shadow: inset 1px 1px 3px oklch(0% 0 0 / 0.4);
+	}
+
 	/* List row inside a .panel, or a standalone data card. */
 	.row {
 		display: flex;

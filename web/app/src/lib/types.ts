@@ -12,9 +12,10 @@ export enum FailReason {
 	SERIAL_NUMBER_MISMATCH = 'SerialNumberMismatch'
 }
 
-export type KeyUser = { id: string; email: string };
+/** `fullName` is empty until the member has answered the questionnaire. */
+export type KeyUser = { id: string; email: string; fullName: string };
 
-export type UserSummary = { id: string; email: string; blocked: boolean };
+export type UserSummary = { id: string; email: string; fullName: string; blocked: boolean };
 
 export type KeySummary = {
 	id: string;
@@ -62,6 +63,8 @@ export type UserOption = { value: string; label: string };
 export type CurrentUser = {
 	id: string;
 	email: string;
+	/** Empty until the member has answered the questionnaire. */
+	fullName: string;
 	nickname: string;
 	/** Admins manage keys; everyone else sees and disables their own. */
 	isAdmin: boolean;

@@ -14,7 +14,7 @@ const screens: [name: string, path: string, ready: string][] = [
 for (const [name, path, ready] of screens) {
 	test(`visual: ${name}`, async ({ page }) => {
 		await page.goto(path);
-		await expect(page.getByText(ready).first()).toBeVisible();
+		await expect(page.getByText(ready, { exact: true }).first()).toBeVisible();
 		await page.evaluate(() => document.fonts.ready);
 		await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: true });
 	});

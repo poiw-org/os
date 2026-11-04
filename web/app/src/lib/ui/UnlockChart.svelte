@@ -173,7 +173,8 @@
 						style="bottom:{(average / peak) * MAX_BAR}px"
 						aria-hidden="true"
 					>
-						<span class="absolute right-0 -translate-y-1/2 text-[10px] leading-4 text-gray-400"
+						<span
+							class="absolute right-0 -translate-y-1/2 font-mono text-[10px] leading-4 tracking-widest text-gray-400 uppercase"
 							>avg</span
 						>
 					</div>
@@ -199,9 +200,9 @@
 							{/each}
 						</span>
 						<span
-							class="w-full max-w-8 rounded-t-sm transition-[height] duration-400 ease-(--ease-out) {column.count
-								? 'bg-brand'
-								: 'bg-gray-200'}"
+							class="w-full max-w-8 transition-[height] duration-400 ease-(--ease-out) {column.count
+								? 'bar-fill'
+								: 'bar-empty'}"
 							style="height:{barHeight(column.count)}px"
 						></span>
 					</div>
@@ -210,14 +211,16 @@
 			<div class="flex gap-1 pt-2 pr-9" aria-hidden="true">
 				{#each columns as column, i (column.date.getTime())}
 					<span
-						class="flex min-w-0 flex-1 flex-col items-center text-[10px] leading-4 {column.today ||
+						class="flex min-w-0 flex-1 flex-col items-center font-mono text-[10px] leading-4 {column.today ||
 						selected === i
 							? 'font-bold text-ink'
 							: 'text-gray-400'}"
 					>
 						{column.date.getDate()}
 						{#if i === 0 || column.date.getDate() === 1}
-							<span class="font-normal text-gray-400">{month(column.date)}</span>
+							<span class="font-normal tracking-widest text-gray-400 uppercase"
+								>{month(column.date)}</span
+							>
 						{/if}
 					</span>
 				{/each}
