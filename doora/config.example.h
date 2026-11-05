@@ -20,3 +20,9 @@
 #define BUSY_LED 32
 #define ERROR_LED 33
 #define SUCCESS_LED 23
+
+// Updates over Wi-Fi (optional; README.md, "Updates over Wi-Fi"). `python3 tools/ota_keygen.py` creates
+// the private key and password in ~/.doora and prints these two lines. Neither is secret: the door
+// only gets the MD5 of the password and the public half of the signing key.
+// #define OTA_PASSWORD_MD5 "..."
+// #define OTA_SIGNING_KEY { 0x.., ... }

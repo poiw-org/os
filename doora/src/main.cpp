@@ -15,6 +15,7 @@
 #include "Journal.h"
 #include "Jwt.h"
 #include "Log.h"
+#include "Ota.h"
 #include "Persist.h"
 #include "Pins.h"
 #include "Reader.h"
@@ -232,6 +233,9 @@ void setup() {
 
 	reader.begin(NFC_SDA, NFC_SCL);
 	cloud.begin(settings, clock_, blacklist, signingKey);
+	char host[48];
+	snprintf(host, sizeof(host), "doora-%s", settings.doorId);  // the Wi-Fi hostname too
+	Ota::begin(host);
 }
 
 void loop() {

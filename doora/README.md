@@ -122,6 +122,32 @@ pio device monitor     # console, 115200 baud
 `make build|upload|monitor|test` are shortcuts for the same commands. The board is `esp32dev`; change
 `board` in `platformio.ini` for other ESP32 modules.
 
+#### Updates over Wi-Fi (optional)
+
+Once a door runs firmware with OTA enabled, later builds can go over Wi-Fi:
+
+```sh
+python3 tools/ota_keygen.py          # once: creates ~/.doora/ota_key.pem and ~/.doora/ota_password,
+                                     # prints OTA_PASSWORD_MD5 and OTA_SIGNING_KEY for config.h
+pio run -t upload                    # once over USB, so the door has OTA and your public key
+pio run -e ota -t upload             # from then on; set upload_port in platformio.ini or pass
+                                     # --upload-port doora-<door id>.local (or the door's IP)
+```
+
+- **The signature is the lock that matters.** Every build signs `firmware.bin` (RSA-2048, SHA-256)
+  with the private key in `~/.doora` and appends the signature (`tools/ota.py`). After an upload the
+  door reads the image back from flash and checks it against the public key in its firmware. Only a
+  valid image becomes the boot partition; anything else is discarded and the door keeps running its
+  current firmware (`OTA: the image is not signed with this door's key`). This matters because espota
+  sends the image over a second TCP connection that is not authenticated.
+- **The password** only stops casual uploads. espota proves it with a challenge, and the door
+  stores only its MD5.
+- **Filesystem uploads are refused.** They cannot be signed, and replacing the flash storage would
+  wipe the blacklist.
+- Keep `~/.doora/ota_key.pem` safe: whoever holds it can put firmware on the door. To replace it,
+  run `ota_keygen.py` with a new `DOORA_OTA_KEY` path, update `config.h` and flash once over USB.
+  Without the two `config.h` lines OTA stays off and the build is unsigned (USB only).
+
 ### 4. First boot
 
 With no stored configuration the door asks for everything over serial (115200 baud) and stores it in

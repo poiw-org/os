@@ -43,13 +43,22 @@ bool connect(WiFiClientSecure& tls, const char* host, uint32_t timeoutMs) {
 
 bool waitReadable(WiFiClientSecure& tls, uint32_t ms) {
 	if (tls.available() > 0) return true;  // already decrypted and waiting
+	// Every false return must have waited: the callers loop on this until their deadline, and one
+	// that came back at once would spin the task and starve the idle task into the watchdog (seen
+	// when an OTA upload left lwIP short of buffers and select() failed).
+	auto timedOut = [ms]() {
+		vTaskDelay(pdMS_TO_TICKS(ms) ? pdMS_TO_TICKS(ms) : 1);
+		return false;
+	};
 	int fd = tls.fd();
-	if (fd < 0) return false;
+	if (fd < 0) return timedOut();
 	fd_set readable;
 	FD_ZERO(&readable);
 	FD_SET(fd, &readable);
 	timeval limit = {(time_t)(ms / 1000), (suseconds_t)((ms % 1000) * 1000)};
-	if (select(fd + 1, &readable, nullptr, nullptr, &limit) <= 0) return false;
+	int ready = select(fd + 1, &readable, nullptr, nullptr, &limit);
+	if (ready < 0) return timedOut();
+	if (ready == 0) return false;  // select() waited the full time
 	if (tls.available() > 0) return true;  // reading the record decrypts it
 	// Readable yet nothing to deliver: a partial record (the next select waits for the rest), or
 	// the peer closed. A closed socket stays readable forever, so end it here instead of spinning.
