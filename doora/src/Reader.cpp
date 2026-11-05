@@ -31,6 +31,11 @@ constexpr uint8_t kLastPage = 230;   // Type 2 user memory ends at page 225 on a
 // Pages per FAST_READ: 240 bytes, which keeps the answer inside one normal PN532 frame.
 constexpr size_t kFastPages = 60;
 static_assert(kFastPages * 4 <= Pn532::kMaxThroughData, "a FAST_READ answer must fit one frame");
+// Sector trailer parts for NDEF formatting (NXP AN1304): MAD key A and access bits + GPB (MAD v1),
+// and the access bits of the NDEF data sectors.
+constexpr uint8_t kMadKey[6] = {0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5};
+constexpr uint8_t kMadAccess[4] = {0x78, 0x77, 0x88, 0xC1};
+constexpr uint8_t kNdefAccess[4] = {0x7F, 0x07, 0x88, 0x40};
 constexpr uint8_t kLastBlock = 63;   // MIFARE Classic 1K
 constexpr uint8_t kDefaultKey[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};  // factory key B
 constexpr size_t kClassicDataBlocks = 45;  // 3 data blocks in each of sectors 1 to 15
@@ -369,10 +374,11 @@ WriteState Reader::writeType2(const Pn532::Target& target) {
 	return WriteState::Done;
 }
 
-// MIFARE Classic cards that are already formatted for NDEF (readable with the NDEF key A, which
-// is also what the door reads them with). Their data blocks are normally written with key B, the
-// factory default; key A is tried too in case the card allows it. A failed authentication leaves
-// the card halted, so the card is found again before each new key. Blocks go last first.
+// MIFARE Classic cards. A card that is not NDEF formatted yet (factory keys) is formatted first
+// (NXP layout: MAD in sector 0, the NDEF key A on sectors 1 to 15). Data blocks are then written
+// with key B, the factory default; key A is tried too in case the card allows it. A failed
+// authentication leaves the card halted, so the card is found again before each new key. Blocks go
+// last first.
 WriteState Reader::writeClassic(const Pn532::Target& target) {
 	size_t blocks = (jobLen_ + 15) / 16;
 	if (blocks > kClassicDataBlocks) return WriteState::TooSmall;
@@ -389,9 +395,35 @@ WriteState Reader::writeClassic(const Pn532::Target& target) {
 		Pn532::Target again;
 		return pn_.detect(again) == Pn532::Detect::Found;
 	};
+	// Finds the card again, authenticates the block's sector and writes the block.
+	auto put = [&](uint8_t type, const uint8_t* key, uint8_t block, const uint8_t* data) {
+		if (!refind() || !auth(type, key, block)) return false;
+		uint8_t cmd[18] = {0xA0, block};
+		memcpy(cmd + 2, data, 16);
+		uint8_t r[1];
+		return pn_.exchange(cmd, sizeof(cmd), r, sizeof(r)) >= 0;
+	};
 
-	// Only touch cards we can read back.
-	if (!auth(0x60, kNdefKey, 4)) return WriteState::Unsupported;
+	// Only touch cards we can read back, or blank ones we can format.
+	if (!auth(0x60, kNdefKey, 4)) {
+		if (!refind() || !auth(0x60, kDefaultKey, 4)) return WriteState::Unsupported;
+		// Sectors 15 to 1 first, the MAD and its trailer last: a card pulled away half way is not
+		// advertised as NDEF.
+		uint8_t trailer[16];
+		memcpy(trailer, kNdefKey, 6);
+		memcpy(trailer + 6, kNdefAccess, 4);
+		memcpy(trailer + 10, kDefaultKey, 6);
+		for (uint8_t sector = 15; sector >= 1; sector--)
+			if (!put(0x60, kDefaultKey, sector * 4 + 3, trailer)) return WriteState::Failed;
+		uint8_t mad[16] = {0x14, 0x01};  // CRC, info byte, then sectors 1 to 7
+		for (int i = 2; i < 16; i += 2) { mad[i] = 0x03; mad[i + 1] = 0xE1; }
+		if (!put(0x60, kDefaultKey, 1, mad)) return WriteState::Failed;
+		for (int i = 0; i < 16; i += 2) { mad[i] = 0x03; mad[i + 1] = 0xE1; }  // sectors 8 to 15
+		if (!put(0x60, kDefaultKey, 2, mad)) return WriteState::Failed;
+		memcpy(trailer, kMadKey, 6);
+		memcpy(trailer + 6, kMadAccess, 4);
+		if (!put(0x60, kDefaultKey, 3, trailer)) return WriteState::Failed;
+	}
 
 	// Data blocks 4, 5, 6, 8, ... (every fourth block is a sector trailer).
 	uint8_t list[kClassicDataBlocks];
@@ -401,20 +433,9 @@ WriteState Reader::writeClassic(const Pn532::Target& target) {
 		list[i] = b;
 	}
 	for (size_t i = blocks; i-- > 0;) {
-		struct Attempt { uint8_t type; const uint8_t* key; };
-		const Attempt attempts[] = {{0x61, kDefaultKey}, {0x60, kNdefKey}};
-		bool written = false;
-		for (const Attempt& a : attempts) {
-			if (!refind()) return WriteState::Failed;
-			uint8_t cmd[18] = {0xA0, list[i]};
-			memcpy(cmd + 2, job_ + i * 16, 16);
-			uint8_t r[1];
-			if (auth(a.type, a.key, list[i]) && pn_.exchange(cmd, sizeof(cmd), r, sizeof(r)) >= 0) {
-				written = true;
-				break;
-			}
-		}
-		if (!written) return WriteState::Failed;
+		if (!put(0x61, kDefaultKey, list[i], job_ + i * 16) &&
+		    !put(0x60, kNdefKey, list[i], job_ + i * 16))
+			return WriteState::Failed;
 	}
 
 	if (!refind()) return WriteState::Failed;

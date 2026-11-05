@@ -36,9 +36,10 @@ tag ──► read token ──► verify signature (v2: RS256 with the public k
   accepts a token it can verify with its own signing secret, then waits 60 s for the tag named in the
   token's audience (no tap opens the door meanwhile), writes it as an NDEF text record, reads it back
   and reports `write_card_status` (`ready`, `wrong_tag`, `writing`, `done` or a failure). NFC Forum
-  Type 2 tags (NTAG213 is too small for most keys; use NTAG215/216) and MIFARE Classic cards that are
-  already NDEF-formatted (readable with the NDEF key A; written with key B, the factory default, else
-  key A; a blank card is refused and never touched; only the data blocks are written, no MAD). It beeps the attention tone
+  Type 2 tags (NTAG213 is too small for most keys; use NTAG215/216) and MIFARE Classic 1K cards
+  (NDEF-formatted ones are written with key B, the factory default, else key A; a blank card with
+  factory keys is formatted automatically first: MAD plus the NDEF key A, which erases any data on it;
+  a card with other keys is refused untouched). It beeps the attention tone
   while waiting, a faster tone while writing, and the happy chord when done.
 - **Account.** The door signs in as a normal Supabase user listed in `public.door_users`. It can read
   keys, call `door_sync()` and `door_log()`, and use its own channel. It cannot read entries, change keys

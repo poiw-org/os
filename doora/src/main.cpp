@@ -249,7 +249,6 @@ void loop() {
 	}
 	serviceWriter();
 	if (cloud.takeForceOpen()) actuators.forceOpen();
-	actuators.setOnline(cloud.online());
 	actuators.service();
 	if (actuators.takeForcedOpen()) onForcedOpened();
 

@@ -2,6 +2,7 @@
 // opening the door never blocks the loop (the websocket and NFC keep running meanwhile).
 //
 // The speaker must be a passive buzzer (or piezo): chimes are tones from the ESP32's LEDC timer.
+// The ERROR, SUCCESS and BUSY LEDs are the red, green and blue of one RGB LED, driven by PWM.
 #pragma once
 #include <stdint.h>
 #include "WriteState.h"
@@ -23,14 +24,16 @@ class Actuators {
 	// the tag, a faster one while writing, the happy chord when done, the sad one when it failed.
 	void writer(WriteState s);
 	void reading(bool on);       // busy LED while a tag is being read
-	void setOnline(bool online); // idle LED: solid when connected, blinking when running offline
 	bool busy() const { return doorOn_ || denying_ || forcing_; }
 
  private:
 	void write(uint8_t pin, bool on);
 	void tone(uint16_t hz);
+	void daydream(uint32_t ms, uint8_t duty[3]);
 	bool doorOn_ = false, denying_ = false, forcing_ = false, forcedOpened_ = false;
-	bool reading_ = false, online_ = false;
+	bool reading_ = false;
+	uint8_t dreamFrom_[3] = {0, 0, 0}, dreamTo_[3] = {0, 0, 0};
+	uint32_t dreamStart_ = 0, dreamDur_ = 0;
 	enum class Writer : uint8_t { Off, Waiting, Writing, Finished } writer_ = Writer::Off;
 	WriteState writerSeen_ = WriteState::Idle;
 	uint32_t writerStart_ = 0;

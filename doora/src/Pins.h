@@ -20,9 +20,6 @@
 #ifndef NFC_SCL
 #define NFC_SCL 22
 #endif
-#ifndef IDLE_LED
-#define IDLE_LED 27
-#endif
 #ifndef BUSY_LED
 #define BUSY_LED 32
 #endif

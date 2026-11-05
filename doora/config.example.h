@@ -14,9 +14,8 @@
 #define DOOR_PIN 25
 #define SPEAKER 26
 
-// Status LEDs. IDLE: online / blinking when offline. BUSY: reading a tag. ERROR: access denied.
-// SUCCESS: door opening.
-#define IDLE_LED 27
+// Status LED, the red, green and blue of one RGB LED. BUSY (blue): reading a tag. ERROR (red): access
+// denied. SUCCESS (green): door opening. All three daydream dimly when idle.
 #define BUSY_LED 32
 #define ERROR_LED 33
 #define SUCCESS_LED 23

@@ -43,6 +43,7 @@ struct Chip {
 	uint8_t keyB[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 	bool authedB = false;
 	bool classic = true;
+	bool factory = false;        // Classic: key A may write (blank card with transport keys)
 	int authedSector = -1;
 	uint8_t flat[4096];          // tag memory: Classic block b at b * 16, Type 2 page p at p * 4
 	bool readOnly = false;       // refuses writes
@@ -105,7 +106,11 @@ void process() {
 			if (status) {
 			} else if (t.size() >= 2 && (t[0] == 0x60 || t[0] == 0x61)) {  // AUTH_A / AUTH_B, block, key, uid
 				bool b = t[0] == 0x61;
-				bool ok = t.size() == 12 && !memcmp(&t[2], b ? chip.keyB : chip.key, 6) &&
+				// A blank card keeps each sector's key A in its trailer (transport key until written).
+				uint8_t blank[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+				const uint8_t* tr = chip.flat + (t.size() > 1 ? t[1] / 4 * 4 + 3 : 0) * 16;
+				const uint8_t* keyA = !chip.factory ? chip.key : memcmp(tr, "\0\0\0\0\0\0", 6) ? tr : blank;
+				bool ok = t.size() == 12 && !memcmp(&t[2], b ? chip.keyB : keyA, 6) &&
 				          !memcmp(&t[8], chip.uid.data() + chip.uid.size() - 4, 4);
 				if (ok) {
 					chip.authedSector = t[1] / 4;
@@ -129,8 +134,10 @@ void process() {
 				if (chip.readOnly) status = 0x01;
 				else memcpy(chip.flat + t[1] * 4, &t[2], 4);
 			} else if (t.size() == 18 && t[0] == 0xA0 && chip.classic) {  // WRITE one 16-byte block (needs key B)
-				if (chip.authedSector != t[1] / 4 || !chip.authedB || chip.readOnly) status = 0x01;
-				else memcpy(chip.flat + t[1] * 16, &t[2], 16);
+				if (chip.authedSector != t[1] / 4 || (!chip.authedB && !chip.factory) || chip.readOnly) status = 0x01;
+				else {
+					memcpy(chip.flat + t[1] * 16, &t[2], 16);
+				}
 			} else {
 				status = 0x01;
 			}
@@ -472,6 +479,20 @@ static void testReader() {
 	CHECK(reader.writeState() == WriteState::Done && !reader.take());
 	CHECK(!memcmp(chip.flat + 4 * 16, msg, 16) && !memcmp(chip.flat + 6 * 16, msg + 32, 16) &&
 	      (n <= 48 || !memcmp(chip.flat + 8 * 16, msg + 48, 16)));  // blocks 4, 5, 6, then past the trailer to 8
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
+	// A blank card (factory keys) is formatted, then written and read back.
+	chip.factory = true;
+	memset(chip.flat, 0, sizeof(chip.flat));
+	CHECK(reader.arm(TOKEN, strlen(TOKEN), chip.uid.data(), 4, 60000));
+	chip.tagPresent = true;
+	reader.poll();
+	CHECK(reader.writeState() == WriteState::Done);
+	CHECK(chip.flat[63 * 16] == 0xD3 && chip.flat[1 * 16] == 0x14 && chip.flat[63 * 16 + 6] == 0x7F);
+	CHECK(!memcmp(chip.flat + 4 * 16, msg, 16));
+	chip.factory = false;
 	chip.tagPresent = false;
 	reader.poll();
 	g_nowUs += 700000;

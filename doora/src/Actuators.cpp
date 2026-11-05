@@ -10,6 +10,10 @@ constexpr uint32_t kOpenMs = 3000;
 constexpr uint32_t kSuccessMs = 1300;
 constexpr uint32_t kDenyLedMs = 3300;
 constexpr uint8_t kToneChannel = 0;
+// PWM for the LEDs. Channels 0 and 1 share the speaker's timer, whose frequency the tones retune.
+constexpr uint8_t kLedChannel[3] = {2, 3, 4};  // red (ERROR), green (SUCCESS), blue (BUSY)
+constexpr uint8_t kLedPin[3] = {ERROR_LED, SUCCESS_LED, BUSY_LED};
+constexpr int32_t kDreamMax = 100;  // of 255, squared into duty: about 15% at the brightest
 }  // namespace
 
 void Actuators::write(uint8_t pin, bool on) { digitalWrite(pin, on ? HIGH : LOW); }
@@ -22,11 +26,16 @@ void Actuators::tone(uint16_t hz) {
 
 void Actuators::begin() {
 	// Outputs go low before anything else can run.
-	for (uint8_t pin : {(uint8_t)DOOR_PIN, (uint8_t)SPEAKER, (uint8_t)IDLE_LED, (uint8_t)BUSY_LED,
-	                    (uint8_t)ERROR_LED, (uint8_t)SUCCESS_LED}) {
+	for (uint8_t pin : {(uint8_t)DOOR_PIN, (uint8_t)SPEAKER, (uint8_t)BUSY_LED, (uint8_t)ERROR_LED,
+	                    (uint8_t)SUCCESS_LED}) {
 		digitalWrite(pin, LOW);
 		pinMode(pin, OUTPUT);
 		digitalWrite(pin, LOW);
+	}
+	for (uint8_t i = 0; i < 3; i++) {
+		ledcSetup(kLedChannel[i], 5000, 8);
+		ledcAttachPin(kLedPin[i], kLedChannel[i]);
+		ledcWrite(kLedChannel[i], 0);
 	}
 	ledcSetup(kToneChannel, 2000, 8);
 	ledcAttachPin(SPEAKER, kToneChannel);
@@ -73,7 +82,6 @@ void Actuators::writer(WriteState s) {
 }
 
 void Actuators::reading(bool on) { reading_ = on; }
-void Actuators::setOnline(bool online) { online_ = online; }
 
 void Actuators::service() {
 	uint32_t ms = millis();
@@ -117,8 +125,38 @@ void Actuators::service() {
 
 	tone(hz);
 	write(DOOR_PIN, doorOn_);
-	write(SUCCESS_LED, success);
-	write(ERROR_LED, error);
-	write(BUSY_LED, reading_ || warning);
-	write(IDLE_LED, online_ || (ms / 500) % 2);
+
+	// Red, green and blue are the ERROR, SUCCESS and BUSY LEDs. Events drive them at full duty; with
+	// nothing going on they daydream.
+	uint8_t duty[3] = {0, 0, 0};
+	if (error || success || reading_ || warning) {
+		duty[0] = error ? 255 : 0;
+		duty[1] = success ? 255 : 0;
+		duty[2] = reading_ || warning ? 255 : 0;
+		dreamDur_ = 0;  // the next quiet moment starts a fresh drift
+	} else if (writer_ == Writer::Off) {
+		daydream(ms, duty);
+	}
+	for (uint8_t i = 0; i < 3; i++) ledcWrite(kLedChannel[i], duty[i]);
+}
+
+// A slow drift between random dim colours. Levels are 0..kDreamMax and squared into PWM duty, so low
+// levels are nearly dark; one target in four is black, held for longer, so the lamp sometimes goes out.
+void Actuators::daydream(uint32_t ms, uint8_t duty[3]) {
+	if (ms - dreamStart_ >= dreamDur_) {
+		memcpy(dreamFrom_, dreamTo_, sizeof dreamFrom_);
+		dreamStart_ = ms;
+		if (random(4) == 0) {
+			memset(dreamTo_, 0, sizeof dreamTo_);
+			dreamDur_ = 3000 + random(4000);
+		} else {
+			for (uint8_t& v : dreamTo_) v = random(kDreamMax + 1);
+			dreamDur_ = 2000 + random(3000);
+		}
+	}
+	int32_t t = (int32_t)((ms - dreamStart_) * 256 / dreamDur_);
+	for (uint8_t i = 0; i < 3; i++) {
+		int32_t v = dreamFrom_[i] + ((int32_t)dreamTo_[i] - dreamFrom_[i]) * t / 256;
+		duty[i] = (uint8_t)(v * v / 255);
+	}
 }
