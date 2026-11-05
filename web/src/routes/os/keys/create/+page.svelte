@@ -130,7 +130,7 @@
 			onsubmit={submit}
 			class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]"
 		>
-			<div class="panel">
+			<div class="panel overflow-visible">
 				<section class="flex gap-4 p-5 md:p-6">
 					<div class="flex min-w-0 flex-1 flex-col gap-4">
 						<div>

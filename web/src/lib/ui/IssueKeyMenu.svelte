@@ -47,7 +47,7 @@
 	onkeydown={(event) => event.key === 'Escape' && (open = false)}
 />
 
-<span bind:this={root} class={inline ? 'block w-full' : 'relative inline-flex'}>
+<span bind:this={root} class={inline ? 'contents' : 'relative inline-flex'}>
 	<button
 		type="button"
 		class="{trigger} {inline ? 'w-full' : ''}"
@@ -68,7 +68,7 @@
 		>
 	</button>
 	{#if open}
-		<ul class="list {inline ? 'inline' : 'float'} {align === 'right' ? 'right-0' : 'left-0'}">
+		<ul class="list" class:stacked={inline} class:floating={!inline} class:end={align === 'right'}>
 			{#each kinds as kind (kind.type)}
 				<li>
 					<a href={href(kind.type)} onclick={choose}>
@@ -91,27 +91,33 @@
 	}
 	.list {
 		z-index: 30;
-		width: 20rem;
-		max-width: calc(100vw - 2rem);
 		margin: 0;
 		padding: 0;
 		list-style: none;
 		text-align: left;
-		background: var(--c-plate);
-		color: var(--c-plate-ink);
+		background: var(--c-cell);
+		color: var(--c-text);
 		border: 1px solid var(--c-seam);
-		box-shadow: var(--bevel-up);
+		box-shadow:
+			inset 1px 1px 0 var(--c-edge),
+			0 8px 24px oklch(0% 0 0 / 0.45);
 		animation: menu-in var(--dur-base) var(--ease-out);
 	}
-	.float {
+	.floating {
 		position: absolute;
 		top: calc(100% + 0.25rem);
+		left: 0;
+		width: 20rem;
+		max-width: calc(100vw - 2rem);
+		transform-origin: top left;
+	}
+	.floating.end {
+		left: auto;
+		right: 0;
 		transform-origin: top right;
 	}
-	.inline {
-		margin-top: 0.5rem;
-		width: 100%;
-		max-width: none;
+	.stacked {
+		grid-column: 1 / -1;
 	}
 	.list li + li {
 		border-top: 1px solid var(--c-seam);
@@ -121,6 +127,7 @@
 		flex-direction: column;
 		gap: 0.25rem;
 		padding: 0.75rem 1rem;
+		color: inherit;
 		text-decoration: none;
 		letter-spacing: normal;
 		text-transform: none;
@@ -129,15 +136,23 @@
 	}
 	.list a:hover,
 	.list a:focus-visible {
-		background: var(--c-plate-hover);
+		background: var(--c-chassis);
+		outline: none;
+	}
+	.list a:focus-visible {
+		box-shadow: inset 2px 0 0 var(--c-signal-hi);
 	}
 	.list strong {
-		font-size: 0.875rem;
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		font-weight: 700;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
 	}
 	.list span {
 		font-size: 0.8125rem;
 		line-height: 1.35;
-		color: var(--c-plate-mute);
+		color: var(--c-mute);
 	}
 	@keyframes menu-in {
 		from {

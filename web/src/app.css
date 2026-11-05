@@ -455,3 +455,127 @@ body,
 .cursor-not-allowed {
 	cursor: var(--cursor-refused);
 }
+
+/* date-picker-svelte: its own styles are unlayered, so overrides must be too. Square, bevelled
+   hardware look like .btn; colours come from the app tokens so it inverts inside .light sheets. */
+.date-time-field {
+	--date-input-width: 100%;
+	display: block;
+	width: 100%;
+	--bevel-raised:
+		inset 1px 1px 0 oklch(100% 0 0 / 0.14), inset -1px -1px 0 oklch(0% 0 0 / 0.25);
+	--bevel-sunk: inset 1px 1px 3px oklch(0% 0 0 / 0.4), inset -1px -1px 0 oklch(100% 0 0 / 0.1);
+}
+.date-time-field > input[type='text'] {
+	box-sizing: border-box;
+	width: 100%;
+	min-height: 2.5rem;
+	padding: 0 0.75rem;
+	border: 1px solid var(--color-gray-200);
+	border-radius: 0;
+	background: var(--color-backing);
+	box-shadow: var(--bevel-sunk);
+	color: var(--color-ink);
+	font-family: var(--font-mono);
+	font-size: 0.8125rem;
+	letter-spacing: 0.08em;
+}
+.date-time-field > input[type='text']::placeholder {
+	color: var(--color-gray-400);
+	font-family: var(--font-sans);
+	letter-spacing: normal;
+}
+.date-time-field > input[type='text']:focus-visible {
+	border-color: var(--color-brand-text);
+	box-shadow: var(--bevel-sunk);
+}
+.date-time-field .date-time-picker {
+	width: 17.5rem;
+	max-width: calc(100vw - 2rem);
+	padding: 0.5rem;
+	border: 1px solid var(--color-gray-200);
+	border-radius: 0;
+	background: var(--color-paper-2);
+	box-shadow:
+		var(--bevel-raised),
+		4px 4px 0 oklch(0% 0 0 / 0.55);
+}
+.date-time-field .date-time-picker .top {
+	gap: 0.25rem;
+	margin-bottom: 0.5rem;
+}
+.date-time-field .date-time-picker .page-button,
+.date-time-field .date-time-picker .dropdown select {
+	height: 2rem;
+	border: 1px solid var(--color-gray-200);
+	border-radius: 0;
+	background: var(--color-paper);
+	box-shadow: var(--bevel-raised);
+	color: var(--color-ink);
+}
+.date-time-field .date-time-picker .page-button {
+	display: grid;
+	place-items: center;
+	width: 2rem;
+}
+.date-time-field .date-time-picker .page-button:hover,
+.date-time-field .date-time-picker .dropdown select:hover {
+	background: var(--color-backing);
+}
+.date-time-field .date-time-picker .page-button:active {
+	box-shadow: var(--bevel-sunk);
+}
+.date-time-field .date-time-picker .page-button svg {
+	width: 0.6rem;
+	height: 0.6rem;
+	fill: currentColor;
+}
+.date-time-field .date-time-picker .dropdown select {
+	font-family: var(--font-mono);
+	font-size: 0.75rem;
+	letter-spacing: 0.04em;
+}
+.date-time-field .date-time-picker .dropdown svg {
+	fill: var(--color-gray-400);
+}
+.date-time-field .date-time-picker .header {
+	margin-bottom: 0.25rem;
+	border-bottom: 1px solid var(--color-gray-200);
+}
+.date-time-field .date-time-picker .header-cell {
+	color: var(--color-gray-400);
+	font-family: var(--font-mono);
+	font-size: 0.6875rem;
+	font-weight: 400;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+.date-time-field .date-time-picker .cell {
+	border: 1px solid transparent;
+	border-radius: 0;
+	font-family: var(--font-mono);
+	font-size: 0.75rem;
+}
+.date-time-field .date-time-picker .cell:not(.disabled):not(.selected):hover {
+	border-color: var(--color-gray-200);
+	background: var(--color-paper);
+	box-shadow: var(--bevel-raised);
+}
+.date-time-field .date-time-picker .cell.other-month {
+	color: var(--color-gray-300);
+	opacity: 0.5;
+}
+.date-time-field .date-time-picker .cell.today {
+	border-color: var(--color-brand-text);
+	color: var(--color-brand-text);
+}
+.date-time-field .date-time-picker .cell.selected,
+.date-time-field .date-time-picker .cell.selected.today {
+	border-color: var(--color-brand);
+	background: var(--color-brand);
+	box-shadow: var(--bevel-sunk);
+	color: #fff;
+}
+.date-time-field .date-time-picker .cell.disabled {
+	opacity: 0.3;
+}
