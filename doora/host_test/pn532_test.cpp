@@ -33,6 +33,7 @@ struct Chip {
 	size_t pos = 0;
 	bool statusReady = false;
 	int aborts = 0, exchanges = 0;
+	uint64_t freezeUs = 0;  // next "not ready" status poll is followed by this long a stall of the host CPU
 
 	bool tagPresent = false;
 	uint8_t sak = 0x08;
@@ -179,6 +180,8 @@ uint8_t SoftI2c::read(bool) {
 }
 
 void SoftI2c::stop() {
+	// A flash write on the other core freezes this one; time (and the chip) move on meanwhile.
+	if (chip.reading && !chip.statusReady && chip.freezeUs) { g_nowUs += chip.freezeUs; chip.freezeUs = 0; }
 	if (chip.writing) process();
 	if (chip.reading && chip.statusReady && chip.pos > 1 && !chip.out.empty()) chip.out.pop_front();  // delivered
 	chip.reading = chip.writing = false;
@@ -608,6 +611,13 @@ int main() {
 	CHECK(pn.exchange(read4, 2, r, sizeof(r)) == Pn532::kErrFrame);
 	chip.corruptDcs = false;
 	CHECK(pn.exchange(read4, 2, r, sizeof(r)) == 16);
+
+	// The host is frozen past every deadline right after a "not ready" poll (a flash write on the other
+	// core): the answer that arrived meanwhile still counts, and the chip is not aborted mid-command.
+	int abortsBefore = chip.aborts;
+	chip.freezeUs = 400000;
+	CHECK(pn.detect(t) == Pn532::Detect::Found);
+	CHECK(chip.freezeUs == 0 && chip.aborts == abortsBefore);
 
 	// A chip that stops answering costs a bounded wait, is told to abort, and recovers afterwards.
 	chip.silent = true;

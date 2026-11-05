@@ -31,12 +31,16 @@ bool Pn532::waitReady(uint32_t timeoutMs) {
 	uint32_t startMs = millis();
 	uint32_t spinUntilUs = micros() + kSpinUs;
 	for (;;) {
+		// The deadline is read before the poll, so the chip is always asked once more after it has
+		// passed: a flash write elsewhere can freeze this core for longer than a timeout, and the
+		// answer that arrived meanwhile must not be thrown away (and the chip aborted mid-command).
+		bool late = millis() - startMs >= timeoutMs;
 		if (i2c_.start(kAddr, true)) {
 			if (i2c_.read(true) & 1) return true;
 			i2c_.read(false);  // not ready: finish the transfer
 			i2c_.stop();
 		}
-		if (i2c_.stuck() || millis() - startMs >= timeoutMs) return false;
+		if (i2c_.stuck() || late) return false;
 		if ((int32_t)(micros() - spinUntilUs) < 0) delayMicroseconds(100);
 		else vTaskDelay(1);
 	}

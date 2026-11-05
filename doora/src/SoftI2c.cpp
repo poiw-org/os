@@ -60,7 +60,11 @@ bool SoftI2c::sclRelease() {
 	level(scl_, 1);
 	uint32_t t0 = micros();
 	while (!sample(scl_)) {
-		if (micros() - t0 > kStretchUs) {
+		// Look at the line once more after the deadline: a flash write on the other core can freeze
+		// this one between the sample and the clock check, and a stretch that ended meanwhile is not
+		// a stuck bus. Giving up there abandoned the PN532 half way through a byte, which can leave it
+		// holding SCL low until it loses power.
+		if (micros() - t0 > kStretchUs && !sample(scl_)) {
 			stuck_ = true;
 			return false;
 		}
