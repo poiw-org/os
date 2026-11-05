@@ -50,6 +50,12 @@ class Reader {
 	void cancelWrite();
 	WriteState writeState() const { return writeState_.load(std::memory_order_acquire); }
 	void printStatus() const;
+	// Keeps the reader off the bus for `ms`: the denial chord plays right after a tap and a wedge
+	// followed it, so the chip is left alone while it sounds.
+	void holdOff(uint32_t ms) {
+		holdUntilMs_.store(millis() + ms, std::memory_order_release);
+		holding_.store(true, std::memory_order_release);
+	}
 
  private:
 	static void run(void* self);
@@ -77,6 +83,8 @@ class Reader {
 	uint8_t sda_ = 0, scl_ = 0;
 	uint8_t errors_ = 0;
 	bool present_ = false;  // a tag that was already handed out is still on the reader (reader task only)
+	std::atomic<uint32_t> holdUntilMs_{0};
+	std::atomic<bool> holding_{false};
 	std::atomic<bool> rearm_{false};  // set by arm(): forget present_, the resting tag is the write target
 	uint8_t retries_ = 0;   // reads of the present tag that failed on the radio link
 	uint32_t nextProbeMs_ = 0;

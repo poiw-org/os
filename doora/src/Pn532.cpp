@@ -161,13 +161,15 @@ Pn532::Detect Pn532::detect(Target& out) {
 	// frame: an answer that does not fit would read as a bus error and keep resetting the chip.
 	uint8_t r[kMaxThroughData + 1];
 	int n = command(cmd, sizeof(cmd), r, sizeof(r), kDetectMs);
+	lastError_ = n;
 	if (n < 0) return Detect::Error;
 	if (n < 1 || r[0] == 0) return Detect::None;
 	// NbTg, Tg, SENS_RES (2), SEL_RES, NFCID length, NFCID...
-	if (n < 6 || r[5] > sizeof(out.uid) || n < 6 + r[5]) return Detect::Error;
+	if (n < 6 || r[5] > sizeof(out.uid) || n < 6 + r[5]) { lastError_ = kErrFrame; return Detect::Error; }
 	out.sak = r[4];
 	out.uidLen = r[5];
 	memcpy(out.uid, r + 6, out.uidLen);
+	if (!out.uidLen) lastError_ = kErrFrame;
 	return out.uidLen ? Detect::Found : Detect::Error;
 }
 

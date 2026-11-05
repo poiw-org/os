@@ -175,7 +175,7 @@ void Reader::loop() {
 			ready_ = probe();
 			if (ready_) errors_ = 0;
 			else {
-				LOG("PN532 still not answering.");
+				LOG("PN532 still not answering (SDA %d, SCL %d).", pn_.lines() & 1, pn_.lines() >> 1);
 				nextProbeMs_ = millis() + kRetryEveryMs;
 			}
 		} else {
@@ -199,6 +199,10 @@ void Reader::checkDeadline() {
 
 void Reader::poll() {
 	uint32_t ms = millis();
+	if (holding_.load(std::memory_order_acquire)) {
+		if ((int32_t)(ms - holdUntilMs_.load(std::memory_order_acquire)) < 0) return;
+		holding_.store(false, std::memory_order_release);
+	}
 	if (ms - lastCheckMs_ >= kHealthEveryMs) {
 		lastCheckMs_ = ms;
 		// One missed answer on a bit-banged bus is not a dead chip: reset it at once (probe() retries
@@ -221,7 +225,8 @@ void Reader::poll() {
 		case Pn532::Detect::Error:
 			if (++errors_ >= kMaxErrors) {  // reset the bus and the chip before giving up on it
 				errors_ = 0;
-				LOG("PN532 failed %u polls in a row; resetting it.", (unsigned)kMaxErrors);
+				LOG("PN532 failed %u polls in a row (last error %d: -1 bus, -2 timeout, -3 frame); resetting it.", (unsigned)kMaxErrors,
+				    pn_.lastError());
 				ready_ = probe();
 				if (!ready_) LOG("PN532 stopped answering; retrying in the background.");
 			}

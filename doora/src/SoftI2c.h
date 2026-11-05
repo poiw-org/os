@@ -15,6 +15,7 @@ class SoftI2c {
 	void stop();
 	// SCL was held low for longer than any slave should: every call fails until begin().
 	bool stuck() const { return stuck_; }
+	int lines();  // releases both lines, then reads them: bit 0 SDA, bit 1 SCL, 1 = high
 
  private:
 	bool sclRelease();

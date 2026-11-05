@@ -34,7 +34,8 @@ bool connect(WiFiClientSecure& tls, const char* host, uint32_t timeoutMs) {
 	if (!tls.connect(host, 443, (int32_t)timeoutMs)) {
 		char err[80] = "";
 		tls.lastError(err, sizeof(err));
-		LOG("TLS connect to %s failed (%s).", host, err);
+		LOG("TLS connect to %s failed (%s; heap %lu free, lowest %lu, largest block %lu).", host, err,
+		    (unsigned long)ESP.getFreeHeap(), (unsigned long)ESP.getMinFreeHeap(), (unsigned long)ESP.getMaxAllocHeap());
 		return false;
 	}
 	tls.setNoDelay(true);

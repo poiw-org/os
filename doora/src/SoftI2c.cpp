@@ -129,3 +129,10 @@ void SoftI2c::stop() {
 	level(sda_, 1);  // STOP: SDA rises while SCL is high
 	halfBit();
 }
+
+int SoftI2c::lines() {
+	level(sda_, 1);
+	level(scl_, 1);
+	delayMicroseconds(10);
+	return sample(sda_) | sample(scl_) << 1;
+}

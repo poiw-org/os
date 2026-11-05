@@ -158,6 +158,7 @@ void SoftI2c::begin(uint8_t sda, uint8_t scl) {
 }
 bool SoftI2c::sclRelease() { return true; }
 void SoftI2c::recover() {}
+int SoftI2c::lines() { return 3; }
 
 bool SoftI2c::start(uint8_t addr7, bool read) {
 	g_nowUs += 20;
@@ -251,6 +252,20 @@ static void testReader() {
 	g_nowUs += 700000;
 	reader.poll();
 	chip.tagPresent = true;
+	reader.poll();
+	CHECK(reader.take() && reader.take()->token);
+	reader.release();
+
+	// While held off (the denial chord plays) the reader leaves the chip alone, then carries on.
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
+	reader.holdOff(1000);
+	chip.tagPresent = true;
+	reader.poll();
+	CHECK(!reader.take());
+	g_nowUs += 1100000;
 	reader.poll();
 	CHECK(reader.take() && reader.take()->token);
 	reader.release();

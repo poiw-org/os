@@ -25,6 +25,8 @@ class Pn532 {
 
 	// Resets the bus, finds the chip and configures it. False when it is missing.
 	bool begin(uint8_t sda, uint8_t scl);
+	int lines() { return i2c_.lines(); }
+	int lastError() const { return lastError_; }  // why the latest detect() returned Error (kErr*)
 	uint32_t version() const { return version_; }  // IC << 24 | firmware major << 16 | minor << 8
 	bool ping();
 
@@ -52,4 +54,5 @@ class Pn532 {
 
 	SoftI2c i2c_;
 	uint32_t version_ = 0;
+	int lastError_ = 0;
 };

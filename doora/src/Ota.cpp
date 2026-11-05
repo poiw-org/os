@@ -80,8 +80,10 @@ void onError(ota_error_t e) {
 	ArduinoOTA.onProgress(onProgress);
 	ArduinoOTA.onEnd(onEnd);
 	ArduinoOTA.onError(onError);
+	uint32_t before = ESP.getFreeHeap();
 	ArduinoOTA.begin();
-	LOG("OTA: listening as %s.local.", gHostname);
+	LOG("OTA: listening as %s.local (listener uses %ld bytes of heap, plus a %u byte task stack).", gHostname,
+	    (long)before - (long)ESP.getFreeHeap(), (unsigned)kTaskStack);
 	for (;;) {
 		ArduinoOTA.handle();
 		vTaskDelay(pdMS_TO_TICKS(kPollMs));

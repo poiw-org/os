@@ -10,6 +10,7 @@
 #include "Actuators.h"
 #include "BlacklistSet.h"
 #include "Clock.h"
+#include "Chimes.h"
 #include "Cloud.h"
 #include "Console.h"
 #include "Journal.h"
@@ -124,6 +125,7 @@ void handleTag(const TagRead& tag) {
 	KeyClaims key;
 	JwtResult parsed = tag.token ? verifyToken(tag.token, tag.tokenLen, key) : JwtResult::Malformed;
 	if (parsed != JwtResult::Ok) {
+		reader.holdOff(Chimes::kDeniedMs + 100);
 		actuators.deny();
 		actuators.service();
 		r.verdict = 255;  // no Verdict applies; stored as reason "Unknown"
