@@ -1,10 +1,14 @@
 <script>
 	// @ts-nocheck -- ported from a React/JS component; untyped on purpose.
 	import { onMount } from 'svelte';
+	import { createAscii } from './ascii.ts';
 
 	// An animated ordered-dither wave field in WebGL2: a noise field rendered at cell resolution,
 	// then quantised through a Bayer (or halftone, lines, ...) threshold. The pointer erases or
 	// reveals it, and a click sends a ripple. Colours are CSS colours, or `var(--token)`.
+	// `art` is optional ASCII art drawn over the field on wide screens: it fades in with the intro,
+	// is displaced by the same ripples, and takes its colour from `waveColor` / `backgroundColor`,
+	// whichever contrasts with the dither beneath each pixel.
 	let {
 		waveSpeed = 0.05,
 		waveFrequency = 3,
@@ -26,7 +30,8 @@
 		trail = 0.5,
 		clickRipple = true,
 		intro = true,
-		dpr = undefined
+		dpr = undefined,
+		art = undefined
 	} = $props();
 
 	const MODES = {
@@ -167,7 +172,8 @@ void main() {
   f = (f - 0.5) * uContrast + 0.5 + uBrightness;
   float show = clamp((uIntro * uReach - length(uv)) / 0.45, 0.0, 1.0);
   float v = clamp(f, 0.0, 1.0) * show * show * (3.0 - 2.0 * show);
-  outColor = vec4(floor(v * 255.0) / 255.0, fract(v * 255.0), 0.0, 1.0);
+  // Blue and alpha carry the ripple displacement, so the art can be warped by the same waves.
+  outColor = vec4(floor(v * 255.0) / 255.0, fract(v * 255.0), clamp(0.5 + warp * 4.0, 0.0, 1.0));
 }`;
 
 	const DITHER_FRAGMENT = `#version 300 es
@@ -183,6 +189,11 @@ uniform vec3 uBackground;
 uniform vec3 uPalette[${MAX_PALETTE}];
 uniform int uPaletteCount;
 uniform float uTransparent;
+uniform sampler2D uMascot;
+uniform vec4 uMascotRect;
+uniform vec2 uCanvas;
+uniform float uIntro;
+uniform float uReach;
 out vec4 outColor;
 
 const float bayer8[64] = float[64](
@@ -241,9 +252,7 @@ vec3 toSrgb(vec3 c) {
   return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
 }
 
-void main() {
-  vec2 cell = floor(gl_FragCoord.xy / uCellDevice);
-  vec4 sampleValue = texelFetch(uField, clamp(ivec2(cell), ivec2(0), uFieldSize - 1), 0);
+void shade(vec2 cell, vec4 sampleValue) {
   float f = sampleValue.r + sampleValue.g / 255.0;
   float t = threshold(cell) - 0.25;
 
@@ -274,6 +283,32 @@ void main() {
   float upper = rising ? 1.0 - min(uBackground.r, min(uBackground.g, uBackground.b)) : 0.0;
   offset = floor(clamp(offset, lower, upper) * levels + 0.5) / levels;
   outColor = vec4(toSrgb(uBackground + offset), 1.0);
+}
+
+void main() {
+  vec2 cell = floor(gl_FragCoord.xy / uCellDevice);
+  vec4 sampleValue = texelFetch(uField, clamp(ivec2(cell), ivec2(0), uFieldSize - 1), 0);
+  shade(cell, sampleValue);
+  if (uMascotRect.z <= 0.0) return;
+  vec2 shift = (sampleValue.ba - 0.5) * uCanvas.y;
+  vec2 at = (gl_FragCoord.xy - shift - uMascotRect.xy) / uMascotRect.zw;
+  if (any(lessThan(at, vec2(0.0))) || any(greaterThan(at, vec2(1.0)))) return;
+  float glyph = clamp(texture(uMascot, at).a * 1.5, 0.0, 1.0);
+
+  // Same reveal as the wave field, so the art fades in with the background.
+  vec2 uv = gl_FragCoord.xy / uCanvas - 0.5;
+  uv.x *= uCanvas.x / uCanvas.y;
+  float show = clamp((uIntro * uReach - length(uv)) / 0.45, 0.0, 1.0);
+  show = show * show * (3.0 - 2.0 * show);
+
+  // The ink is the dither's own palette read from the opposite end: where the pixel beneath sits
+  // near the wave colour the art takes the background colour, and the other way round.
+  const vec3 weights = vec3(0.2126, 0.7152, 0.0722);
+  float low = dot(toSrgb(uBackground), weights);
+  float high = dot(toSrgb(uWave), weights);
+  float under = clamp((dot(outColor.rgb, weights) - low) / max(high - low, 0.001), 0.0, 1.0);
+  vec3 ink = mix(toSrgb(uWave), toSrgb(uBackground), smoothstep(0.25, 0.75, under));
+  outColor.rgb = mix(outColor.rgb, ink, glyph * show);
 }`;
 
 	const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -340,7 +375,8 @@ void main() {
 		trail: clamp(trail, 0, 1),
 		clickRipple,
 		intro,
-		dpr
+		dpr,
+		art
 	});
 
 	onMount(() => {
@@ -372,6 +408,18 @@ void main() {
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
 		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 		const framebuffer = gl.createFramebuffer();
+
+		// The art is a canvas drawn by createAscii and uploaded whenever it reshuffles.
+		const mascotTexture = gl.createTexture();
+		gl.bindTexture(gl.TEXTURE_2D, mascotTexture);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+		let ascii = null;
+		let asciiDirty = false;
+		let asciiAt = 0;
+		let disposed = false;
 
 		const probe = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
 		const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
@@ -414,6 +462,7 @@ void main() {
 			view.cellCss = view.cell / view.ratio;
 			view.cols = Math.max(1, Math.ceil(canvas.width / view.cell));
 			view.rows = Math.max(1, Math.ceil(canvas.height / view.cell));
+			gl.activeTexture(gl.TEXTURE0);
 			gl.bindTexture(gl.TEXTURE_2D, field);
 			gl.texImage2D(
 				gl.TEXTURE_2D,
@@ -434,6 +483,16 @@ void main() {
 		const toUv = (x, y) => {
 			const aspect = view.width / view.height;
 			return [(x / view.width - 0.5) * aspect, -(y / view.height - 0.5)];
+		};
+
+		/** Where the art sits, in device pixels from the bottom-left: right half, desktop widths only. */
+		const mascotRect = () => {
+			if (!ascii || view.width < 1024) return [0, 0, 0, 0];
+			const aspect = ascii.canvas.width / ascii.canvas.height;
+			const h = Math.min(0.8 * view.height, (0.47 * view.width) / aspect);
+			const w = h * aspect;
+			const r = view.ratio;
+			return [(0.75 * view.width - w / 2) * r, (0.46 * view.height - h / 2) * r, w * r, h * r];
 		};
 
 		const render = () => {
@@ -499,6 +558,22 @@ void main() {
 			s.palette.forEach((value, index) => paletteData.set(toColor(value), index * 3));
 			gl.uniform3fv(d.uPalette, paletteData);
 			gl.uniform1i(d.uPaletteCount, s.palette.length);
+			gl.uniform2f(d.uCanvas, canvas.width, canvas.height);
+			gl.uniform1f(d.uIntro, eased);
+			gl.uniform1f(d.uReach, 0.5 * Math.hypot(view.width / view.height, 1) + 0.45);
+			const rect = mascotRect();
+			gl.uniform4f(d.uMascotRect, rect[0], rect[1], rect[2], rect[3]);
+			gl.uniform1i(d.uMascot, 1);			if (rect[2] > 0) {
+				gl.activeTexture(gl.TEXTURE1);
+				gl.bindTexture(gl.TEXTURE_2D, mascotTexture);
+				if (asciiDirty) {
+					gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+					gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, ascii.canvas);
+					gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+					asciiDirty = false;
+				}
+				gl.activeTexture(gl.TEXTURE0);
+			}
 			gl.drawArrays(gl.TRIANGLES, 0, 3);
 		};
 
@@ -543,6 +618,12 @@ void main() {
 			for (let i = ripples.length - 1; i >= 0; i--) {
 				ripples[i].age += dt;
 				if (ripples[i].age >= RIPPLE_SECONDS) ripples.splice(i, 1);
+			}
+
+			if (ascii && now - asciiAt >= 1000 / 12) {
+				asciiAt = now;
+				ascii.draw(state.time, !reduce && !s.disableAnimation);
+				asciiDirty = true;
 			}
 
 			if (!s.intro || reduce) state.reveal = 1;
@@ -636,6 +717,18 @@ void main() {
 		document.addEventListener('visibilitychange', onVisibility);
 		resize();
 
+		const source = read().art;
+		if (source) {
+			createAscii(source).then((made) => {
+				if (disposed) return;
+				ascii = made;
+				ascii.draw(0, false);
+				asciiDirty = true;
+				render();
+				start();
+			});
+		}
+
 		let lastDpr = read().dpr;
 		wake = () => {
 			const s = read();
@@ -649,6 +742,7 @@ void main() {
 		};
 
 		return () => {
+			disposed = true;
 			cancelAnimationFrame(raf);
 			wake = undefined;
 			resizeObserver.disconnect();
@@ -664,6 +758,7 @@ void main() {
 			gl.deleteBuffer(buffer);
 			gl.deleteVertexArray(vao);
 			gl.deleteTexture(field);
+			gl.deleteTexture(mascotTexture);
 			gl.deleteFramebuffer(framebuffer);
 			gl.getExtension('WEBGL_lose_context')?.loseContext();
 		};

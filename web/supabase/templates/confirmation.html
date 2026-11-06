@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="supported-color-schemes" content="dark" />
+  <title>Confirm your email address · po/iw OS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <style>
+    :root { color-scheme: dark; supported-color-schemes: dark; }
+    body { margin: 0; padding: 0; background: #090b0f; }
+    a { color: #b298f9; }
+    @media (max-width: 480px) {
+      .px { padding-left: 24px !important; padding-right: 24px !important; }
+      .wrap { padding: 24px 12px 32px 12px !important; }
+    }
+  </style>
+</head>
+<!--
+  Tokens mirror web/src/app.css and web/src/lib/console.css:
+    backing #090b0f · chassis #181b1e · cell/paper #24272a · paper-2 #303337 · seam #07090c · edge #45484c
+    ink #e9ebef · gray-400 #a1a5ab · gray-600 #c7cbd0 · brand #653eae · brand-text #b298f9 · lamp green #49cc95
+  Square corners, bevels via inset shadows (clients that drop box-shadow just get flat hairlines).
+-->
+<body style="margin:0;padding:0;background:#090b0f;">
+  <!-- Inbox preview text -->
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#090b0f;">
+    Confirm this email address to finish signing up for po/iw OS.&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#090b0f" style="background:#090b0f;">
+
+    <!-- Control bar: cells divided by seams, like the app header -->
+    <tr>
+      <td bgcolor="#24272a" style="background:#24272a;border-bottom:2px solid #07090c;box-shadow:inset 0 1px 0 #45484c;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td valign="middle" style="padding:0 18px;height:56px;border-right:1px solid #07090c;box-shadow:inset 1px 0 0 #45484c;">
+              <img src="{{ .SiteURL }}/poiw.png" width="30" height="32" alt="po/iw" style="display:block;border:0;outline:none;width:30px;height:32px;" />
+            </td>
+            <td valign="middle" style="padding:0 18px;height:56px;border-right:1px solid #07090c;box-shadow:inset 1px 0 0 #45484c;font-family:'Space Mono','Courier New',Courier,monospace;font-size:12px;line-height:1.3;letter-spacing:0.14em;text-transform:uppercase;color:#e9ebef;white-space:nowrap;">
+              Operating System
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr>
+      <td class="wrap" align="center" style="padding:40px 16px 48px 16px;">
+
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:420px;">
+
+          <!-- Panel -->
+          <tr>
+            <td bgcolor="#24272a" style="background:#24272a;border:1px solid #07090c;box-shadow:inset 1px 1px 0 rgba(255,255,255,0.1);">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+
+                <tr>
+                  <td class="px" style="padding:32px 32px 0 32px;font-family:'Space Grotesk',Helvetica,Arial,sans-serif;font-size:20px;line-height:1.3;font-weight:700;letter-spacing:-0.01em;color:#e9ebef;">
+                    Confirm your email address
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="px" style="padding:12px 32px 0 32px;font-family:'Space Grotesk',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6;color:#a1a5ab;">
+                    One step left. Confirm that <span style="color:#e9ebef;">{{ .Email }}</span> is yours to finish signing up.
+                  </td>
+                </tr>
+
+                <!-- Primary key: brand purple, square, bevelled, mono caps -->
+                <tr>
+                  <td class="px" style="padding:24px 32px 0 32px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td align="center" bgcolor="#653eae" style="background:#653eae;border:1px solid #653eae;box-shadow:inset 1px 1px 0 rgba(255,255,255,0.14),inset -1px -1px 0 rgba(0,0,0,0.25);">
+                          <a href="{{ .ConfirmationURL }}" style="display:block;padding:13px 16px;font-family:'Space Mono','Courier New',Courier,monospace;font-size:12px;line-height:1.3;letter-spacing:0.12em;text-transform:uppercase;color:#ffffff;text-decoration:none;">
+                            Confirm email
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <!-- Fallback link: eyebrow label over a recessed slot -->
+                <tr>
+                  <td class="px" style="padding:28px 32px 0 32px;font-family:'Space Mono','Courier New',Courier,monospace;font-size:11px;line-height:1.3;letter-spacing:0.14em;text-transform:uppercase;color:#a1a5ab;">
+                    Or open this link
+                  </td>
+                </tr>
+                <tr>
+                  <td class="px" style="padding:8px 32px 0 32px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td bgcolor="#090b0f" style="background:#090b0f;border:1px solid #07090c;box-shadow:inset 1px 1px 3px rgba(0,0,0,0.4),inset -1px -1px 0 rgba(255,255,255,0.08);padding:10px 14px;font-family:'Space Mono','Courier New',Courier,monospace;font-size:11px;line-height:1.6;color:#a1a5ab;word-break:break-all;">
+                          <a href="{{ .ConfirmationURL }}" style="color:#b298f9;text-decoration:underline;text-underline-offset:3px;">{{ .ConfirmationURL }}</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <!-- Status lamp + note -->
+                <tr>
+                  <td class="px" style="padding:28px 32px 32px 32px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td valign="top" style="padding:5px 10px 0 0;">
+                          <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                            <tr><td width="8" height="8" bgcolor="#49cc95" style="width:8px;height:8px;line-height:8px;font-size:1px;background:#49cc95;border-radius:1px;box-shadow:0 0 6px 1px rgba(73,204,149,0.5);">&nbsp;</td></tr>
+                          </table>
+                        </td>
+                        <td style="font-family:'Space Grotesk',Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#a1a5ab;">
+                          Didn&rsquo;t sign up? Ignore this email and no account is created.
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer, as in the app -->
+          <tr>
+            <td class="px" style="padding:16px 0 0 0;font-family:'Space Grotesk',Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#a1a5ab;">
+              Open source by po/iw &middot; <a href="https://github.com/poiw-org" style="color:#a1a5ab;text-decoration:underline;text-underline-offset:3px;">GitHub</a><br />
+              Sent to {{ .Email }}.
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

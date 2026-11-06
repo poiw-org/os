@@ -3,7 +3,7 @@
 	import OsLabel from '#lib/ui/OsLabel.svelte';
 	import { swapIn, swapOut } from '#lib/motion.ts';
 	import Dither from './Dither.svelte';
-	import Lanyard from './Lanyard.svelte';
+	import mascot from './mascot.txt?raw';
 
 	let { title, subtitle, children }: { title: string; subtitle?: string; children: Snippet } =
 		$props();
@@ -22,9 +22,8 @@
 			waveAmplitude={0.35}
 			brightness={-0.12}
 			mouseRadius={0.35}
-		/>
+			art={mascot}		/>
 	</div>
-	<div class="fixed inset-0 hidden lg:block"><Lanyard /></div>
 	<header class="bar full fixed inset-x-0 top-0 z-10">
 		<a href="/" class="label"><OsLabel /></a>
 		<div class="grow"></div>

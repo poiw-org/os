@@ -123,7 +123,7 @@ void Actuators::service() {
 		error = t < kDenyLedMs;
 	}
 
-	tone(hz);
+	if (kSound) tone(hz);
 	write(DOOR_PIN, doorOn_);
 
 	// Red, green and blue are the ERROR, SUCCESS and BUSY LEDs. Events drive them at full duty; with
