@@ -31,7 +31,8 @@
 		clickRipple = true,
 		intro = true,
 		dpr = undefined,
-		art = undefined
+		art = undefined,
+		artLabel = undefined
 	} = $props();
 
 	const MODES = {
@@ -351,6 +352,7 @@ void main() {
 
 	let container;
 	let canvas;
+	let tip = $state();
 	let wake;
 
 	/** The current props, normalised. Read inside the effect so a prop change redraws. */
@@ -673,8 +675,35 @@ void main() {
 			}
 		};
 
+		// The label follows the pointer while it is over one of the art's drawn characters. The hit
+		// test reads the art text, not pixels, and the tip is moved with a transform, so hovering
+		// costs no rendering work.
+		const artRows = (read().art ?? '').split('\n');
+		const artCols = Math.max(0, ...artRows.map((row) => row.length));
+		const updateTip = () => {
+			let hit = false;
+			const rect = mascotRect();
+			if (tip && pointer.inside && rect[2] > 0) {
+				const r = view.ratio;
+				const ax = (pointer.x - rect[0] / r) / (rect[2] / r);
+				const ay = (pointer.y - (view.height - (rect[1] + rect[3]) / r)) / (rect[3] / r);
+				if (ax >= 0 && ax < 1 && ay >= 0 && ay < 1) {
+					const char = artRows[Math.floor(ay * artRows.length)]?.[Math.floor(ax * artCols)];
+					hit = !!char && char !== ' ';
+				}
+			}
+			if (!tip) return;
+			if (hit) {
+				const flip = pointer.x + 16 + tip.offsetWidth > view.width - 8;
+				const x = flip ? pointer.x - 16 - tip.offsetWidth : pointer.x + 16;
+				tip.style.transform = `translate3d(${x}px, ${pointer.y + 18}px, 0)`;
+			}
+			tip.classList.toggle('on', hit);
+		};
+
 		const onPointerMove = (event) => {
 			locate(event);
+			updateTip();
 			start();
 		};
 
@@ -689,10 +718,14 @@ void main() {
 		};
 
 		const onPointerUp = (event) => {
-			if (event.pointerType !== 'mouse') pointer.inside = false;
+			if (event.pointerType !== 'mouse') {
+				pointer.inside = false;
+				updateTip();
+			}
 		};
 		const onPointerLeave = () => {
 			pointer.inside = false;
+			updateTip();
 		};
 		const onVisibility = () => {
 			last = 0;
@@ -773,6 +806,7 @@ void main() {
 
 <div bind:this={container} class="dither" aria-hidden="true">
 	<canvas bind:this={canvas}></canvas>
+	{#if art && artLabel}<div bind:this={tip} class="tip">{artLabel}</div>{/if}
 </div>
 
 <style>
@@ -781,6 +815,25 @@ void main() {
 		width: 100%;
 		height: 100%;
 		overflow: hidden;
+	}
+	.tip {
+		position: absolute;
+		top: 0;
+		left: 0;
+		z-index: 1;
+		padding: 0.4rem 0.7rem;
+		border: 1px solid var(--color-brand-text);
+		background: var(--color-backing);
+		color: var(--color-ink);
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		white-space: nowrap;
+		pointer-events: none;
+		opacity: 0;
+		transition: opacity 0.12s;
+	}
+	.tip:global(.on) {
+		opacity: 1;
 	}
 	canvas {
 		position: absolute;

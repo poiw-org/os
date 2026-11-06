@@ -364,10 +364,6 @@
 					{/if}
 
 					<div class="plate space-y-2 p-5 text-sm">
-						<p>
-							<span class="font-bold">3D εκτυπώσεις:</span> απαιτείται ραντεβού/συζήτηση για το αντικείμενο
-							που θες να εκτυπώσεις. Στείλε στο <a href="mailto:{email}">{email}</a>.
-						</p>
 						<p class="mute">Έρχεται περισσότερος & καλύτερος εξοπλισμός σύντομα :D</p>
 					</div>
 				</div>
