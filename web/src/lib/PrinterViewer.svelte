@@ -39,7 +39,7 @@
 				import('three/examples/jsm/loaders/GLTFLoader.js'),
 				import('three/examples/jsm/controls/OrbitControls.js'),
 				import('#lib/three.ts'),
-				import('#lib/auth/mascot.txt?raw')
+				import('#lib/mascot-print.txt?raw')
 			]);
 
 			const stage = createStage(host, {
@@ -152,20 +152,14 @@
 			const texture = new TextureLoader().load('/manousos.png', stage.wake);
 			texture.colorSpace = SRGBColorSpace;
 			texture.anisotropy = 8;
-			// manousos.png is trimmed to the mouse, so stretching it over the print's footprint lines
-			// the two up edge to edge.
-			const xs = columns.map((c) => c.x);
-			const zs = columns.map((c) => c.z);
-			const minX = Math.min(...xs) - cell / 2;
-			const maxX = Math.max(...xs) + cell / 2;
-			const minZ = Math.min(...zs) - cell;
-			const maxZ = Math.max(...zs) + cell;
+			// manousos.png is trimmed to the figure and mascot-print.txt is sampled from that same crop,
+			// so the picture covers exactly the print's grid and the two line up edge to edge.
 			const picture = new Mesh(
-				new PlaneGeometry(maxX - minX, maxZ - minZ),
+				new PlaneGeometry(cols * cell, rows.length * cell * 2),
 				new MeshBasicMaterial({ map: texture, transparent: true, opacity: 0, depthWrite: false })
 			);
 			picture.rotation.x = -Math.PI / 2;
-			picture.position.set((minX + maxX) / 2, BED.y + FULL + 0.01, (minZ + maxZ) / 2);
+			picture.position.set(BED.x, BED.y + FULL + 0.01, BED.z);
 			picture.visible = false;
 			stage.world.add(picture);
 			const REVEAL_SECONDS = 3.5;
