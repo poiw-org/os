@@ -21,8 +21,11 @@
 					InstancedMesh,
 					Matrix4,
 					Mesh,
+					MeshBasicMaterial,
 					MeshStandardMaterial,
 					PlaneGeometry,
+					SRGBColorSpace,
+					TextureLoader,
 					Raycaster,
 					Vector2,
 					Vector3
@@ -91,7 +94,7 @@
 			const brand = tokenColour('--color-brand-text');
 			const print = new InstancedMesh(
 				new BoxGeometry(1, 1, 1),
-				new MeshStandardMaterial({ roughness: 0.55 }),
+				new MeshStandardMaterial({ roughness: 0.55, transparent: true }),
 				columns.length
 			);
 			columns.forEach((c, i) =>
@@ -143,6 +146,30 @@
 
 			// Printing takes a few seconds, layer by layer; reduced motion gets the finished figure.
 			const FULL = MAX_HEIGHT + 0.02;
+
+			// What he really looks like. It lies on the bed over the print and fades in once the
+			// camera is above him, while the print fades out.
+			const texture = new TextureLoader().load('/manousos.png', stage.wake);
+			texture.colorSpace = SRGBColorSpace;
+			texture.anisotropy = 8;
+			// manousos.png is trimmed to the mouse, so stretching it over the print's footprint lines
+			// the two up edge to edge.
+			const xs = columns.map((c) => c.x);
+			const zs = columns.map((c) => c.z);
+			const minX = Math.min(...xs) - cell / 2;
+			const maxX = Math.max(...xs) + cell / 2;
+			const minZ = Math.min(...zs) - cell;
+			const maxZ = Math.max(...zs) + cell;
+			const picture = new Mesh(
+				new PlaneGeometry(maxX - minX, maxZ - minZ),
+				new MeshBasicMaterial({ map: texture, transparent: true, opacity: 0, depthWrite: false })
+			);
+			picture.rotation.x = -Math.PI / 2;
+			picture.position.set((minX + maxX) / 2, BED.y + FULL + 0.01, (minZ + maxZ) / 2);
+			picture.visible = false;
+			stage.world.add(picture);
+			const REVEAL_SECONDS = 3.5;
+			let reveal = 0;
 			// Above this height over the bed the machine is cut away in the overhead view.
 			const CUT = 0.25;
 			const PRINT_SECONDS = 7;
@@ -175,6 +202,18 @@
 				}
 				stepSprings([focus], dt);
 				const t = focus.value;
+
+				// The crossfade waits for the camera to get above him, and leaves quicker than it came.
+				const reveal_to = looking && t > 0.6 ? 1 : 0;
+				if (stage.reduced) reveal = reveal_to;
+				else if (reveal < reveal_to) reveal = Math.min(1, reveal + dt / REVEAL_SECONDS);
+				else if (reveal > reveal_to) reveal = Math.max(0, reveal - dt);
+				const shown = reveal * reveal * (3 - 2 * reveal);
+				print.material.opacity = 1 - shown;
+				print.visible = shown < 1;
+				picture.material.opacity = shown;
+				picture.visible = shown > 0;
+				moving ||= reveal !== reveal_to;
 				if (looking || t > 1e-3) {
 					fit();
 					stage.camera.position.lerpVectors(home.position, overhead, t);
