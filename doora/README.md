@@ -1,8 +1,29 @@
 # Doora door controller (ESP32)
 
-Firmware for the door lock: a PN532 NFC reader, a relay, a buzzer and a few LEDs. A tap is decided
-**on the device**, so the door keeps working through Wi-Fi, internet and power outages. Supabase is
-used to keep the device's local state fresh and to report what happened.
+Firmware for the door lock, for an ESP32 with a PN532 NFC reader, a relay, a passive buzzer and a few
+LEDs. A tap is decided on the device, so the door keeps working through Wi-Fi, internet and power
+outages. Supabase is only used to keep the door's local state fresh and to report what happened.
+
+## Source layout
+
+```
+src/            firmware
+  main.cpp        setup and the main loop (taps, relay, console)
+  Access.*        the open/deny decision
+  Jwt.*, Rsa.*, Sha256.*   token parsing and signature checks
+  BlacklistSet.*, SyncParser.*   disabled keys and the sync response
+  Journal.*, Persist.*     event queue and files in flash
+  Clock.*, TimeUtil.*      time from NTP, the server, or a flash checkpoint
+  Pn532*.*, SoftI2c.*, Reader.*, Ndef.*   NFC reader driver, tag reading and writing
+  Cloud.*, Net.*, Realtime.*, WsClient.*, WsFrame.*   Supabase sign-in, REST, realtime websocket
+  Actuators.*, Chimes.h    relay, LEDs, buzzer tones
+  Settings.*, Console.*    EEPROM config and the serial console
+  Ota.*, OtaImage.*        signed updates over Wi-Fi
+host_test/      unit tests for the portable parts, run on the computer with `make test`
+tools/          ota_keygen.py and ota.py, the signing scripts for OTA updates
+config.example.h   pin template; copy it to config.h
+platformio.ini  build environments (esp32dev over USB, ota over Wi-Fi)
+```
 
 ## How it works
 
