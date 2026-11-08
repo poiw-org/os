@@ -105,6 +105,8 @@ export type CurrentUser = {
 	hasSecondFactor: boolean;
 	/** Holds a non-expired key or is an admin, and has no second factor yet. */
 	secondFactorRequired: boolean;
+	/** When this member's keys will be suspended; unset until the 14 days have started. */
+	keysSuspendAt?: Date;
 	/** Signed in with a password but has not entered their authenticator code yet. */
 	needsCode: boolean;
 	/** Set while an email change waits for its confirmation link. */

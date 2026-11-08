@@ -7,6 +7,7 @@
 	import { ready, setNavigating } from '#lib/busy.ts';
 	import Header from '#lib/header/Header.svelte';
 	import Notifications from '#lib/ui/Notifications.svelte';
+	import SecondFactorPrompt from '#lib/auth/SecondFactorPrompt.svelte';
 	import type { LayoutProps } from './$types';
 	import { onMount } from 'svelte';
 	import { startFaviconGalaxy } from '#lib/favicon-galaxy.ts';
@@ -32,7 +33,9 @@
 
 	// The auth screens bring their own full-bleed layout.
 	const bare = $derived(
-		['/', '/login', '/reset-password', '/onboarding', '/security', '/verify'].includes(page.url.pathname)
+		['/', '/login', '/reset-password', '/onboarding', '/security', '/verify'].includes(
+			page.url.pathname
+		)
 	);
 </script>
 
@@ -41,6 +44,9 @@
 {:else}
 	<div class="console flex min-h-screen w-full flex-col">
 		<Header user={data.user} />
+		{#if data.user?.secondFactorRequired && !data.user.isAdmin}
+			<SecondFactorPrompt user={data.user} />
+		{/if}
 		<main class="mx-auto w-full max-w-[1500px] flex-1">
 			<!-- A new path starts a fresh page, so /os/users/a to /os/users/b never reuses stale state. -->
 			{#key page.url.pathname}{@render children()}{/key}

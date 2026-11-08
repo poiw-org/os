@@ -32,8 +32,11 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 		// Throws on a malformed token (a tampered link); the API rejects that session anyway.
 		supabase.auth.mfa.getAuthenticatorAssuranceLevel().catch(() => ({ data: null }))
 	]);
-	const { has_factor: hasSecondFactor = false, required: secondFactorRequired = false } =
-		(security ?? {}) as { has_factor?: boolean; required?: boolean };
+	const {
+		has_factor: hasSecondFactor = false,
+		required: secondFactorRequired = false,
+		suspends_at: suspendsAt
+	} = (security ?? {}) as { has_factor?: boolean; required?: boolean; suspends_at?: string | null };
 	// A passkey sign-in stays aal1 in Supabase but needs no code on top.
 	const usedPasskey = assurance?.currentAuthenticationMethods.some(
 		(entry) => (typeof entry === 'string' ? entry : entry.method) === 'passkey'
@@ -51,12 +54,33 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 		onboarded: Boolean(profile?.onboarded_at),
 		hasSecondFactor,
 		secondFactorRequired,
+		keysSuspendAt: suspendsAt ? new Date(suspendsAt) : undefined,
 		needsCode: assurance?.currentLevel === 'aal1' && assurance.nextLevel === 'aal2' && !usedPasskey,
 		canUnlock: Boolean(canUnlock),
 		pendingEmail: session.user.new_email,
 		createdAt: new Date(session.user.created_at),
 		lastSignInAt: session.user.last_sign_in_at ? new Date(session.user.last_sign_in_at) : undefined
 	};
+}
+
+// Remembers the sign-in the 2FA prompt was closed for, so the next sign-in shows it again.
+const PROMPT_KEY = 'second-factor-prompt-dismissed';
+const signInStamp = (user: CurrentUser) => user.lastSignInAt?.toISOString() ?? '';
+
+export function secondFactorPromptDismissed(user: CurrentUser) {
+	try {
+		return localStorage.getItem(PROMPT_KEY) === signInStamp(user);
+	} catch {
+		return false;
+	}
+}
+
+export function dismissSecondFactorPrompt(user: CurrentUser) {
+	try {
+		localStorage.setItem(PROMPT_KEY, signInStamp(user));
+	} catch {
+		// Without storage the prompt simply comes back on the next page load.
+	}
 }
 
 export async function signIn(email: string, password: string, captchaToken: string) {

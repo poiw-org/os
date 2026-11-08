@@ -2,7 +2,12 @@
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import { fly } from 'svelte/transition';
-	import { passkeysSupported, registerPasskey, signOut } from '#lib/auth.ts';
+	import {
+		dismissSecondFactorPrompt,
+		passkeysSupported,
+		registerPasskey,
+		signOut
+	} from '#lib/auth.ts';
 	import OnboardingStage from '#lib/auth/OnboardingStage.svelte';
 	import TotpEnroll from '#lib/auth/TotpEnroll.svelte';
 	import { easeOut, reduced } from '#lib/motion.ts';
@@ -11,7 +16,7 @@
 
 	let { data }: PageProps = $props();
 
-	const required = $derived(Boolean(data.user?.secondFactorRequired));
+	const required = $derived(Boolean(data.user?.isAdmin && data.user.secondFactorRequired));
 	let canUsePasskey = $state(false);
 	let usingApp = $state(false);
 	let finishing = $state(false);
@@ -22,6 +27,12 @@
 	onMount(() => (canUsePasskey = passkeysSupported()));
 
 	const enter = () => (window.location.href = '/os');
+
+	// They just said no here, so the app shouldn't ask again until the next sign-in.
+	const later = () => {
+		if (data.user) dismissSecondFactorPrompt(data.user);
+		enter();
+	};
 
 	const finish = () => {
 		finishing = true;
@@ -107,7 +118,7 @@
 			{/if}
 
 			{#if !required}
-				<button type="button" class="label self-start" onclick={enter}>Όχι τώρα</button>
+				<button type="button" class="label self-start" onclick={later}>Όχι τώρα</button>
 			{/if}
 		</div>
 	</main>

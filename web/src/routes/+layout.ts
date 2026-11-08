@@ -30,7 +30,10 @@ export const load: LayoutLoad = async ({ url }) => {
 	// Everyone answers the onboarding questions once, before using the OS.
 	if (user && !user.onboarded && inApp) redirect(307, '/onboarding');
 	if (user?.onboarded && url.pathname === '/onboarding') redirect(307, '/os');
-	if (user?.secondFactorRequired && url.pathname.startsWith('/os')) redirect(307, '/security');
+	// Admins must have 2FA to use the app. Members get a prompt at each sign-in instead, and the
+	// daily job suspends their keys if they never act on it.
+	if (user?.isAdmin && user.secondFactorRequired && url.pathname.startsWith('/os'))
+		redirect(307, '/security');
 	if (user?.hasSecondFactor && url.pathname === '/security') redirect(307, '/os');
 	if (user && !user.isAdmin) {
 		if (url.pathname === '/os') redirect(307, '/os/keys');

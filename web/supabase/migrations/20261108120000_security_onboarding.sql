@@ -157,6 +157,7 @@ create function public.security_status() returns jsonb
 as $$
 	select jsonb_build_object(
 		'has_factor', private.has_second_factor(me),
+		'suspends_at', (select p.security_required_since + interval '14 days' from public.profiles p where p.id = me),
 		'required', not private.has_second_factor(me) and (
 			exists (select 1 from public.admins a where a.user_id = me)
 			or exists (select 1 from public.keys k where k.user_id = me and k.expires_at > now())

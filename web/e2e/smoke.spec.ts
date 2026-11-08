@@ -364,6 +364,24 @@ test.describe('signed out', () => {
 		await expect(page).toHaveURL(/\/os\/keys$/);
 	});
 
+	test('a member with a key and no 2FA is prompted once per sign-in', async ({ page }) => {
+		await page.route('**/rest/v1/rpc/security_status', (route) =>
+			route.fulfill({ json: { has_factor: false, required: true, suspends_at: null } })
+		);
+		await page.goto('/login');
+		await page.getByLabel('Email').fill('nobody@example.test');
+		await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
+		await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+		await expect(page).toHaveURL(/\/os\/keys$/);
+		const prompt = page.getByRole('dialog', { name: 'Protect your key with 2FA' });
+		await expect(prompt).toBeVisible();
+		await prompt.getByRole('button', { name: 'Later' }).click();
+		await expect(prompt).toBeHidden();
+		await page.reload();
+		await expect(page.getByRole('heading', { name: 'My keys' })).toBeVisible();
+		await expect(prompt).toBeHidden();
+	});
+
 	test('forgot password sends a reset link', async ({ page, api }) => {
 		await page.goto('/login');
 		await page.getByRole('button', { name: 'Forgot password?' }).click();
