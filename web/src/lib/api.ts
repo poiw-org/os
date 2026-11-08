@@ -290,14 +290,36 @@ export const issueKey = (key: {
 	serialNumber?: string;
 	notBefore: Date;
 	expiresAt: Date;
+	acknowledgedNoSecondFactor: boolean;
 }) =>
 	invokeKeys({
 		action: 'issue',
+		acknowledge_no_second_factor: key.acknowledgedNoSecondFactor,
 		user_id: key.userId,
 		...(key.serialNumber === undefined ? { virtual: true } : { serial_number: key.serialNumber }),
 		not_before: key.notBefore.toISOString(),
 		expires_at: key.expiresAt.toISOString()
 	});
+
+/** What decides whether a member can be issued a key, and what the admin must acknowledge first. */
+export async function getSecondFactorStatus(userId: string) {
+	const { data, error } = await supabase.rpc('second_factor_status', { target: userId });
+	if (error) throw error;
+	const status = data as {
+		email_verified: boolean;
+		has_factor: boolean;
+		suspends_at: string | null;
+	};
+	return {
+		emailVerified: status.email_verified,
+		hasFactor: status.has_factor,
+		suspendsAt: status.suspends_at ? new Date(status.suspends_at) : undefined
+	};
+}
+
+/** Removes a member's passkeys and authenticator apps, for when they lost their device. */
+export const resetSecondFactors = (userId: string) =>
+	invoke<{ removed: number }>('keys', { action: 'reset_second_factors', user_id: userId });
 
 export const renewKey = (key: { id: string; notBefore: Date; expiresAt: Date }) =>
 	invokeKeys({

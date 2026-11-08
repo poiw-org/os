@@ -49,7 +49,7 @@ Edge functions:
 | `door-key` | Gives a signed-in door the public key it needs to check v2 tokens. |
 | `unlock` | Lets a member with an active key open the door. Sends the command, waits for the door to confirm, logs it. |
 
-Set the `RSA_KEY_SEED` secret on the Supabase project before deploying the functions.
+Set the `RSA_KEY_SEED` secret on the Supabase project before deploying the functions. The `security-reminders` function also needs `SECURITY_CRON_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM` and `APP_URL`, and deploys with `--no-verify-jwt`. Its daily schedule reads the Vault secrets `project_url` and `security_cron_secret`.
 
 ## Running it
 

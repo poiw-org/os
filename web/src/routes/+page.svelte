@@ -1,12 +1,10 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import PrinterViewer from '#lib/PrinterViewer.svelte';
-	import RegisterDialog from '#lib/RegisterDialog.svelte';
 	import Brand from '#lib/ui/Brand.svelte';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
-	let register = $state<RegisterDialog>();
 	// Past the hero logo the bar grows to full height and shows the wordmark.
 	let scrolled = $state(false);
 
@@ -114,7 +112,6 @@
 <svelte:window onscroll={() => (scrolled = scrollY > 160)} />
 
 <div lang="el" class="console">
-	<RegisterDialog bind:this={register} />
 	<header class="bar" class:full={scrolled}>
 		<a
 			href={resolve('/')}
@@ -132,9 +129,9 @@
 		</a>
 		{#if !data.user}
 			<div class="key-cell">
-				<button type="button" class="key key-signal" onclick={() => register?.open()}>
+				<a href={resolve('/onboarding')} class="key key-signal">
 					Γίνε μέλος
-				</button>
+				</a>
 			</div>
 		{/if}
 	</header>
@@ -156,8 +153,8 @@
 						{#if data.user}
 							<a href={resolve('/os')} class="key key-signal">Άνοιγμα OS</a>
 						{:else}
-							<button type="button" class="key key-signal" onclick={() => register?.open()}
-								>Γίνε μέλος</button
+							<a href={resolve('/onboarding')} class="key key-signal"
+								>Γίνε μέλος</a
 							>
 						{/if}
 						<a href="#about" class="key">Τι φάση;</a>
@@ -239,8 +236,8 @@
 						εγγραφή. Για εγγραφή, μπορείς να επικοινωνήσεις με την ομάδα.
 					</p>
 					{#if !data.user}
-						<button type="button" class="key key-signal" onclick={() => register?.open()}
-							>Γίνε μέλος</button
+						<a href={resolve('/onboarding')} class="key key-signal"
+							>Γίνε μέλος</a
 						>
 					{/if}
 				</div>

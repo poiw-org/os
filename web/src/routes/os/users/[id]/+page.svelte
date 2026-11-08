@@ -11,6 +11,7 @@
 		listActivity,
 		listAllUsers,
 		listEntries,
+		resetSecondFactors,
 		saveAnswers,
 		setAdmin,
 		toActivity,
@@ -23,7 +24,7 @@
 	import { arrive } from '#lib/motion.ts';
 	import { keyStatus } from '#lib/status.ts';
 	import Loading from '#lib/loading.svelte';
-	import type { OnboardingAnswers } from '#lib/auth.ts';
+	import { EXISTING_MEMBER_SOURCE, type OnboardingAnswers } from '#lib/auth.ts';
 	import type { UserSummary } from '#lib/types.ts';
 	import Avatar from '#lib/ui/Avatar.svelte';
 	import Breadcrumb from '#lib/ui/Breadcrumb.svelte';
@@ -92,7 +93,8 @@
 		['friend', 'A friend'],
 		['welcome_day', 'Freshmen welcome day'],
 		['newsletter', 'Newsletter'],
-		['campaign', 'Promotional campaign']
+		['campaign', 'Promotional campaign'],
+		[EXISTING_MEMBER_SOURCE, 'Existing member before questionnaire']
 	];
 	// The member's questionnaire answers: undefined while loading, null when not yet completed.
 	let answers = $state<OnboardingAnswers | null>();
@@ -101,6 +103,19 @@
 	const answersChanged = $derived(
 		Boolean(answers && draft && JSON.stringify(answers) !== JSON.stringify(draft))
 	);
+
+	let resetting = $state(false);
+	const resetFactors = async () => {
+		if (!confirm('Remove all of this user’s passkeys and authenticator apps?')) return;
+		resetting = true;
+		try {
+			const { removed } = await resetSecondFactors(userId);
+			toast.success(`Removed ${removed} sign-in factors.`);
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'Could not reset the factors.');
+		}
+		resetting = false;
+	};
 
 	const saveDraft = async (event: SubmitEvent) => {
 		event.preventDefault();
@@ -203,6 +218,7 @@
 							>{admin ? 'Remove admin' : 'Make admin'}</button
 						>
 					{/if}
+					<button class="btn" onclick={resetFactors} disabled={resetting}>Reset 2FA</button>
 					{#if !user.blocked}
 						<IssueKeyMenu trigger="btn btn-primary" user={user.id} align="right" />
 					{/if}

@@ -1,27 +1,23 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import {
 		passkeysSupported,
 		sendPasswordReset,
 		signIn,
-		signInWithPasskey,
-		signUp
+		signInWithPasskey
 	} from '#lib/auth.ts';
 	import AuthShell from '#lib/auth/AuthShell.svelte';
 	import QuickUnlock from '#lib/auth/QuickUnlock.svelte';
+	import Turnstile from '#lib/auth/Turnstile.svelte';
 	import { arrive, reveal as unfold } from '#lib/motion.ts';
 
-	type Mode = 'signin' | 'register' | 'reset';
+	type Mode = 'signin' | 'reset';
 	const copy: Record<Mode, { title: string; subtitle: string; action: string }> = {
 		signin: {
 			title: 'Sign in',
 			subtitle: '',
 			action: 'Sign in'
-		},
-		register: {
-			title: 'Register',
-			subtitle: 'An admin issues your keys once the account exists.',
-			action: 'Create account'
 		},
 		reset: {
 			title: 'Reset password',
@@ -33,12 +29,13 @@
 	let mode = $state<Mode>('signin');
 	let email = $state('');
 	let password = $state('');
-	let confirm = $state('');
 	let reveal = $state(false);
 	let message = $state('');
 	let failed = $state(false);
 	let busy = $state(false);
 	let canUsePasskey = $state(false);
+	let captcha = $state<Turnstile>();
+	const token = () => captcha!.take();
 
 	onMount(() => (canUsePasskey = passkeysSupported()));
 
@@ -46,7 +43,6 @@
 		mode = next;
 		message = '';
 		password = '';
-		confirm = '';
 	};
 
 	const report = (text: string, error = true) => {
@@ -62,7 +58,7 @@
 		busy = true;
 		message = '';
 		try {
-			await signInWithPasskey();
+			await signInWithPasskey(await token());
 			enter();
 		} catch (e) {
 			// Closing the browser's passkey prompt is not an error worth showing.
@@ -75,17 +71,13 @@
 	const submit = async (event: SubmitEvent) => {
 		event.preventDefault();
 		message = '';
-		if (mode === 'register' && password !== confirm) return report('The passwords do not match.');
 		busy = true;
 		try {
 			if (mode === 'signin') {
-				await signIn(email, password);
+				await signIn(email, password, await token());
 				enter();
-			} else if (mode === 'register') {
-				if (await signUp(email, password)) enter();
-				else report('Check your inbox to confirm your email, then sign in.', false);
 			} else {
-				await sendPasswordReset(email);
+				await sendPasswordReset(email, await token());
 				report('If an account exists for this email, a reset link is on its way.', false);
 			}
 		} catch (e) {
@@ -101,7 +93,7 @@
 
 <AuthShell title={copy[mode].title} subtitle={copy[mode].subtitle}>
 	{#if mode === 'signin' && canUsePasskey}
-		<QuickUnlock />
+		<QuickUnlock captcha={token} />
 	{/if}
 
 	<form onsubmit={submit} class="flex flex-col gap-4">
@@ -134,9 +126,8 @@
 						id="password"
 						type={reveal ? 'text' : 'password'}
 						required
-						minlength={mode === 'register' ? 8 : undefined}
-						autocomplete={mode === 'register' ? 'new-password' : 'current-password'}
-						placeholder={mode === 'register' ? '8+ characters' : '••••••••'}
+						autocomplete="current-password"
+						placeholder="••••••••"
 						bind:value={password}
 						class="w-full py-2.5 pr-16 pl-3.5"
 					/>
@@ -152,22 +143,11 @@
 			</div>
 		{/if}
 
-		{#if mode === 'register'}
-			<label class="flex flex-col gap-1.5" transition:unfold>
-				<span class="eyebrow">Confirm password</span>
-				<input
-					type={reveal ? 'text' : 'password'}
-					required
-					autocomplete="new-password"
-					bind:value={confirm}
-					class="px-3.5 py-2.5"
-				/>
-			</label>
-		{/if}
-
 		{#if message}
 			<p role="status" in:arrive class={failed ? 'text-red-400' : 'text-green-700'}>{message}</p>
 		{/if}
+
+		<Turnstile bind:this={captcha} />
 
 		<button type="submit" disabled={busy} class="btn btn-primary mt-1 py-2.5">
 			{busy ? 'One moment…' : copy[mode].action}
@@ -182,11 +162,7 @@
 
 	{#if mode === 'signin'}
 		<p class="text-gray-400">
-			No account? <button
-				type="button"
-				onclick={() => switchTo('register')}
-				class="text-brand-text underline">Register</button
-			>
+			No account? <a href={resolve('/onboarding')} class="text-brand-text underline">Register</a>
 		</p>
 	{:else}
 		<p class="text-gray-400">

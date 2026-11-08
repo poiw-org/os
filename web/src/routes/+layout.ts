@@ -9,7 +9,7 @@ import type { LayoutLoad } from './$types';
 export const ssr = false;
 export const prerender = true;
 
-const publicRoutes = ['/', '/login', '/reset-password'];
+const publicRoutes = ['/', '/login', '/reset-password', '/onboarding'];
 // Only admins manage users and keys; members see their own keys at /os/keys.
 const adminRoutes = ['/os/users', '/os/keys/create'];
 
@@ -23,9 +23,15 @@ export const load: LayoutLoad = async ({ url }) => {
 
 	if (!user && !publicRoutes.includes(url.pathname)) redirect(307, '/login');
 	if (user && url.pathname === '/login') redirect(307, '/os');
+	const inApp = url.pathname.startsWith('/os') || url.pathname === '/security';
+	// A password sign-in is not finished until the authenticator code is in.
+	if (user?.needsCode && inApp) redirect(307, '/verify');
+	if (user && !user.needsCode && url.pathname === '/verify') redirect(307, '/os');
 	// Everyone answers the onboarding questions once, before using the OS.
-	if (user && !user.onboarded && url.pathname.startsWith('/os')) redirect(307, '/onboarding');
+	if (user && !user.onboarded && inApp) redirect(307, '/onboarding');
 	if (user?.onboarded && url.pathname === '/onboarding') redirect(307, '/os');
+	if (user?.secondFactorRequired && url.pathname.startsWith('/os')) redirect(307, '/security');
+	if (user?.hasSecondFactor && url.pathname === '/security') redirect(307, '/os');
 	if (user && !user.isAdmin) {
 		if (url.pathname === '/os') redirect(307, '/os/keys');
 		if (adminRoutes.some((route) => url.pathname.startsWith(route))) redirect(307, '/os/keys');

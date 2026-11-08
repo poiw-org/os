@@ -5,7 +5,7 @@
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import { DateInput } from 'date-picker-svelte';
-	import { issueKey, listUsers } from '#lib/api.ts';
+	import { getSecondFactorStatus, issueKey, listUsers } from '#lib/api.ts';
 	import { nfcSupported, scanTag } from '#lib/nfc.ts';
 	import { toast } from '#lib/notify.svelte.ts';
 	import { canonicalSerial } from '#lib/serial.ts';
@@ -45,12 +45,35 @@
 	const validRange = $derived(days > 0);
 	const day = (date: Date) => date.toLocaleDateString('en-GB', { dateStyle: 'medium' });
 
+	// A member without a second factor loses this key after 14 days, so the admin confirms that first.
+	let secondFactor = $state<Awaited<ReturnType<typeof getSecondFactorStatus>>>();
+	let acknowledged = $state(false);
+	const selectedId = $derived(user?.value);
+	$effect(() => {
+		const id = selectedId;
+		secondFactor = undefined;
+		acknowledged = false;
+		if (!id) return;
+		let current = true;
+		getSecondFactorStatus(id).then(
+			(status) => current && (secondFactor = status),
+			() => current && toast.error('Could not check this user’s second factor.')
+		);
+		return () => {
+			current = false;
+		};
+	});
+	const emailUnverified = $derived(secondFactor?.emailVerified === false);
+	const noSecondFactor = $derived(secondFactor?.hasFactor === false && !emailUnverified);
+	const suspendsOn = $derived(secondFactor?.suspendsAt ?? new Date(Date.now() + 14 * DAY));
+
 	const submit = async (event: SubmitEvent) => {
 		event.preventDefault();
 		if (!user) {
 			toast.error('Select a user first.');
 			return;
 		}
+		if (!secondFactor || emailUnverified || (noSecondFactor && !acknowledged)) return;
 		if (!validRange) {
 			toast.error('The key must expire after it activates.');
 			return;
@@ -67,7 +90,8 @@
 				userId: user.value,
 				serialNumber: serial,
 				notBefore,
-				expiresAt
+				expiresAt,
+				acknowledgedNoSecondFactor: acknowledged
 			});
 			toast.success(`Key issued for ${user.label}.`);
 			await goto(keyPath(id));
@@ -253,8 +277,36 @@
 						<dd class="text-right">{validRange ? `${days} days` : '—'}</dd>
 					</dl>
 				</div>
-				<div class="border-t p-5">
-					<button type="submit" disabled={processing} class="btn btn-primary w-full py-3">
+				<div class="flex flex-col gap-4 border-t p-5">
+					{#if emailUnverified}
+						<p role="alert" class="rounded-lg border border-red-500/50 p-3.5 text-red-400">
+							This user hasn't verified their email, so they can't be issued a key yet.
+						</p>
+					{/if}
+					{#if noSecondFactor}
+						<div
+							role="alert"
+							class="flex flex-col gap-3 rounded-lg border border-yellow-500/50 p-3.5"
+						>
+							<p class="font-bold">This user has no 2FA</p>
+							<p class="text-gray-400">
+								If they don't register a passkey or authenticator app, this key will be disabled
+								around {day(suspendsOn)}, and it comes back once they do.
+							</p>
+							<label class="flex items-start gap-2.5">
+								<input type="checkbox" required bind:checked={acknowledged} class="mt-1" />
+								<span>I understand and will let them know.</span>
+							</label>
+						</div>
+					{/if}
+					<button
+						type="submit"
+						disabled={processing ||
+							(Boolean(user) && !secondFactor) ||
+							emailUnverified ||
+							(noSecondFactor && !acknowledged)}
+						class="btn btn-primary w-full py-3"
+					>
 						{#if processing}
 							Issuing…
 						{:else}

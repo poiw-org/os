@@ -101,6 +101,12 @@ export type CurrentUser = {
 	canUnlock: boolean;
 	/** False until the member has answered the onboarding questions. */
 	onboarded: boolean;
+	/** Has a passkey or an authenticator app. */
+	hasSecondFactor: boolean;
+	/** Holds a non-expired key or is an admin, and has no second factor yet. */
+	secondFactorRequired: boolean;
+	/** Signed in with a password but has not entered their authenticator code yet. */
+	needsCode: boolean;
 	/** Set while an email change waits for its confirmation link. */
 	pendingEmail?: string;
 	createdAt: Date;

@@ -4,6 +4,7 @@
 	import { hasSession, setPassword } from '#lib/auth.ts';
 	import AuthShell from '#lib/auth/AuthShell.svelte';
 	import Loading from '#lib/loading.svelte';
+	import { PASSWORD_HINT, passwordIsStrong } from '#lib/password.ts';
 
 	// The email link signs the user in; the form then sets the new password for that session.
 	let ready = $state(false);
@@ -22,6 +23,10 @@
 		event.preventDefault();
 		if (password !== confirm) {
 			message = 'The passwords do not match.';
+			return;
+		}
+		if (!passwordIsStrong(password)) {
+			message = PASSWORD_HINT;
 			return;
 		}
 		busy = true;
@@ -54,9 +59,9 @@
 				<input
 					type="password"
 					required
-					minlength="8"
+					minlength="12"
 					autocomplete="new-password"
-					placeholder="8+ characters"
+					placeholder="12+ characters"
 					bind:value={password}
 					class="px-3.5 py-2.5"
 				/>

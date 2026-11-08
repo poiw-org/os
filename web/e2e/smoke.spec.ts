@@ -373,19 +373,36 @@ test.describe('signed out', () => {
 		expect(api.calls).toContain('POST /auth/v1/recover');
 	});
 
-	test('register checks the passwords, then asks to confirm the email', async ({ page, api }) => {
-		await page.goto('/login');
-		await page.getByRole('button', { name: 'Register' }).click();
-		await page.getByLabel('Email').fill('new@example.test');
-		await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
-		await page.getByLabel('Confirm password').fill('something-else');
-		await page.getByRole('button', { name: 'Create account' }).click();
-		await expect(page.getByText('The passwords do not match.')).toBeVisible();
+	test('the wizard asks the questions first, then creates the account', async ({ page, api }) => {
+		await page.goto('/onboarding');
+		const next = page.getByRole('button', { name: 'Συνέχεια' });
+		await page.getByLabel('Όνομα').fill('Νέα');
+		await page.getByLabel('Επώνυμο').fill('Μέλος');
+		await next.click();
+		await page.getByRole('radio', { name: 'Όχι' }).check();
+		await next.click();
+		await page.getByRole('radio', { name: 'Newsletter' }).check();
+		await next.click();
+		await page.getByRole('radio', { name: 'Ναι' }).check();
+		await next.click();
 
-		await page.getByLabel('Confirm password').fill(PASSWORD);
-		await page.getByRole('button', { name: 'Create account' }).click();
-		await expect(page.getByText('Check your inbox')).toBeVisible();
-		expect(api.calls).toContain('POST /auth/v1/signup');
+		await page.getByLabel('Email').fill('new@example.test');
+		await page.getByLabel('Κωδικός', { exact: true }).fill('weak');
+		await page.getByLabel('Επιβεβαίωση κωδικού').fill('weak');
+		await page.getByRole('button', { name: 'Δημιουργία λογαριασμού' }).click();
+		await expect(page.getByText('δεν καλύπτει όλες')).toBeVisible();
+		expect(api.calls).not.toContain('POST /auth/v1/signup');
+
+		await page.getByLabel('Κωδικός', { exact: true }).fill('Str0ng-Passw0rd!');
+		await page.getByLabel('Επιβεβαίωση κωδικού').fill('Str0ng-Passw0rd!');
+		await page.getByRole('button', { name: 'Δημιουργία λογαριασμού' }).click();
+		await expect(page.getByText('Έλεγξε το email σου')).toBeVisible();
+		const signup = api.bodies.find((b) => b.call === 'POST /auth/v1/signup')?.body as Record<
+			string,
+			any
+		>;
+		expect(signup.data.onboarding.referral_source).toBe('newsletter');
+		expect(signup.gotrue_meta_security.captcha_token).toBe('captcha-token');
 	});
 
 	test('reset page without a session says the link is invalid', async ({ page }) => {
@@ -397,12 +414,12 @@ test.describe('signed out', () => {
 test.describe('reset link opened (session present)', () => {
 	test('sets the new password and goes home', async ({ page, api }) => {
 		await page.goto('/reset-password');
-		await page.getByLabel('New password').fill('a-brand-new-password');
-		await page.getByLabel('Confirm password').fill('a-brand-new-password');
+		await page.getByLabel('New password').fill('A-brand-new-passw0rd');
+		await page.getByLabel('Confirm password').fill('A-brand-new-passw0rd');
 		await page.getByRole('button', { name: 'Save password' }).click();
 		await expect(page).toHaveURL(/\/os$/);
 		const update = api.bodies.find((b) => b.call === 'PUT /auth/v1/user')?.body;
-		expect(update).toMatchObject({ password: 'a-brand-new-password' });
+		expect(update).toMatchObject({ password: 'A-brand-new-passw0rd' });
 	});
 
 	test('a recovery link that lands on the Site URL still opens the form', async ({ page }) => {

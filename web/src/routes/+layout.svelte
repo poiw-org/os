@@ -32,7 +32,7 @@
 
 	// The auth screens bring their own full-bleed layout.
 	const bare = $derived(
-		['/', '/login', '/reset-password', '/onboarding'].includes(page.url.pathname)
+		['/', '/login', '/reset-password', '/onboarding', '/security', '/verify'].includes(page.url.pathname)
 	);
 </script>
 

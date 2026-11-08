@@ -3,7 +3,12 @@ import { test as base, expect, type Page, type Route } from '@playwright/test';
 const SUPABASE = 'https://yshwchmbsuafribrttlt.supabase.co';
 // supabase-js keeps the session in localStorage under sb-<project ref>-auth-token.
 const STORAGE_KEY = 'sb-yshwchmbsuafribrttlt-auth-token';
-const ADMIN_TOKEN = 'test-admin-token';
+// Shaped like a JWT because the client decodes it to read the assurance level.
+const base64Url = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+const testToken = (name: string) =>
+	`${base64Url({ alg: 'none' })}.${base64Url({ name, aal: 'aal1', amr: [{ method: 'password', timestamp: 1 }] })}.signatur`;
+const ADMIN_TOKEN = testToken('admin');
+const NON_ADMIN_TOKEN = testToken('non-admin');
 const ADMIN_ID = '00000000-0000-4000-8000-0000000000aa';
 export const PASSWORD = 'correct-password';
 
@@ -287,7 +292,7 @@ async function mockSupabase(page: Page, state: ApiState) {
 			}
 			// "nobody" is a valid Supabase account that is not in public.admins.
 			return body.email === 'nobody@example.test'
-				? json(sessionFor('non-admin-token', body.email))
+				? json(sessionFor(NON_ADMIN_TOKEN, body.email))
 				: json(sessionFor(ADMIN_TOKEN, body.email));
 		}
 		if (path === '/auth/v1/recover') return json({});
@@ -336,6 +341,9 @@ async function mockSupabase(page: Page, state: ApiState) {
 		if (path === '/rest/v1/rpc/log_web_open') return json(1);
 		// A member without an active key.
 		if (path === '/rest/v1/rpc/can_unlock') return json(false);
+		if (path === '/rest/v1/rpc/security_status') return json({ has_factor: true, required: false });
+		if (path === '/rest/v1/rpc/second_factor_status')
+			return json({ email_verified: true, has_factor: true, suspends_at: null });
 		if (path === '/rest/v1/entries') {
 			// key_id is `eq.<id>` on the key page; the user page asks `or=(opened_by.eq.<user>,key_id.in.(<ids>))`.
 			const keyFilter = url.searchParams.get('key_id') ?? url.searchParams.get('or');
@@ -389,6 +397,12 @@ export const test = base.extend<{ api: ApiState; signedIn: boolean }>({
 			// Avatars fall back to the generated one; never hit Gravatar from tests.
 			await page.route(/gravatar\.com/, (route) => route.fulfill({ status: 404 }));
 			await page.route(/sentry\.io/, (route) => route.fulfill({ status: 200, body: '' }));
+			await page.route(/challenges\.cloudflare\.com/, (route) =>
+				route.fulfill({
+					contentType: 'text/javascript',
+					body: "window.turnstile={render:(h,o)=>{o.callback('captcha-token');return 'w'},reset(){},remove(){}}"
+				})
+			);
 			await use(state);
 		},
 		{ auto: true }

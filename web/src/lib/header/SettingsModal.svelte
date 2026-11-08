@@ -3,7 +3,9 @@
 		deletePasskey,
 		listPasskeys,
 		passkeysSupported,
+		listTotpFactors,
 		registerPasskey,
+		removeTotp,
 		setEmail,
 		setNickname,
 		setPassword,
@@ -12,6 +14,8 @@
 	import { timeAgo, withName } from '#lib/format.ts';
 	import type { CurrentUser } from '#lib/types.ts';
 	import Avatar from '#lib/ui/Avatar.svelte';
+	import TotpEnroll from '#lib/auth/TotpEnroll.svelte';
+	import { PASSWORD_HINT, passwordIsStrong } from '#lib/password.ts';
 
 	let { user, onclose }: { user: CurrentUser; onclose: () => void } = $props();
 
@@ -38,6 +42,7 @@
 		tab = next;
 		message = '';
 		if (next === 'security' && passkeysSupported()) refreshPasskeys();
+		if (next === 'security') refreshTotp();
 	};
 
 	let passkeys = $state<Awaited<ReturnType<typeof listPasskeys>>>([]);
@@ -58,6 +63,19 @@
 			await deletePasskey(id);
 			await refreshPasskeys();
 		}, 'Passkey removed.');
+
+	let totp = $state<Awaited<ReturnType<typeof listTotpFactors>>>([]);
+	let addingTotp = $state(false);
+	const refreshTotp = () =>
+		listTotpFactors().then(
+			(list) => (totp = list),
+			() => (totp = [])
+		);
+	const removeAuthenticator = (id: string) =>
+		run(async () => {
+			await removeTotp(id);
+			await refreshTotp();
+		}, 'Authenticator removed.');
 
 	// Runs one account change and reports how it went.
 	const run = async (action: () => Promise<unknown>, done: string) => {
@@ -97,6 +115,11 @@
 		if (password !== confirm) {
 			failed = true;
 			message = 'The passwords do not match.';
+			return;
+		}
+		if (!passwordIsStrong(password)) {
+			failed = true;
+			message = PASSWORD_HINT;
 			return;
 		}
 		run(async () => {
@@ -226,11 +249,11 @@
 			</form>
 
 			<form onsubmit={savePassword} class="flex flex-col gap-3 border-t pt-5">
-				{@render heading('New password', '8+ characters')}
+				{@render heading('New password', '12+ characters')}
 				<input
 					type="password"
 					required
-					minlength="8"
+					minlength="12"
 					autocomplete="new-password"
 					placeholder="New password"
 					aria-label="New password"
@@ -283,6 +306,36 @@
 					>
 				</section>
 			{/if}
+
+			<section class="flex flex-col gap-3 border-t pt-5">
+				{@render heading('Authenticator app', 'Six-digit codes')}
+				{#if totp.length}
+					<ul class="panel">
+						{#each totp as factor (factor.id)}
+							<li class="row">
+								<span class="truncate font-medium">{factor.friendly_name || 'Authenticator'}</span>
+								<button
+									type="button"
+									disabled={busy}
+									onclick={() => removeAuthenticator(factor.id)}
+									class="btn tone-red shrink-0">Remove</button
+								>
+							</li>
+						{/each}
+					</ul>
+				{:else if addingTotp}
+					<TotpEnroll
+						ondone={async () => {
+							addingTotp = false;
+							await refreshTotp();
+						}}
+					/>
+				{:else}
+					<button type="button" onclick={() => (addingTotp = true)} class="btn self-start"
+						>+ Add an authenticator</button
+					>
+				{/if}
+			</section>
 		{:else}
 			<div class="panel">
 				<div class="row py-4">

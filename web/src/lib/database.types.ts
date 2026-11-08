@@ -209,6 +209,18 @@ export type Database = {
 				Args: Record<string, never>;
 				Returns: boolean;
 			};
+			security_status: {
+				Args: Record<string, never>;
+				Returns: Json;
+			};
+			second_factor_status: {
+				Args: { target: string };
+				Returns: Json;
+			};
+			restore_my_keys: {
+				Args: Record<string, never>;
+				Returns: number;
+			};
 			can_use_app: {
 				Args: Record<string, never>;
 				Returns: boolean;

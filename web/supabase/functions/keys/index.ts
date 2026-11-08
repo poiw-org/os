@@ -6,6 +6,10 @@
 // POST { action: "issue", user_id, serial_number, not_before, expires_at } -> { id }
 // POST { action: "issue", user_id, virtual: true, not_before, expires_at }  -> { id }   (no tag)
 // POST { action: "renew", id, not_before, expires_at }                      -> { id }
+// POST { action: "reset_second_factors", user_id }                          -> { removed }
+//
+// Issuing to a member with no passkey or authenticator app also needs acknowledge_no_second_factor:
+// true, because that key will be suspended 14 days later unless the member registers one.
 //
 // Auth: the caller's Supabase access token, which must belong to a row in public.admins.
 // verify_jwt is off at the gateway because that check is done here.
@@ -96,6 +100,14 @@ async function issue(db: Db, callerId: string, body: Record<string, unknown>) {
 	if (!profile) throw new HttpError(404, 'User not found');
 	if (profile.blocked) throw new HttpError(422, 'User is blocked');
 
+	const { data: security, error: securityError } = await db.rpc('second_factor_status', {
+		target: userId
+	});
+	if (securityError) throw new HttpError(500, 'Could not check the second factor');
+	if (!security?.email_verified) throw new HttpError(422, 'This user has not verified their email');
+	if (!security?.has_factor && body.acknowledge_no_second_factor !== true)
+		throw new HttpError(428, 'Acknowledge that this user has no second factor');
+
 	const id = crypto.randomUUID();
 	const issuedAt = new Date();
 	const jwt = await signKey({
@@ -122,7 +134,47 @@ async function issue(db: Db, callerId: string, body: Record<string, unknown>) {
 	}
 	if (error) throw new HttpError(500, 'Could not save the key');
 
+	// The 14 days the admin just acknowledged start now, not at the next daily run.
+	if (!security?.has_factor) {
+		const { error: clockError } = await db
+			.from('profiles')
+			.update({ security_required_since: issuedAt.toISOString() })
+			.eq('id', userId)
+			.is('security_required_since', null);
+		if (clockError) console.error(clockError);
+	}
+
 	return { id };
+}
+
+// For a member who lost their device. They get a fresh 14 days to register a new factor.
+async function resetSecondFactors(db: Db, body: Record<string, unknown>) {
+	const userId = typeof body.user_id === 'string' ? body.user_id : '';
+	if (!userId) throw new HttpError(400, 'user_id is required');
+
+	const { data: factors, error: factorsError } = await db.auth.admin.mfa.listFactors({ userId });
+	if (factorsError) throw new HttpError(500, 'Could not read the factors');
+	const { data: passkeys, error: passkeysError } = await db.auth.admin.passkey.listPasskeys({
+		userId
+	});
+	if (passkeysError) throw new HttpError(500, 'Could not read the passkeys');
+
+	for (const factor of factors.factors) {
+		const { error } = await db.auth.admin.mfa.deleteFactor({ userId, id: factor.id });
+		if (error) throw new HttpError(500, 'Could not remove a factor');
+	}
+	for (const passkey of passkeys ?? []) {
+		const { error } = await db.auth.admin.passkey.deletePasskey({ userId, passkeyId: passkey.id });
+		if (error) throw new HttpError(500, 'Could not remove a passkey');
+	}
+
+	const { error } = await db
+		.from('profiles')
+		.update({ security_required_since: null, security_reminded_at: null })
+		.eq('id', userId);
+	if (error) throw new HttpError(500, 'Could not reset the deadline');
+
+	return { removed: factors.factors.length + (passkeys?.length ?? 0) };
 }
 
 async function renew(db: Db, callerId: string, body: Record<string, unknown>) {
@@ -192,6 +244,7 @@ Deno.serve((req) =>
 
 		if (body.action === 'issue') return await issue(db, callerId, body);
 		if (body.action === 'renew') return await renew(db, callerId, body);
+		if (body.action === 'reset_second_factors') return await resetSecondFactors(db, body);
 		throw new HttpError(400, 'Unknown action');
 	})
 );
