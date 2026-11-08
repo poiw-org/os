@@ -375,6 +375,7 @@ async function mockSupabase(page: Page, state: ApiState) {
 				if (key) Object.assign(key, { not_before: body.not_before, expires_at: body.expires_at });
 				return json({ id: body.id });
 			}
+			if (body.action === 'change_email') return json({ email: body.email });
 		}
 
 		return json({ error: `unmocked ${call}` }, 500);

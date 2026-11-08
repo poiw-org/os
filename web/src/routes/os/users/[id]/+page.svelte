@@ -4,6 +4,7 @@
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import {
+		changeUserEmail,
 		getAnswers,
 		getUser,
 		isAdmin,
@@ -117,6 +118,29 @@
 		resetting = false;
 	};
 
+	let newEmail = $state('');
+	let changingEmail = $state(false);
+	const changeEmail = async (event: SubmitEvent) => {
+		event.preventDefault();
+		if (!user) return;
+		const accepted = await ask({
+			title: 'Change email?',
+			message: `${withName(user)} will sign in with ${newEmail.trim()} from now on. It takes effect immediately, with no confirmation email.`,
+			confirmLabel: 'Change email'
+		});
+		if (!accepted) return;
+		changingEmail = true;
+		try {
+			const { email } = await changeUserEmail(user.id, newEmail);
+			user = { ...user, email };
+			newEmail = '';
+			toast.success('Email changed.');
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'Could not change the email.');
+		}
+		changingEmail = false;
+	};
+
 	const saveDraft = async (event: SubmitEvent) => {
 		event.preventDefault();
 		if (!draft || !user) return;
@@ -224,6 +248,32 @@
 					{/if}
 				</span>
 			</div>
+
+			{#if !self}
+				<div class="flex flex-col gap-2">
+					<h2 class="font-bold">Email</h2>
+					<form onsubmit={changeEmail} class="panel flex flex-wrap items-end gap-2 p-4">
+						<label class="flex min-w-0 flex-1 basis-64 flex-col gap-1.5">
+							<span class="eyebrow">New email</span>
+							<input
+								required
+								type="email"
+								autocomplete="off"
+								placeholder={user.email}
+								bind:value={newEmail}
+								class="px-3 py-2"
+							/>
+						</label>
+						<button
+							type="submit"
+							class="btn btn-primary"
+							disabled={changingEmail || !newEmail.trim()}
+						>
+							{changingEmail ? 'Changing…' : 'Change email'}
+						</button>
+					</form>
+				</div>
+			{/if}
 
 			<div class="flex flex-col gap-2">
 				<h2 class="font-bold">Questionnaire</h2>

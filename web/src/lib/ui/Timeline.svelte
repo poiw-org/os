@@ -70,6 +70,7 @@
 		registered: ['Registered', 'plain', 'user'],
 		onboarded: ['Completed the questionnaire', 'plain', 'form'],
 		answers_edited: ['Questionnaire answers edited', 'plain', 'pencil'],
+		email_changed: ['Email changed', 'plain', 'pencil'],
 		user_blocked: ['Blocked', 'bad', 'ban'],
 		user_unblocked: ['Unblocked', 'good', 'user'],
 		admin_granted: ['Made admin', 'good', 'shield'],
@@ -89,13 +90,14 @@
 		const [title, tone, icon] = KINDS[a.kind];
 		const label = keyLabel(a.keyId, a.serialNumber ?? serialByKey.get(a.keyId ?? '') ?? null);
 		const until = a.expiresAt ? `until ${formatDate(a.expiresAt).split(',')[0]}` : '';
+		const email = a.emailTo ? `${a.emailFrom ?? 'none'} → ${a.emailTo}` : '';
 		return {
 			id: `a${a.id}`,
 			at: a.timestamp,
 			tone,
 			icon,
 			title,
-			detail: [label, until].filter(Boolean).join(' · ') || undefined,
+			detail: [label, until, email].filter(Boolean).join(' · ') || undefined,
 			by: a.actorId ? { id: a.actorId, name: actorName(a.actorId) } : undefined,
 			// A deleted key has no page to open.
 			keyId: a.keyId && a.kind !== 'key_deleted' ? a.keyId : undefined

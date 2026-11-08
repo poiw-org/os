@@ -7,6 +7,7 @@
 // POST { action: "issue", user_id, virtual: true, not_before, expires_at }  -> { id }   (no tag)
 // POST { action: "renew", id, not_before, expires_at }                      -> { id }
 // POST { action: "reset_second_factors", user_id }                          -> { removed }
+// POST { action: "change_email", user_id, email }                           -> { email }
 //
 // Issuing to a member with no passkey or authenticator app also needs acknowledge_no_second_factor:
 // true, because that key will be suspended 14 days later unless the member registers one.
@@ -177,6 +178,48 @@ async function resetSecondFactors(db: Db, body: Record<string, unknown>) {
 	return { removed: factors.factors.length + (passkeys?.length ?? 0) };
 }
 
+// Takes effect at once and counts as verified: the admin vouches for the address, and Supabase's
+// confirmation flow is the member's own route, from Settings. That is also why admins cannot use
+// this on themselves.
+async function changeEmail(db: Db, callerId: string, body: Record<string, unknown>) {
+	const userId = typeof body.user_id === 'string' ? body.user_id : '';
+	const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+	if (!userId) throw new HttpError(400, 'user_id is required');
+	if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+		throw new HttpError(400, 'Enter a valid email address');
+	if (userId === callerId) throw new HttpError(403, 'Change your own email in Settings');
+
+	const { data: profile, error: profileError } = await db
+		.from('profiles')
+		.select('email')
+		.eq('id', userId)
+		.maybeSingle();
+	if (profileError) throw new HttpError(500, 'Could not read the user');
+	if (!profile) throw new HttpError(404, 'User not found');
+	if (profile.email?.toLowerCase() === email)
+		throw new HttpError(409, 'This user already has that email');
+
+	const stamp = (by: string | null) =>
+		db.from('profiles').update({ email_changed_by: by }).eq('id', userId);
+	const { error: stampError } = await stamp(callerId);
+	if (stampError) throw new HttpError(500, 'Could not change the email');
+
+	try {
+		const { error } = await db.auth.admin.updateUserById(userId, { email, email_confirm: true });
+		if (error?.code === 'email_exists')
+			throw new HttpError(409, 'Another user already has that email');
+		if (error?.code === 'email_address_invalid' || error?.code === 'validation_failed')
+			throw new HttpError(400, 'Enter a valid email address');
+		if (error) throw new HttpError(500, 'Could not change the email');
+	} finally {
+		// A later change by the member themselves must not be credited to this admin.
+		const { error } = await stamp(null);
+		if (error) console.error(error);
+	}
+
+	return { email };
+}
+
 async function renew(db: Db, callerId: string, body: Record<string, unknown>) {
 	const id = typeof body.id === 'string' ? body.id : '';
 	if (!id) throw new HttpError(400, 'id is required');
@@ -245,6 +288,7 @@ Deno.serve((req) =>
 		if (body.action === 'issue') return await issue(db, callerId, body);
 		if (body.action === 'renew') return await renew(db, callerId, body);
 		if (body.action === 'reset_second_factors') return await resetSecondFactors(db, body);
+		if (body.action === 'change_email') return await changeEmail(db, callerId, body);
 		throw new HttpError(400, 'Unknown action');
 	})
 );

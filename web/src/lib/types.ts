@@ -62,6 +62,7 @@ export type ActivityKind =
 	| 'registered'
 	| 'onboarded'
 	| 'answers_edited'
+	| 'email_changed'
 	| 'user_blocked'
 	| 'user_unblocked'
 	| 'admin_granted'
@@ -84,6 +85,8 @@ export type Activity = {
 	keyId: string | null;
 	serialNumber: string | null;
 	expiresAt?: Date;
+	emailFrom?: string;
+	emailTo?: string;
 };
 
 /** `label` is for reading and searching ("Full Name · email"); `email` is the address itself. */

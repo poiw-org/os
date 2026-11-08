@@ -59,7 +59,11 @@ export const toEntry = (row: Raw): Entry => {
 };
 
 export const toActivity = (row: Raw): Activity => {
-	const expires = ((row.detail ?? {}) as { expires_at?: string }).expires_at;
+	const {
+		expires_at: expires,
+		from: emailFrom,
+		to: emailTo
+	} = (row.detail ?? {}) as { expires_at?: string; from?: string; to?: string };
 	return {
 		id: row.id as number,
 		timestamp: new Date(row.created_at as string),
@@ -68,7 +72,9 @@ export const toActivity = (row: Raw): Activity => {
 		kind: row.kind as ActivityKind,
 		keyId: (row.key_id as string | null) ?? null,
 		serialNumber: (row.serial_number as string | null) ?? null,
-		expiresAt: expires ? new Date(expires) : undefined
+		expiresAt: expires ? new Date(expires) : undefined,
+		emailFrom,
+		emailTo
 	};
 };
 
@@ -320,6 +326,10 @@ export async function getSecondFactorStatus(userId: string) {
 /** Removes a member's passkeys and authenticator apps, for when they lost their device. */
 export const resetSecondFactors = (userId: string) =>
 	invoke<{ removed: number }>('keys', { action: 'reset_second_factors', user_id: userId });
+
+/** Replaces a member's sign-in email straight away; returns the address as stored. */
+export const changeUserEmail = (userId: string, email: string) =>
+	invoke<{ email: string }>('keys', { action: 'change_email', user_id: userId, email });
 
 export const renewKey = (key: { id: string; notBefore: Date; expiresAt: Date }) =>
 	invokeKeys({

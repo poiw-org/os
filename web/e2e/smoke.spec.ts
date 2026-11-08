@@ -71,6 +71,17 @@ test.describe('signed in', () => {
 		await expect(page.getByText('alice@example.test').first()).toBeVisible();
 	});
 
+	test('admin changes a member email after confirming', async ({ page, api }) => {
+		await page.goto(`/os/users/${USERS[1].id}`);
+		await page.getByLabel('New email').fill('new-bob@example.test');
+		await page.getByRole('main').getByRole('button', { name: 'Change email' }).click();
+		await page.getByRole('dialog').getByRole('button', { name: 'Change email' }).click();
+		await expect
+			.poll(() => api.bodies.find((b) => b.call === 'POST /functions/v1/keys')?.body)
+			.toEqual({ action: 'change_email', user_id: USERS[1].id, email: 'new-bob@example.test' });
+		await expect(page.getByText('Email changed.')).toBeVisible();
+	});
+
 	test('changes stream in without a reload', async ({ page, api }) => {
 		await page.goto(`/os/keys/${firstId}`);
 		await page.locator('div.cursor-pointer').first().waitFor();
