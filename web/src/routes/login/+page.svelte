@@ -2,8 +2,10 @@
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import {
+		hasPasskey,
 		passkeysSupported,
 		sendPasswordReset,
+		sendSignInLink,
 		signIn,
 		signInWithPasskey
 	} from '#lib/auth.ts';
@@ -12,13 +14,16 @@
 	import Turnstile from '#lib/auth/Turnstile.svelte';
 	import { arrive, reveal as unfold } from '#lib/motion.ts';
 
-	type Mode = 'signin' | 'reset';
-	const copy: Record<Mode, { title: string; subtitle: string; action: string }> = {
-		signin: {
-			title: 'Sign in',
-			subtitle: '',
-			action: 'Sign in'
+	type Step = 'email' | 'password' | 'passkey' | 'sent' | 'reset';
+	const copy: Record<Step, { title: string; subtitle: string; action: string }> = {
+		email: { title: 'Sign in', subtitle: '', action: 'Continue' },
+		password: { title: 'Sign in', subtitle: '', action: 'Sign in' },
+		passkey: {
+			title: 'Use your passkey',
+			subtitle: 'Your device will ask you to confirm it is you.',
+			action: 'Continue with passkey'
 		},
+		sent: { title: 'Check your email', subtitle: '', action: '' },
 		reset: {
 			title: 'Reset password',
 			subtitle: 'We will email you a link to choose a new one.',
@@ -26,7 +31,7 @@
 		}
 	};
 
-	let mode = $state<Mode>('signin');
+	let step = $state<Step>('email');
 	let email = $state('');
 	let password = $state('');
 	let reveal = $state(false);
@@ -36,11 +41,17 @@
 	let canUsePasskey = $state(false);
 	let captcha = $state<Turnstile>();
 	const token = () => captcha!.take();
+	const emailLocked = $derived(step === 'password' || step === 'passkey' || step === 'sent');
 
-	onMount(() => (canUsePasskey = passkeysSupported()));
+	onMount(() => {
+		canUsePasskey = passkeysSupported();
+		// An expired or already used email link comes back here with the reason.
+		const linkError = new URLSearchParams(window.location.hash.slice(1)).get('error_description');
+		if (linkError) report(`${linkError}. Sign in to get a new one.`);
+	});
 
-	const switchTo = (next: Mode) => {
-		mode = next;
+	const switchTo = (next: Step) => {
+		step = next;
 		message = '';
 		password = '';
 	};
@@ -54,72 +65,102 @@
 		window.location.href = '/os';
 	};
 
-	const passkey = async () => {
-		busy = true;
-		message = '';
+	const emailLink = async () => {
+		await sendSignInLink(email, await token());
+		switchTo('sent');
+		report(
+			`We sent a sign-in link to ${email}. Unlocking the door will still need your passkey or authenticator.`,
+			false
+		);
+	};
+
+	const lookUp = async () => {
+		if (!(await hasPasskey(email, await token()))) switchTo('password');
+		else if (canUsePasskey) switchTo('passkey');
+		else await emailLink();
+	};
+
+	// A refused or unavailable passkey reaches us as NotAllowedError: fall back to the email link.
+	const usePasskey = async () => {
 		try {
 			await signInWithPasskey(await token());
 			enter();
 		} catch (e) {
-			// Closing the browser's passkey prompt is not an error worth showing.
-			if (!(e instanceof Error && e.name === 'NotAllowedError'))
-				report(e instanceof Error ? e.message : 'Could not sign in with a passkey.');
+			if (e instanceof Error && e.name === 'NotAllowedError') await emailLink();
+			else throw e;
 		}
-		busy = false;
 	};
 
-	const submit = async (event: SubmitEvent) => {
-		event.preventDefault();
+	const run = async (action: () => Promise<void>) => {
 		message = '';
 		busy = true;
 		try {
-			if (mode === 'signin') {
-				await signIn(email, password, await token());
-				enter();
-			} else {
-				await sendPasswordReset(email, await token());
-				report('If an account exists for this email, a reset link is on its way.', false);
-			}
+			await action();
 		} catch (e) {
 			report(e instanceof Error ? e.message : 'Something went wrong.');
 		}
 		busy = false;
 	};
+
+	const submit = (event: SubmitEvent) => {
+		event.preventDefault();
+		return run(async () => {
+			if (step === 'email') await lookUp();
+			else if (step === 'passkey') await usePasskey();
+			else if (step === 'password') {
+				await signIn(email, password, await token());
+				enter();
+			} else if (step === 'reset') {
+				await sendPasswordReset(email, await token());
+				report('If an account exists for this email, a reset link is on its way.', false);
+			}
+		});
+	};
 </script>
 
 <svelte:head>
-	<title>{copy[mode].title} · doora</title>
+	<title>{copy[step].title} · doora</title>
 </svelte:head>
 
-<AuthShell title={copy[mode].title} subtitle={copy[mode].subtitle}>
-	{#if mode === 'signin' && canUsePasskey}
+<AuthShell title={copy[step].title} subtitle={copy[step].subtitle}>
+	{#if step === 'email' && canUsePasskey}
 		<QuickUnlock captcha={token} />
 	{/if}
 
 	<form onsubmit={submit} class="flex flex-col gap-4">
-		<label class="flex flex-col gap-1.5">
-			<span class="eyebrow">Email</span>
+		<div class="flex flex-col gap-1.5">
+			<span class="flex items-baseline justify-between">
+				<label for="email" class="eyebrow">Email</label>
+				{#if emailLocked}
+					<button
+						type="button"
+						onclick={() => switchTo('email')}
+						disabled={busy}
+						class="text-xs text-brand-text underline">Change</button
+					>
+				{/if}
+			</span>
 			<input
+				id="email"
 				type="email"
 				required
+				readonly={emailLocked}
 				autocomplete="username"
 				placeholder="you@example.com"
 				bind:value={email}
 				class="px-3.5 py-2.5"
 			/>
-		</label>
+		</div>
 
-		{#if mode !== 'reset'}
+		{#if step === 'password'}
 			<div class="flex flex-col gap-1.5" transition:unfold>
 				<span class="flex items-baseline justify-between">
 					<label for="password" class="eyebrow">Password</label>
-					{#if mode === 'signin'}
-						<button
-							type="button"
-							onclick={() => switchTo('reset')}
-							class="text-xs text-brand-text underline">Forgot password?</button
-						>
-					{/if}
+					<button
+						type="button"
+						onclick={() => switchTo('reset')}
+						class="text-xs text-brand-text underline">Forgot password?</button
+					>
 				</span>
 				<span class="relative flex">
 					<input
@@ -149,26 +190,28 @@
 
 		<Turnstile bind:this={captcha} />
 
-		<button type="submit" disabled={busy} class="btn btn-primary mt-1 py-2.5">
-			{busy ? 'One moment…' : copy[mode].action}
-		</button>
+		{#if copy[step].action}
+			<button type="submit" disabled={busy} class="btn btn-primary mt-1 py-2.5">
+				{busy ? 'One moment…' : copy[step].action}
+			</button>
+		{/if}
 	</form>
 
-	{#if mode === 'signin' && canUsePasskey}
-		<button type="button" onclick={passkey} disabled={busy} class="btn py-2.5"
-			>Sign in with a passkey</button
+	{#if step === 'passkey'}
+		<button type="button" onclick={() => run(emailLink)} disabled={busy} class="btn py-2.5"
+			>Email me a sign-in link instead</button
 		>
 	{/if}
 
-	{#if mode === 'signin'}
+	{#if step === 'reset'}
 		<p class="text-gray-400">
-			No account? <a href={resolve('/onboarding')} class="text-brand-text underline">Register</a>
+			<button type="button" onclick={() => switchTo('email')} class="text-brand-text underline"
+				>Back to sign in</button
+			>
 		</p>
 	{:else}
 		<p class="text-gray-400">
-			<button type="button" onclick={() => switchTo('signin')} class="text-brand-text underline"
-				>Back to sign in</button
-			>
+			No account? <a href={resolve('/onboarding')} class="text-brand-text underline">Register</a>
 		</p>
 	{/if}
 </AuthShell>

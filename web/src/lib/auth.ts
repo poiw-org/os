@@ -35,8 +35,14 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 	const {
 		has_factor: hasSecondFactor = false,
 		required: secondFactorRequired = false,
+		enforced = false,
 		suspends_at: suspendsAt
-	} = (security ?? {}) as { has_factor?: boolean; required?: boolean; suspends_at?: string | null };
+	} = (security ?? {}) as {
+		has_factor?: boolean;
+		required?: boolean;
+		enforced?: boolean;
+		suspends_at?: string | null;
+	};
 	// A passkey sign-in stays aal1 in Supabase but needs no code on top.
 	const usedPasskey = assurance?.currentAuthenticationMethods.some(
 		(entry) => (typeof entry === 'string' ? entry : entry.method) === 'passkey'
@@ -54,6 +60,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 		onboarded: Boolean(profile?.onboarded_at),
 		hasSecondFactor,
 		secondFactorRequired,
+		secondFactorEnforced: enforced || (isAdmin && secondFactorRequired),
 		keysSuspendAt: suspendsAt ? new Date(suspendsAt) : undefined,
 		needsCode: assurance?.currentLevel === 'aal1' && assurance.nextLevel === 'aal2' && !usedPasskey,
 		canUnlock: Boolean(canUnlock),
@@ -95,6 +102,31 @@ export async function signIn(email: string, password: string, captchaToken: stri
 /** WebAuthn sign-in with a passkey the user registered from the settings modal. */
 export async function signInWithPasskey(captchaToken: string) {
 	const { error } = await supabase.auth.signInWithPasskey({ options: { captchaToken } });
+	if (error) throw error;
+}
+
+/**
+ * Whether this email should be offered a passkey. A failed lookup answers false, so the password
+ * form still works when the check is down.
+ */
+export async function hasPasskey(email: string, captchaToken: string) {
+	const { data, error } = await supabase.functions.invoke('sign-in-method', {
+		body: { email, captcha_token: captchaToken }
+	});
+	return !error && data?.passkey === true;
+}
+
+/** Passwordless sign-in for an existing account; never creates one. */
+export async function sendSignInLink(email: string, captchaToken: string) {
+	const { error } = await supabase.auth.signInWithOtp({
+		email,
+		options: {
+			captchaToken,
+			shouldCreateUser: false,
+			// The login page sends a signed-in visitor on, and shows why an expired link failed.
+			emailRedirectTo: `${window.location.origin}/login`
+		}
+	});
 	if (error) throw error;
 }
 

@@ -16,7 +16,7 @@
 
 	let { data }: PageProps = $props();
 
-	const required = $derived(Boolean(data.user?.isAdmin && data.user.secondFactorRequired));
+	const required = $derived(Boolean(data.user?.secondFactorEnforced));
 	let canUsePasskey = $state(false);
 	let usingApp = $state(false);
 	let finishing = $state(false);

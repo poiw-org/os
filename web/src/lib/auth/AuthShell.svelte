@@ -23,7 +23,8 @@
 			brightness={-0.12}
 			mouseRadius={0.35}
 			art={mascot}
-			artLabel="Μανούσος Μικροτσιπάκης, Mascot του po/iw"		/>
+			artLabel="Μανούσος Μικροτσιπάκης, Mascot του po/iw"
+		/>
 	</div>
 	<header class="bar full fixed inset-x-0 top-0 z-10">
 		<a href="/" class="label"><OsLabel /></a>

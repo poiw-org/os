@@ -44,7 +44,7 @@
 {:else}
 	<div class="console flex min-h-screen w-full flex-col">
 		<Header user={data.user} />
-		{#if data.user?.secondFactorRequired && !data.user.isAdmin}
+		{#if data.user?.secondFactorRequired && !data.user.secondFactorEnforced}
 			<SecondFactorPrompt user={data.user} />
 		{/if}
 		<main class="mx-auto w-full max-w-[1500px] flex-1">

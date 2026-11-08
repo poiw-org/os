@@ -336,6 +336,7 @@ test.describe('signed out', () => {
 	test('wrong password shows the error and stays', async ({ page }) => {
 		await page.goto('/login');
 		await page.getByLabel('Email').fill('tester@example.test');
+		await page.getByRole('button', { name: 'Continue', exact: true }).click();
 		await page.getByLabel('Password', { exact: true }).fill('nope');
 		await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 		await expect(page.getByText('Invalid login credentials')).toBeVisible();
@@ -345,6 +346,7 @@ test.describe('signed out', () => {
 	test('admin signs in', async ({ page }) => {
 		await page.goto('/login');
 		await page.getByLabel('Email').fill('tester@example.test');
+		await page.getByRole('button', { name: 'Continue', exact: true }).click();
 		await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
 		await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 		await expect(page).toHaveURL(/\/os$/);
@@ -354,6 +356,7 @@ test.describe('signed out', () => {
 	test('a member lands on their keys and gets no admin controls', async ({ page }) => {
 		await page.goto('/login');
 		await page.getByLabel('Email').fill('nobody@example.test');
+		await page.getByRole('button', { name: 'Continue', exact: true }).click();
 		await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
 		await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 		await expect(page).toHaveURL(/\/os\/keys$/);
@@ -370,6 +373,7 @@ test.describe('signed out', () => {
 		);
 		await page.goto('/login');
 		await page.getByLabel('Email').fill('nobody@example.test');
+		await page.getByRole('button', { name: 'Continue', exact: true }).click();
 		await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
 		await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 		await expect(page).toHaveURL(/\/os\/keys$/);
@@ -382,8 +386,68 @@ test.describe('signed out', () => {
 		await expect(prompt).toBeHidden();
 	});
 
+	test('the password stays hidden until the email is known', async ({ page, api }) => {
+		await page.goto('/login');
+		await expect(page.getByLabel('Password', { exact: true })).toHaveCount(0);
+		await page.getByLabel('Email').fill('tester@example.test');
+		await page.getByRole('button', { name: 'Continue', exact: true }).click();
+		await expect(page.getByLabel('Password', { exact: true })).toBeVisible();
+		const lookup = api.bodies.find((b) => b.call === 'POST /functions/v1/sign-in-method')?.body;
+		expect(lookup).toMatchObject({
+			email: 'tester@example.test',
+			captcha_token: 'captcha-token'
+		});
+	});
+
+	test('refusing the passkey emails a sign-in link', async ({ page, api }) => {
+		await page.addInitScript(() => {
+			navigator.credentials.get = () =>
+				Promise.reject(new DOMException('Refused', 'NotAllowedError'));
+		});
+		await page.route('**/auth/v1/passkeys/authentication/options', (route) =>
+			route.fulfill({
+				json: {
+					challenge_id: 'challenge',
+					options: { challenge: 'AAAA', rpId: 'localhost', allowCredentials: [] }
+				}
+			})
+		);
+		await page.goto('/login');
+		await page.getByLabel('Email').fill('passkey@example.test');
+		await page.getByRole('button', { name: 'Continue', exact: true }).click();
+		await expect(page.getByLabel('Password', { exact: true })).toHaveCount(0);
+		await page.getByRole('button', { name: 'Continue with passkey' }).click();
+		await expect(page.getByText('We sent a sign-in link to passkey@example.test.')).toBeVisible();
+		const otp = api.bodies.find((b) => b.call === 'POST /auth/v1/otp')?.body;
+		expect(otp).toMatchObject({ email: 'passkey@example.test', create_user: false });
+	});
+
+	test('an expired email link says so on the sign-in page', async ({ page }) => {
+		await page.goto(
+			'/login#error=access_denied&error_description=Email+link+is+invalid+or+has+expired'
+		);
+		await expect(page.getByText('Email link is invalid or has expired. Sign in')).toBeVisible();
+	});
+
+	test('after the grace period a member must register a factor', async ({ page }) => {
+		await page.route('**/rest/v1/rpc/security_status', (route) =>
+			route.fulfill({
+				json: { has_factor: false, required: true, enforced: true, suspends_at: null }
+			})
+		);
+		await page.goto('/login');
+		await page.getByLabel('Email').fill('nobody@example.test');
+		await page.getByRole('button', { name: 'Continue', exact: true }).click();
+		await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
+		await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+		await expect(page).toHaveURL(/\/security$/);
+		await expect(page.getByRole('dialog', { name: 'Protect your key with 2FA' })).toHaveCount(0);
+	});
+
 	test('forgot password sends a reset link', async ({ page, api }) => {
 		await page.goto('/login');
+		await page.getByLabel('Email').fill('tester@example.test');
+		await page.getByRole('button', { name: 'Continue', exact: true }).click();
 		await page.getByRole('button', { name: 'Forgot password?' }).click();
 		await page.getByLabel('Email').fill('tester@example.test');
 		await page.getByRole('button', { name: 'Send reset link' }).click();

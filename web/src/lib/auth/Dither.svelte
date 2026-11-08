@@ -565,7 +565,8 @@ void main() {
 			gl.uniform1f(d.uReach, 0.5 * Math.hypot(view.width / view.height, 1) + 0.45);
 			const rect = mascotRect();
 			gl.uniform4f(d.uMascotRect, rect[0], rect[1], rect[2], rect[3]);
-			gl.uniform1i(d.uMascot, 1);			if (rect[2] > 0) {
+			gl.uniform1i(d.uMascot, 1);
+			if (rect[2] > 0) {
 				gl.activeTexture(gl.TEXTURE1);
 				gl.bindTexture(gl.TEXTURE_2D, mascotTexture);
 				if (asciiDirty) {
