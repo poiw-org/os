@@ -36,11 +36,13 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 		has_factor: hasSecondFactor = false,
 		required: secondFactorRequired = false,
 		enforced = false,
+		needs_email_code: needsEmailCode = false,
 		suspends_at: suspendsAt
 	} = (security ?? {}) as {
 		has_factor?: boolean;
 		required?: boolean;
 		enforced?: boolean;
+		needs_email_code?: boolean;
 		suspends_at?: string | null;
 	};
 	// A passkey sign-in stays aal1 in Supabase but needs no code on top.
@@ -63,6 +65,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 		secondFactorEnforced: enforced || (isAdmin && secondFactorRequired),
 		keysSuspendAt: suspendsAt ? new Date(suspendsAt) : undefined,
 		needsCode: assurance?.currentLevel === 'aal1' && assurance.nextLevel === 'aal2' && !usedPasskey,
+		needsEmailCode,
 		canUnlock: Boolean(canUnlock),
 		pendingEmail: session.user.new_email,
 		createdAt: new Date(session.user.created_at),
@@ -100,8 +103,10 @@ export async function signIn(email: string, password: string, captchaToken: stri
 }
 
 /** WebAuthn sign-in with a passkey the user registered from the settings modal. */
-export async function signInWithPasskey(captchaToken: string) {
-	const { error } = await supabase.auth.signInWithPasskey({ options: { captchaToken } });
+export async function signInWithPasskey(captchaToken: string, mediation?: 'conditional') {
+	const { error } = await supabase.auth.signInWithPasskey({
+		options: { captchaToken, mediation }
+	});
 	if (error) throw error;
 }
 
@@ -116,19 +121,25 @@ export async function hasPasskey(email: string, captchaToken: string) {
 	return !error && data?.passkey === true;
 }
 
-/** Passwordless sign-in for an existing account; never creates one. */
-export async function sendSignInLink(email: string, captchaToken: string) {
+/** Emails the code for the second step of a password sign-in; never creates an account. */
+export async function sendEmailCode(email: string, captchaToken: string) {
 	const { error } = await supabase.auth.signInWithOtp({
 		email,
-		options: {
-			captchaToken,
-			shouldCreateUser: false,
-			// The login page sends a signed-in visitor on, and shows why an expired link failed.
-			emailRedirectTo: `${window.location.origin}/login`
-		}
+		options: { captchaToken, shouldCreateUser: false }
 	});
 	if (error) throw error;
 }
+
+export async function confirmEmailCode(code: string) {
+	const { error } = await supabase.functions.invoke('confirm-email-code', { body: { code } });
+	if (!error) return;
+	const reason = await (error as { context?: Response }).context?.json().catch(() => null);
+	throw new Error(reason?.error ?? 'Could not verify the code.');
+}
+
+/** Whether the browser or a password manager can offer passkeys in the email field's autofill. */
+export const passkeyAutofillSupported = async () =>
+	passkeysSupported() && (await PublicKeyCredential.isConditionalMediationAvailable?.()) === true;
 
 export const passkeysSupported = () =>
 	typeof window !== 'undefined' && 'PublicKeyCredential' in window;

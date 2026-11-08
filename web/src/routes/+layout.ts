@@ -24,9 +24,10 @@ export const load: LayoutLoad = async ({ url }) => {
 	if (!user && !publicRoutes.includes(url.pathname)) redirect(307, '/login');
 	if (user && url.pathname === '/login') redirect(307, '/os');
 	const inApp = url.pathname.startsWith('/os') || url.pathname === '/security';
-	// A password sign-in is not finished until the authenticator code is in.
-	if (user?.needsCode && inApp) redirect(307, '/verify');
-	if (user && !user.needsCode && url.pathname === '/verify') redirect(307, '/os');
+	// A password sign-in is not finished until the code is in.
+	const unfinished = user?.needsCode || user?.needsEmailCode;
+	if (unfinished && inApp) redirect(307, '/verify');
+	if (user && !unfinished && url.pathname === '/verify') redirect(307, '/os');
 	// Everyone answers the onboarding questions once, before using the OS.
 	if (user && !user.onboarded && inApp) redirect(307, '/onboarding');
 	if (user?.onboarded && url.pathname === '/onboarding') redirect(307, '/os');

@@ -3,9 +3,9 @@
 	import { onMount } from 'svelte';
 	import {
 		hasPasskey,
+		passkeyAutofillSupported,
 		passkeysSupported,
 		sendPasswordReset,
-		sendSignInLink,
 		signIn,
 		signInWithPasskey
 	} from '#lib/auth.ts';
@@ -14,7 +14,7 @@
 	import Turnstile from '#lib/auth/Turnstile.svelte';
 	import { arrive, reveal as unfold } from '#lib/motion.ts';
 
-	type Step = 'email' | 'password' | 'passkey' | 'sent' | 'reset';
+	type Step = 'email' | 'password' | 'passkey' | 'reset';
 	const copy: Record<Step, { title: string; subtitle: string; action: string }> = {
 		email: { title: 'Sign in', subtitle: '', action: 'Continue' },
 		password: { title: 'Sign in', subtitle: '', action: 'Sign in' },
@@ -23,7 +23,6 @@
 			subtitle: 'Your device will ask you to confirm it is you.',
 			action: 'Continue with passkey'
 		},
-		sent: { title: 'Check your email', subtitle: '', action: '' },
 		reset: {
 			title: 'Reset password',
 			subtitle: 'We will email you a link to choose a new one.',
@@ -41,13 +40,26 @@
 	let canUsePasskey = $state(false);
 	let captcha = $state<Turnstile>();
 	const token = () => captcha!.take();
-	const emailLocked = $derived(step === 'password' || step === 'passkey' || step === 'sent');
+	const emailLocked = $derived(step === 'password' || step === 'passkey');
+
+	// Lets the browser or password manager offer a passkey from the email field. It waits in the
+	// background until one is picked, and a modal passkey prompt replaces it.
+	const offerAutofill = async () => {
+		if (!(await passkeyAutofillSupported())) return;
+		const captchaToken = await token().catch(() => undefined);
+		if (!captchaToken) return;
+		try {
+			await signInWithPasskey(captchaToken, 'conditional');
+			enter();
+		} catch (e) {
+			if (e instanceof Error && !['NotAllowedError', 'AbortError'].includes(e.name))
+				report(e.message);
+		}
+	};
 
 	onMount(() => {
 		canUsePasskey = passkeysSupported();
-		// An expired or already used email link comes back here with the reason.
-		const linkError = new URLSearchParams(window.location.hash.slice(1)).get('error_description');
-		if (linkError) report(`${linkError}. Sign in to get a new one.`);
+		offerAutofill();
 	});
 
 	const switchTo = (next: Step) => {
@@ -65,28 +77,18 @@
 		window.location.href = '/os';
 	};
 
-	const emailLink = async () => {
-		await sendSignInLink(email, await token());
-		switchTo('sent');
-		report(
-			`We sent a sign-in link to ${email}. Unlocking the door will still need your passkey or authenticator.`,
-			false
-		);
-	};
-
 	const lookUp = async () => {
-		if (!(await hasPasskey(email, await token()))) switchTo('password');
-		else if (canUsePasskey) switchTo('passkey');
-		else await emailLink();
+		const offerPasskey = (await hasPasskey(email, await token())) && canUsePasskey;
+		switchTo(offerPasskey ? 'passkey' : 'password');
 	};
 
-	// A refused or unavailable passkey reaches us as NotAllowedError: fall back to the email link.
+	// A refused or unavailable passkey reaches us as NotAllowedError: fall back to the password, which /verify follows with an emailed code.
 	const usePasskey = async () => {
 		try {
 			await signInWithPasskey(await token());
 			enter();
 		} catch (e) {
-			if (e instanceof Error && e.name === 'NotAllowedError') await emailLink();
+			if (e instanceof Error && e.name === 'NotAllowedError') switchTo('password');
 			else throw e;
 		}
 	};
@@ -145,7 +147,7 @@
 				type="email"
 				required
 				readonly={emailLocked}
-				autocomplete="username"
+				autocomplete="username webauthn"
 				placeholder="you@example.com"
 				bind:value={email}
 				class="px-3.5 py-2.5"
@@ -190,16 +192,14 @@
 
 		<Turnstile bind:this={captcha} />
 
-		{#if copy[step].action}
-			<button type="submit" disabled={busy} class="btn btn-primary mt-1 py-2.5">
-				{busy ? 'One moment…' : copy[step].action}
-			</button>
-		{/if}
+		<button type="submit" disabled={busy} class="btn btn-primary mt-1 py-2.5">
+			{busy ? 'One moment…' : copy[step].action}
+		</button>
 	</form>
 
 	{#if step === 'passkey'}
-		<button type="button" onclick={() => run(emailLink)} disabled={busy} class="btn py-2.5"
-			>Email me a sign-in link instead</button
+		<button type="button" onclick={() => switchTo('password')} disabled={busy} class="btn py-2.5"
+			>Use password and email code instead</button
 		>
 	{/if}
 

@@ -111,6 +111,8 @@ export type CurrentUser = {
 	keysSuspendAt?: Date;
 	/** Signed in with a password but has not entered their authenticator code yet. */
 	needsCode: boolean;
+	/** Signed in with a password on an account with a passkey; an emailed code finishes it. */
+	needsEmailCode: boolean;
 	/** Set while an email change waits for its confirmation link. */
 	pendingEmail?: string;
 	createdAt: Date;
