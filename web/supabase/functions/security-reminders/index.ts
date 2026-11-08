@@ -6,13 +6,7 @@
 // Secrets: SECURITY_CRON_SECRET, RESEND_API_KEY, EMAIL_FROM (a sender on a domain verified in
 // Resend), APP_URL. verify_jwt is off at the gateway because the secret is checked here.
 import { env, HttpError, handlePost, serviceClient } from '../_shared/http.ts';
-
-type Due = {
-	user_id: string;
-	email: string;
-	kind: 'reminder' | 'suspended';
-	days_left: number;
-};
+import { message, type Due } from './email.ts';
 
 const athensHour = () =>
 	Number(
@@ -22,20 +16,6 @@ const athensHour = () =>
 			hourCycle: 'h23'
 		}).format(new Date())
 	);
-
-function message(due: Due, appUrl: string) {
-	const link = `<a href="${appUrl}/security">Ενεργοποίησε την τώρα</a>`;
-	if (due.kind === 'suspended')
-		return {
-			subject: 'Τα κλειδιά σου στο po/iw ανεστάλησαν',
-			html: `<p>Δεν ενεργοποίησες passkey ή εφαρμογή ελέγχου ταυτότητας μέσα σε 14 ημέρες, οπότε τα κλειδιά σου ανεστάλησαν.</p><p>Μόλις την ενεργοποιήσεις, ανοίγουν ξανά αυτόματα. ${link}.</p>`
-		};
-	const days = due.days_left === 1 ? '1 ημέρα' : `${due.days_left} ημέρες`;
-	return {
-		subject: 'Προστάτεψε τον λογαριασμό σου στο po/iw',
-		html: `<p>Για να κρατήσεις τα κλειδιά σου, χρειάζεται να ενεργοποιήσεις passkey ή εφαρμογή ελέγχου ταυτότητας. Σου απομένουν ${days} πριν ανασταλούν.</p><p>${link}.</p>`
-	};
-}
 
 async function send(to: string, content: { subject: string; html: string }) {
 	const response = await fetch('https://api.resend.com/emails', {
