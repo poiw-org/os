@@ -46,9 +46,11 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 		suspends_at?: string | null;
 	};
 	// A passkey sign-in stays aal1 in Supabase but needs no code on top.
-	const usedPasskey = assurance?.currentAuthenticationMethods.some(
-		(entry) => (typeof entry === 'string' ? entry : entry.method) === 'passkey'
-	);
+	const usedMethod = (method: string) =>
+		assurance?.currentAuthenticationMethods.some(
+			(entry) => (typeof entry === 'string' ? entry : entry.method) === method
+		);
+	const usedPasskey = usedMethod('passkey');
 
 	const email = session.user.email ?? '';
 	return {
@@ -66,6 +68,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 		keysSuspendAt: suspendsAt ? new Date(suspendsAt) : undefined,
 		needsCode: assurance?.currentLevel === 'aal1' && assurance.nextLevel === 'aal2' && !usedPasskey,
 		needsEmailCode,
+		usedPassword: Boolean(usedMethod('password')),
 		canUnlock: Boolean(canUnlock),
 		pendingEmail: session.user.new_email,
 		createdAt: new Date(session.user.created_at),

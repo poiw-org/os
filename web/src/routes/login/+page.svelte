@@ -59,6 +59,8 @@
 
 	onMount(() => {
 		canUsePasskey = passkeysSupported();
+		if (new URLSearchParams(window.location.search).has('password'))
+			report('Sign in with your password to finish. Email links can’t be used on their own.');
 		offerAutofill();
 	});
 

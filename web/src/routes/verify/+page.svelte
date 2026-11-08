@@ -25,7 +25,10 @@
 	};
 
 	onMount(() => {
-		if (email) send();
+		if (!email) return;
+		if (data.user?.usedPassword) send();
+		// An email link or password reset proves only the inbox: no code could complete it.
+		else signOut().then(() => (window.location.href = '/login?password=required'));
 	});
 
 	const submit = async (event: SubmitEvent) => {

@@ -113,6 +113,8 @@ export type CurrentUser = {
 	needsCode: boolean;
 	/** Signed in with a password on an account with a passkey; an emailed code finishes it. */
 	needsEmailCode: boolean;
+	/** This session started with a password, which the emailed code can only complete. */
+	usedPassword: boolean;
 	/** Set while an email change waits for its confirmation link. */
 	pendingEmail?: string;
 	createdAt: Date;

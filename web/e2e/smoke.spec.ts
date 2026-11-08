@@ -490,6 +490,20 @@ test.describe('signed out', () => {
 			.toBe('conditional');
 	});
 
+	test('a session from an email link goes back to the password', async ({ page, api }) => {
+		await page.route('**/rest/v1/rpc/security_status', (route) =>
+			route.fulfill({ json: { has_factor: true, required: false, needs_email_code: true } })
+		);
+		await page.goto('/login');
+		await page.getByLabel('Email').fill('linked@example.test');
+		await page.getByRole('button', { name: 'Continue', exact: true }).click();
+		await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
+		await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+		await expect(page).toHaveURL(/\/login\?password=required$/);
+		await expect(page.getByText('Sign in with your password to finish.')).toBeVisible();
+		expect(api.calls).not.toContain('POST /auth/v1/otp');
+	});
+
 	test('forgot password sends a reset link', async ({ page, api }) => {
 		await page.goto('/login');
 		await page.getByLabel('Email').fill('tester@example.test');

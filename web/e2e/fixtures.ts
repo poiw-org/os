@@ -5,8 +5,8 @@ const SUPABASE = 'https://yshwchmbsuafribrttlt.supabase.co';
 const STORAGE_KEY = 'sb-yshwchmbsuafribrttlt-auth-token';
 // Shaped like a JWT because the client decodes it to read the assurance level.
 const base64Url = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
-const testToken = (name: string) =>
-	`${base64Url({ alg: 'none' })}.${base64Url({ name, aal: 'aal1', amr: [{ method: 'password', timestamp: 1 }] })}.signatur`;
+const testToken = (name: string, method = 'password') =>
+	`${base64Url({ alg: 'none' })}.${base64Url({ name, aal: 'aal1', amr: [{ method, timestamp: 1 }] })}.signatur`;
 const ADMIN_TOKEN = testToken('admin');
 const NON_ADMIN_TOKEN = testToken('non-admin');
 const ADMIN_ID = '00000000-0000-4000-8000-0000000000aa';
@@ -290,6 +290,8 @@ async function mockSupabase(page: Page, state: ApiState) {
 					400
 				);
 			}
+			if (body.email === 'linked@example.test')
+				return json(sessionFor(testToken('non-admin', 'otp'), body.email));
 			// "nobody" is a valid Supabase account that is not in public.admins.
 			return body.email === 'nobody@example.test'
 				? json(sessionFor(NON_ADMIN_TOKEN, body.email))
