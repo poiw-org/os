@@ -6,6 +6,7 @@
 //
 // The portal hands the code only to a loopback address, and the code is useless without the verifier
 // the CLI generated, so a forged consent link cannot get a token out to anyone else.
+import { createClient } from "npm:@supabase/supabase-js@2";
 import { accessToken, callerId, env, HttpError, handlePost, serviceClient } from "../_shared/http.ts";
 import {
   challengeOf,
@@ -22,14 +23,17 @@ import {
 
 const CHALLENGE = /^[\w-]{43}$/;
 
-const sessionHasSecondFactor = (token: string) => {
-  try {
-    const claims = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
-    return claims.aal === "aal2";
-  } catch {
-    return false;
-  }
-};
+// Asked as the caller: only the database knows about passkey and email-code sessions, which can
+// stay aal1 in the token even though they passed the second step.
+async function sessionHasSecondFactor(token: string) {
+  const asCaller = createClient(env("SUPABASE_URL"), env("SUPABASE_ANON_KEY"), {
+    auth: { persistSession: false },
+    global: { headers: { Authorization: `Bearer ${token}` } },
+  });
+  const { data, error } = await asCaller.rpc("session_has_second_factor");
+  if (error) throw new Error(error.message);
+  return data === true;
+}
 
 Deno.serve((req) =>
   handlePost(req, async (body) => {
@@ -40,7 +44,7 @@ Deno.serve((req) =>
       const token = accessToken(req);
       const user = await callerId(db, token); // validates the session with Supabase first
       if (!(await mayRelease(db, user))) throw new HttpError(403, NOT_ALLOWED);
-      if ((await isAdmin(db, user)) && !sessionHasSecondFactor(token))
+      if ((await isAdmin(db, user)) && !(await sessionHasSecondFactor(token)))
         throw new HttpError(403, "Admins must be signed in with 2FA to allow this");
       if (typeof body.challenge !== "string" || !CHALLENGE.test(body.challenge))
         throw new HttpError(400, "Invalid challenge");

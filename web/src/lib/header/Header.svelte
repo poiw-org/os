@@ -6,6 +6,7 @@
 	import OsLabel from '#lib/ui/OsLabel.svelte';
 	import BluetoothApproval from './BluetoothApproval.svelte';
 	import DoorConsole from './DoorConsole.svelte';
+	import DoorIndicator from './DoorIndicator.svelte';
 	import ForceOpenModal from './ForceOpenModal.svelte';
 	import MobileMenu from './MobileMenu.svelte';
 	import SettingsModal from './SettingsModal.svelte';
@@ -14,6 +15,8 @@
 	let { user }: { user: CurrentUser | null } = $props();
 
 	let settingsOpen = $state(false);
+	let consoleOpen = $state(false);
+	let doorLabel = $state('');
 	let forceOpenOpen = $state(false);
 	let menu = $state<MobileMenu>();
 
@@ -38,7 +41,7 @@
 	{@render brand()}
 	<div class="grow"></div>
 	{#if user?.isAdmin}
-		<DoorConsole />
+		<DoorIndicator bind:label={doorLabel} onopen={() => (consoleOpen = true)} />
 	{/if}
 	{#if user}
 		<span class="only-sm">
@@ -84,6 +87,10 @@
 
 {#if user?.isAdmin}
 	<BluetoothApproval />
+{/if}
+
+{#if user?.isAdmin && consoleOpen}
+	<DoorConsole label={doorLabel} onclose={() => (consoleOpen = false)} />
 {/if}
 
 {#if user && settingsOpen}
