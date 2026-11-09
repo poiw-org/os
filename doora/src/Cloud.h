@@ -43,6 +43,11 @@ class Cloud {
 		events_.writeState.store(s, std::memory_order_release);
 		events_.writeStateSeq.fetch_add(1, std::memory_order_acq_rel);
 	}
+	// A portal command, readable until released.
+	const char* remoteCommand() const {
+		return events_.consolePending.load(std::memory_order_acquire) ? events_.consoleCommand : nullptr;
+	}
+	void releaseRemoteCommand() { events_.consolePending.store(false, std::memory_order_release); }
 	// Bluetooth approval: asks the admins (the realtime task repeats it until it ends) and reports how it ended.
 	void requestBluetooth(const char* id, const char* address, uint32_t deadlineMs) {
 		strlcpy(events_.btId, id, sizeof(events_.btId));

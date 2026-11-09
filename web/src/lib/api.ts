@@ -1,4 +1,4 @@
-import { createClient, FunctionsHttpError } from '@supabase/supabase-js';
+import { createClient, FunctionsHttpError, type RealtimeChannel } from '@supabase/supabase-js';
 import type { OnboardingAnswers } from '#lib/auth.ts';
 import { config } from '#lib/config.ts';
 import { withName } from '#lib/format.ts';
@@ -516,35 +516,73 @@ export async function rejectFirmware(release: string) {
 	if (error) throw new Error(error.message);
 }
 
+type DoorHandlers = Record<string, (payload: Record<string, unknown>) => void>;
+
+const DOOR_LINK_EVENTS = ['bt_request', 'bt_result', 'door_status', 'console_output'];
+const doorLinkUsers = new Set<DoorHandlers>();
+let doorLink: { close: () => void; channel: RealtimeChannel } | undefined;
+
+// The admins' always-on line to the door. supabase-js keeps one channel per topic on a client, and
+// the door commands above create and remove `door:<id>` as they run, so this needs a realtime
+// connection of its own, shared by everything that listens. It signs in with the session's token,
+// and the channel's policy admits only admins and the door.
+export function openDoorLink(handlers: DoorHandlers) {
+	doorLinkUsers.add(handlers);
+	if (!doorLink) {
+		const client = createClient(config.supabaseUrl, config.supabasePublishableKey, {
+			accessToken: async () => (await supabase.auth.getSession()).data.session?.access_token ?? null
+		});
+		const channel = client.channel(`door:${DOOR_ID}`, { config: { private: true } });
+		for (const event of DOOR_LINK_EVENTS)
+			channel.on('broadcast', { event }, ({ payload }) =>
+				doorLinkUsers.forEach((user) => user[event]?.(payload))
+			);
+		channel.subscribe();
+		doorLink = { close: () => void client.removeAllChannels(), channel };
+	}
+	return {
+		send: (event: string, payload: Record<string, unknown>) =>
+			void doorLink?.channel.send({ type: 'broadcast', event, payload }),
+		stop() {
+			doorLinkUsers.delete(handlers);
+			if (doorLinkUsers.size || !doorLink) return;
+			doorLink.close();
+			doorLink = undefined;
+		}
+	};
+}
+
+export async function sendDoorCommand(command: string) {
+	const { error } = await supabase.rpc('send_door_command', { door: DOOR_ID, command });
+	if (error)
+		throw new Error(
+			error.code === '23514'
+				? 'Commands available here: status, show, reboot, help.'
+				: error.message
+		);
+}
+
 export type BluetoothRequest = { id: string; address: string; leftMs: number };
 export type BluetoothOutcome = 'approved' | 'denied' | 'expired' | 'gone';
 
-// Listens for devices asking to use the door's Bluetooth console and answers them. supabase-js keeps
-// one channel per topic on a client, and the door commands above create and remove `door:<id>` as
-// they run, so this always-on listener needs a realtime connection of its own. It signs in with the
-// session's token; the channel's policy lets only admins send on it.
+// Listens for devices asking to use the door's Bluetooth console and answers them.
 export function watchBluetoothRequests(on: {
 	request: (request: BluetoothRequest) => void;
 	ended: (id: string, outcome: BluetoothOutcome) => void;
 }) {
-	const client = createClient(config.supabaseUrl, config.supabasePublishableKey, {
-		accessToken: async () => (await supabase.auth.getSession()).data.session?.access_token ?? null
-	});
-	const channel = client.channel(`door:${DOOR_ID}`, { config: { private: true } });
 	let resend: ReturnType<typeof setInterval> | undefined;
-
-	channel.on('broadcast', { event: 'bt_request' }, ({ payload }) =>
-		on.request({
-			id: String(payload.id),
-			address: String(payload.address),
-			leftMs: Number(payload.left_ms) || 0
-		})
-	);
-	channel.on('broadcast', { event: 'bt_result' }, ({ payload }) => {
-		clearInterval(resend);
-		on.ended(String(payload.id), payload.outcome as BluetoothOutcome);
+	const link = openDoorLink({
+		bt_request: (payload) =>
+			on.request({
+				id: String(payload.id),
+				address: String(payload.address),
+				leftMs: Number(payload.left_ms) || 0
+			}),
+		bt_result: (payload) => {
+			clearInterval(resend);
+			on.ended(String(payload.id), payload.outcome as BluetoothOutcome);
+		}
 	});
-	channel.subscribe();
 
 	return {
 		// Repeated until the door reports the result, as broadcasts can be lost; it acts on the first.
@@ -552,12 +590,7 @@ export function watchBluetoothRequests(on: {
 			const until = Date.now() + 20000;
 			const send = () => {
 				if (Date.now() > until) clearInterval(resend);
-				else
-					void channel.send({
-						type: 'broadcast',
-						event: approve ? 'bt_approve' : 'bt_deny',
-						payload: { id, ts: Date.now() }
-					});
+				else link.send(approve ? 'bt_approve' : 'bt_deny', { id, ts: Date.now() });
 			};
 			clearInterval(resend);
 			send();
@@ -565,7 +598,7 @@ export function watchBluetoothRequests(on: {
 		},
 		stop() {
 			clearInterval(resend);
-			void client.removeAllChannels();
+			link.stop();
 		}
 	};
 }

@@ -46,6 +46,8 @@ struct RealtimeEvents {
 	char btId[17] = {0};
 	char btAddress[18] = {0};
 	char btDoneId[17] = {0};
+	char consoleCommand[12] = {0};  // a portal command; loop() runs it, then clears consolePending
+	std::atomic<bool> consolePending{false};
 	std::atomic<uint32_t> btDeadlineMs{0};
 	std::atomic<bool> btAsking{false};
 	std::atomic<BtDecision> btDecision{BtDecision::None};
@@ -77,6 +79,9 @@ class Realtime {
 	void sendWriteStatus(const char* id, WriteState state);
 	void reportWrite();
 	void reportBluetooth();
+	void reportConsole();
+	void sendStatus();
+	void onConsoleCommand(const JsonDocument& doc);
 	bool commandValid(const char* what, const char* id, double sentAt);
 	bool firstSight(const char* id);
 	void onWriteCard(const JsonDocument& doc, const char* id, double sentAt, bool scan);

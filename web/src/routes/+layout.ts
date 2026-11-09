@@ -11,7 +11,7 @@ export const prerender = true;
 
 const publicRoutes = ['/', '/login', '/reset-password', '/onboarding'];
 // Only admins manage users and keys; members see their own keys at /os/keys.
-const adminRoutes = ['/os/users', '/os/keys/create'];
+const adminRoutes = ['/os/users', '/os/keys/create', '/os/firmware'];
 
 // The one auth guard: every other route requires a signed-in user.
 export const load: LayoutLoad = async ({ url }) => {

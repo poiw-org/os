@@ -228,6 +228,18 @@ test.describe('signed in', () => {
 		expect(renew).toMatchObject({ action: 'renew', id: firstId });
 	});
 
+	test('an admin sees the door connected and uses its console', async ({ page, api }) => {
+		await page.goto('/os');
+		await page.getByRole('button', { name: 'Door connected' }).click();
+		const dialog = page.getByRole('dialog');
+		await expect(dialog.getByRole('log')).toContainText('hello from the door');
+		await dialog.getByLabel('Command').fill('status');
+		await dialog.getByRole('button', { name: 'Send' }).click();
+		await expect
+			.poll(() => api.bodies.find((b) => b.call === 'POST /rest/v1/rpc/send_door_command')?.body)
+			.toMatchObject({ door: 'front', command: 'status' });
+	});
+
 	test('firmware is approved only from the link for its own hash', async ({ page, api }) => {
 		const sha256 = 'a'.repeat(64);
 		await page.goto('/os/firmware');
@@ -405,7 +417,13 @@ test.describe('signed out', () => {
 		await expect(page.getByRole('heading', { name: 'My keys' })).toBeVisible();
 		await expect(page.getByText('Issue key')).toHaveCount(0);
 		await expect(page.getByRole('button', { name: 'REMOTE UNLOCK' })).toHaveCount(0);
+		await expect(page.getByRole('button', { name: /^Door / })).toHaveCount(0);
+		await expect(page.getByRole('link', { name: 'Firmware' })).toHaveCount(0);
 		await page.goto('/os/keys/create');
+		await expect(page).toHaveURL(/\/os\/keys$/);
+		await page.goto('/os/firmware');
+		await expect(page).toHaveURL(/\/os\/keys$/);
+		await page.goto('/os/firmware/rel1?sha256=abc');
 		await expect(page).toHaveURL(/\/os\/keys$/);
 	});
 

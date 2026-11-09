@@ -5,6 +5,7 @@
 	import { resolve } from '$app/paths';
 	import OsLabel from '#lib/ui/OsLabel.svelte';
 	import BluetoothApproval from './BluetoothApproval.svelte';
+	import DoorConsole from './DoorConsole.svelte';
 	import ForceOpenModal from './ForceOpenModal.svelte';
 	import MobileMenu from './MobileMenu.svelte';
 	import SettingsModal from './SettingsModal.svelte';
@@ -36,6 +37,9 @@
 <header id="menu" class="bar full print:hidden">
 	{@render brand()}
 	<div class="grow"></div>
+	{#if user?.isAdmin}
+		<DoorConsole />
+	{/if}
 	{#if user}
 		<span class="only-sm">
 			<MobileMenu

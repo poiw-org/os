@@ -3,6 +3,7 @@
 #include <string.h>
 #include "Chimes.h"
 #include "Log.h"
+#include "RemoteConsole.h"
 #include "TimeUtil.h"
 
 namespace {
@@ -26,7 +27,8 @@ constexpr BaseType_t kTaskCore = 0;         // with Wi-Fi and lwIP, away from th
 const char kFilter[] =
     "{\"event\":true,\"ref\":true,\"payload\":{\"status\":true,\"message\":true,\"response\":{\"reason\":true},"
     "\"event\":true,\"payload\":{\"id\":true,\"ts\":true,\"token\":true},"
-    "\"data\":{\"type\":true,\"record\":{\"id\":true,\"legacy_id\":true,\"disabled\":true,\"expires_at\":true}}}}";
+    "\"data\":{\"type\":true,\"table\":true,\"record\":{\"id\":true,\"legacy_id\":true,\"disabled\":true,\"expires_at\":true,"
+    "\"command\":true,\"created_at\":true}}}}";
 
 // Built once and kept: parsing the filter for every message would allocate and free it each time.
 const JsonDocument& messageFilter() {
@@ -118,7 +120,8 @@ Realtime::Outcome Realtime::connect() {
 	int n = snprintf(msg, WsClient::kMaxSend,
 	                 "{\"topic\":\"realtime:door:%s\",\"event\":\"phx_join\",\"payload\":{\"config\":{"
 	                 "\"broadcast\":{\"ack\":false,\"self\":false},\"presence\":{\"key\":\"\"},"
-	                 "\"postgres_changes\":[{\"event\":\"*\",\"schema\":\"public\",\"table\":\"keys\"}],\"private\":true},"
+	                 "\"postgres_changes\":[{\"event\":\"*\",\"schema\":\"public\",\"table\":\"keys\"},"
+	                 "{\"event\":\"INSERT\",\"schema\":\"public\",\"table\":\"door_console_commands\"}],\"private\":true},"
 	                 "\"access_token\":\"",
 	                 cfg_->doorId);
 	uint32_t generation = 0;
@@ -192,6 +195,7 @@ void Realtime::drop(const char* why, bool failure) {
 }
 
 void Realtime::session() {
+	sendStatus();
 	while (joined_) {
 		if (WiFi.status() != WL_CONNECTED) {
 			drop("Wi-Fi lost", false);
@@ -201,7 +205,7 @@ void Realtime::session() {
 		int32_t left = (int32_t)(deadline - millis());
 		// While a writer session runs, wake often enough that its state reaches the screen promptly.
 		bool prompt = writeActive(events_->writeState.load(std::memory_order_acquire)) ||
-		              events_->btAsking.load(std::memory_order_acquire);
+		              events_->btAsking.load(std::memory_order_acquire) || RemoteConsole::active();
 		uint32_t cap = prompt ? kWriteWaitMs : kMaxWaitMs;
 		if (left > 0) ws_.wait((uint32_t)left < cap ? (uint32_t)left : cap);
 
@@ -210,6 +214,8 @@ void Realtime::session() {
 		reportWrite();
 		if (!joined_) return;
 		reportBluetooth();
+		if (!joined_) return;
+		reportConsole();
 		if (!joined_) return;
 
 		uint32_t now = millis();
@@ -221,6 +227,7 @@ void Realtime::session() {
 			}
 		} else if ((int32_t)(now - (lastHeartbeatMs_ + kHeartbeatMs)) >= 0) {
 			sendHeartbeat();
+			if (joined_) sendStatus();
 		}
 		if (joined_ && token_->present() && token_->generation() != pushedGeneration_) pushToken();
 	}
@@ -282,6 +289,56 @@ void Realtime::sendAck(const char* id) {
 	                 cfg_->doorId, id,  // id passed safeId(): no escaping needed
 	                 (unsigned long)Chimes::kForceOpenDelayMs, (unsigned long)++ref_);
 	if (n <= 0 || !ws_.send((size_t)n)) drop("send failed", true);
+}
+
+// What the portal's indicator goes by: it shows the door as connected while these keep arriving.
+void Realtime::sendStatus() {
+	char* msg = ws_.sendBuffer();
+	int n = snprintf(msg, WsClient::kMaxSend,
+	                 "{\"topic\":\"realtime:door:%s\",\"event\":\"broadcast\",\"payload\":{\"type\":\"broadcast\","
+	                 "\"event\":\"door_status\",\"payload\":{}},\"ref\":\"%lu\"}",
+	                 cfg_->doorId, (unsigned long)++ref_);
+	if (n <= 0 || !ws_.send((size_t)n)) drop("send failed", true);
+}
+
+// Sends one piece of queued console output. Nothing in here may log: that would feed the queue.
+void Realtime::reportConsole() {
+	static constexpr size_t kChunk = 250;  // even escaped entirely this fits one message
+	if (!RemoteConsole::active()) return;
+	char chunk[kChunk];
+	size_t got = RemoteConsole::read(chunk, kChunk);
+	if (!got) return;
+	char* msg = ws_.sendBuffer();
+	size_t at = (size_t)snprintf(msg, WsClient::kMaxSend,
+	                             "{\"topic\":\"realtime:door:%s\",\"event\":\"broadcast\",\"payload\":{\"type\":\"broadcast\","
+	                             "\"event\":\"console_output\",\"payload\":{\"text\":\"",
+	                             cfg_->doorId);
+	for (size_t i = 0; i < got; i++) {
+		unsigned char c = (unsigned char)chunk[i];
+		if (c == '"' || c == '\\') {
+			msg[at++] = '\\';
+			msg[at++] = (char)c;
+		} else if (c < 0x20 || c >= 0x7f) {
+			at += (size_t)snprintf(msg + at, 7, "\\u%04x", c >= 0x7f ? '?' : c);
+		} else {
+			msg[at++] = (char)c;
+		}
+	}
+	at += (size_t)snprintf(msg + at, WsClient::kMaxSend - at, "\"}},\"ref\":\"%lu\"}", (unsigned long)++ref_);
+	if (!ws_.send(at)) drop("send failed", true);
+}
+
+// Only send_door_command can create these rows, so each one is an admin's, on record.
+void Realtime::onConsoleCommand(const JsonDocument& doc) {
+	JsonObjectConst record = doc["payload"]["data"]["record"];
+	const char* id = record["id"] | "";
+	const char* command = record["command"] | "";
+	if (strcmp(doc["payload"]["data"]["type"] | "", "INSERT") != 0 || !*command) return;
+	double sentAt = (double)parseIso(record["created_at"] | "") * 1000.0;
+	if (!commandValid("console command", id, sentAt) || !firstSight(id)) return;
+	if (events_->consolePending.load(std::memory_order_acquire)) return;  // one at a time
+	strlcpy(events_->consoleCommand, command, sizeof(events_->consoleCommand));
+	events_->consolePending.store(true, std::memory_order_release);
 }
 
 // Broadcasts are not stored, so a request is repeated until it ends: an admin who opens the webapp
@@ -395,6 +452,10 @@ void Realtime::onBroadcast(const JsonDocument& doc) {
 		if (safeId(id) && !strcmp(id, writeId_)) events_->writeCancel.store(true, std::memory_order_release);
 		return;
 	}
+	if (!strcmp(event, "console_open")) {  // only admins can send on this channel
+		if (commandValid(event, id, sentAt)) RemoteConsole::renewLease();
+		return;
+	}
 	if (!strcmp(event, "firmware_update")) {  // only a wake-up; door_firmware() says what is approved
 		if (commandValid(event, id, sentAt)) events_->firmwareCheck.store(true, std::memory_order_release);
 		return;
@@ -453,7 +514,8 @@ void Realtime::onMessage(const char* text, size_t len) {
 	if (!strcmp(event, "broadcast")) {
 		onBroadcast(doc);
 	} else if (!strcmp(event, "postgres_changes")) {
-		onKeyChange(doc);
+		if (!strcmp(doc["payload"]["data"]["table"] | "", "door_console_commands")) onConsoleCommand(doc);
+		else onKeyChange(doc);
 	} else if (!strcmp(event, "phx_reply")) {
 		if (heartbeatOutstanding_ && heartbeatRef_ && (uint32_t)atol(doc["ref"] | "0") == heartbeatRef_)
 			heartbeatOutstanding_ = false;

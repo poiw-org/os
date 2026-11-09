@@ -123,6 +123,10 @@ bool ask(const char* label, const char* help, char* target, size_t cap, Validato
 }
 
 bool wizard(Settings& s) {
+	struct Muted {  // answers are echoed as they are typed and must not reach a portal session
+		Muted() { RemoteConsole::mute(true); }
+		~Muted() { RemoteConsole::mute(false); }
+	} muted;
 	Settings draft = s;
 	if (!draft.ntpServer[0]) strlcpy(draft.ntpServer, "pool.ntp.org", sizeof(draft.ntpServer));
 	if (!draft.doorId[0]) strlcpy(draft.doorId, "main", sizeof(draft.doorId));
@@ -216,6 +220,15 @@ bool eraseSettings(Settings& s, const char* arg) {
 }  // namespace
 
 namespace Console {
+
+void remote(const char* command, const Settings& s, void (*printStatus)()) {
+	Term.printf("> %s\n", command);
+	if (!strcmp(command, "status")) printStatus();
+	else if (!strcmp(command, "show")) showSettings(s);
+	else if (!strcmp(command, "reboot")) { Term.println(F("Restarting.")); delay(300); ESP.restart(); }
+	else if (!strcmp(command, "help")) Term.println(F("Commands: status, show, reboot, help"));
+	else Term.println(F("That command is not available from the portal."));
+}
 
 void firstRunSetup(Settings& s) {
 	if (!SettingsStore::loadRaw(s)) memset(&s, 0, sizeof(s));  // keep what survived a partial erase

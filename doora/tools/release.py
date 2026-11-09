@@ -18,12 +18,12 @@ import webbrowser
 
 import certifi
 
-PORTAL = os.environ.get("DOORA_PORTAL_URL", "https://doora-backoffice.donfn.workers.dev").rstrip("/")
+PORTAL = os.environ.get("DOORA_PORTAL_URL", "https://poiw.org").rstrip("/")
 
 
 def main():
     path = sys.argv[1] if len(sys.argv) > 1 else ".pio/build/esp32dev/firmware.bin"
-    url, key = os.environ.get("DOORA_SUPABASE_URL"), os.environ.get("DOORA_SUPABASE_KEY")
+    url, key = os.environ.get("DOORA_SUPABASE_URL", "https://yshwchmbsuafribrttlt.supabase.co"), os.environ.get("DOORA_SUPABASE_KEY", "sb_publishable_Yqe-dl6usU3GEGPUbAIPTA_olGKWuMG")
     if not url or not key:
         sys.exit(__doc__)
     with open(path, "rb") as f:

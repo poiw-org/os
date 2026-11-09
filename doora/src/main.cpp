@@ -252,6 +252,7 @@ void setup() {
 	char host[48];
 	snprintf(host, sizeof(host), "doora-%s", settings.doorId);  // the Wi-Fi hostname too
 	Ota::begin();
+	RemoteConsole::begin();
 	Bt::begin(host);
 }
 
@@ -268,6 +269,10 @@ void loop() {
 	cloud.service();
 	clock_.service();
 	housekeeping(ms);
+	if (const char* command = cloud.remoteCommand()) {
+		Console::remote(command, settings, printStatus);
+		cloud.releaseRemoteCommand();
+	}
 	Ota::service(!actuators.busy() && !writeActive(reader.writeState()) && ms - lastTapMs > 10000);
 	if (Console::poll(settings, printStatus, serviceDoor)) {
 		LOG("Settings changed; restarting.");

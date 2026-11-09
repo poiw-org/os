@@ -162,6 +162,8 @@ async function mockRealtime(page: Page, state: ApiState) {
 				);
 			} else if (event === 'broadcast') {
 				state.broadcasts.push({ topic, event: payload.event, payload: payload.payload });
+				if (payload.event === 'console_open')
+					ws.send(doorBroadcast(topic, 'console_output', { text: 'hello from the door\n' }));
 				if (payload.event === 'bt_approve')
 					ws.send(
 						doorBroadcast(topic, 'bt_result', { id: payload.payload.id, outcome: 'approved' })
@@ -232,6 +234,7 @@ async function mockRealtime(page: Page, state: ApiState) {
 						{ status: 'ok', response: { postgres_changes: withIds } }
 					])
 				);
+				if (topic === 'realtime:door:front') ws.send(doorBroadcast(topic, 'door_status', {}));
 				// The door asks the admins about a device connecting over Bluetooth.
 				if (state.bluetoothRequest && topic === 'realtime:door:front')
 					ws.send(
@@ -375,6 +378,7 @@ async function mockSupabase(page: Page, state: ApiState) {
 				}
 			]);
 		if (path === '/rest/v1/rpc/approve_firmware') return empty();
+		if (path === '/rest/v1/rpc/send_door_command') return empty();
 		// A member without an active key.
 		if (path === '/rest/v1/rpc/can_unlock') return json(false);
 		if (path === '/rest/v1/rpc/security_status') return json({ has_factor: true, required: false });

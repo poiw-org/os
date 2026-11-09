@@ -223,6 +223,10 @@ export type Database = {
 		};
 		Views: { [_ in never]: never };
 		Functions: {
+			send_door_command: {
+				Args: { door: string; command: string };
+				Returns: undefined;
+			};
 			approve_firmware: {
 				Args: { release: string; expected_sha256: string };
 				Returns: undefined;

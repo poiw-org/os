@@ -2,6 +2,7 @@
 #pragma once
 #include <Arduino.h>
 #include "Bt.h"
+#include "RemoteConsole.h"
 
 class TermStream : public Stream {
  public:
@@ -14,6 +15,7 @@ class TermStream : public Stream {
 	size_t write(const uint8_t* data, size_t len) override {
 		Serial.write(data, len);
 		Bt::write(data, len);
+		RemoteConsole::write(data, len);
 		return len;
 	}
 };
