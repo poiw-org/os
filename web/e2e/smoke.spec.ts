@@ -228,14 +228,22 @@ test.describe('signed in', () => {
 		expect(renew).toMatchObject({ action: 'renew', id: firstId });
 	});
 
-	test('an admin approves a firmware release in the portal', async ({ page, api }) => {
+	test('firmware is approved only from the link for its own hash', async ({ page, api }) => {
+		const sha256 = 'a'.repeat(64);
 		await page.goto('/os/firmware');
 		await expect(page.getByText('Waiting for approval')).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Approve' })).toHaveCount(0);
+
+		await page.goto(`/os/firmware/rel1?sha256=${'b'.repeat(64)}`);
+		await expect(page.getByRole('alert')).toContainText('cannot be approved');
+		await expect(page.getByRole('button', { name: 'Approve' })).toHaveCount(0);
+
+		await page.goto(`/os/firmware/rel1?sha256=${sha256}`);
 		await page.getByRole('button', { name: 'Approve' }).click();
 		await page.getByRole('dialog').getByRole('button', { name: 'Approve' }).click();
 		await expect
 			.poll(() => api.bodies.find((b) => b.call === 'POST /rest/v1/rpc/approve_firmware')?.body)
-			.toMatchObject({ release: 'rel1' });
+			.toMatchObject({ release: 'rel1', expected_sha256: sha256 });
 	});
 
 	test('an admin approves a Bluetooth connection the door asks about', async ({ page, api }) => {

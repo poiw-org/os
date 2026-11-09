@@ -3,7 +3,7 @@
 
 # Publishes the signed build for approval in the portal (see tools/release.py for the settings it needs).
 release: build
-	python3 tools/release.py
+	~/.platformio/penv/bin/python tools/release.py
 
 build:
 	@test -f config.h || (echo "config.h is missing: copy config.example.h and set your wiring" && exit 1)

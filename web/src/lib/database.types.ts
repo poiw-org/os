@@ -224,7 +224,7 @@ export type Database = {
 		Views: { [_ in never]: never };
 		Functions: {
 			approve_firmware: {
-				Args: { release: string };
+				Args: { release: string; expected_sha256: string };
 				Returns: undefined;
 			};
 			reject_firmware: {

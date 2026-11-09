@@ -5,12 +5,20 @@ Needs DOORA_SUPABASE_URL (https://<project>.supabase.co) and DOORA_SUPABASE_KEY 
 
     python3 tools/release.py [firmware.bin]
 """
+import hashlib
 import json
 import os
+import ssl
 import subprocess
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
+import webbrowser
+
+import certifi
+
+PORTAL = os.environ.get("DOORA_PORTAL_URL", "https://doora-backoffice.donfn.workers.dev").rstrip("/")
 
 
 def main():
@@ -31,12 +39,21 @@ def main():
         "x-firmware-version": version,
     })
     try:
-        with urllib.request.urlopen(request, timeout=120) as response:
+        # PlatformIO's Python has no system certificates, but it does ship certifi.
+        context = ssl.create_default_context(cafile=certifi.where())
+        with urllib.request.urlopen(request, timeout=120, context=context) as response:
             result = json.load(response)
     except urllib.error.HTTPError as e:
         sys.exit("Upload refused (HTTP %d): %s" % (e.code, e.read().decode(errors="replace")))
-    print("Uploaded %s (%d bytes, sha256 %s)." % (version, result["size"], result["sha256"]))
-    print("Approve it in the portal, under Firmware.")
+    sha256 = hashlib.sha256(image).hexdigest()
+    if result["sha256"] != sha256:
+        sys.exit("The server stored a different image (%s). Do not approve it." % result["sha256"])
+    # The address is fixed here, never taken from the response, and the hash is the one computed locally.
+    link = "%s/os/firmware/%s?sha256=%s" % (PORTAL, urllib.parse.quote(result["id"], safe=""), sha256)
+    print("Uploaded %s (%d bytes)." % (version, result["size"]))
+    print("sha256: %s" % sha256)
+    print("Approve it, checking that the portal shows this hash:\n%s" % link)
+    webbrowser.open(link)
 
 
 if __name__ == "__main__":

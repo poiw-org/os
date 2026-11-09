@@ -497,8 +497,17 @@ export async function listFirmwareReleases() {
 	return data.map(toFirmwareRelease);
 }
 
-export async function approveFirmware(release: string) {
-	const { error } = await supabase.rpc('approve_firmware', { release });
+export async function getFirmwareRelease(id: string) {
+	const { data, error } = await supabase.from('firmware_releases').select('*').eq('id', id);
+	if (error) throw new Error(error.message);
+	return data.map(toFirmwareRelease);
+}
+
+export async function approveFirmware(release: string, expectedSha256: string) {
+	const { error } = await supabase.rpc('approve_firmware', {
+		release,
+		expected_sha256: expectedSha256
+	});
 	if (error) throw new Error(error.message);
 }
 

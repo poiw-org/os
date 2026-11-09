@@ -1,15 +1,8 @@
 <script lang="ts">
-	import {
-		approveFirmware,
-		listFirmwareReleases,
-		rejectFirmware,
-		toFirmwareRelease,
-		type FirmwareRelease
-	} from '#lib/api.ts';
+	import { listFirmwareReleases, toFirmwareRelease, type FirmwareRelease } from '#lib/api.ts';
 	import { formatDate } from '#lib/format.ts';
 	import { liveRows } from '#lib/live.svelte.ts';
 	import Loading from '#lib/loading.svelte';
-	import { ask, toast } from '#lib/notify.svelte.ts';
 
 	const releases = liveRows({
 		table: 'firmware_releases',
@@ -18,8 +11,6 @@
 		sort: (a, b) => b.createdAt.localeCompare(a.createdAt),
 		limit: 20
 	});
-
-	let busy = $state(false);
 
 	const DOOR_STATES: Record<string, string> = {
 		downloading: 'Door is downloading',
@@ -30,29 +21,9 @@
 	};
 
 	const describe = (r: FirmwareRelease) => {
-		if (r.status === 'pending') return 'Waiting for approval';
+		if (r.status === 'pending') return 'Waiting for approval, from the link `make release` opens';
 		if (r.status === 'rejected') return 'Rejected';
 		return r.doorState ? DOOR_STATES[r.doorState] : 'Approved; waiting for the door';
-	};
-
-	const act = async (run: () => Promise<void>, done: string) => {
-		busy = true;
-		try {
-			await run();
-			toast.success(done);
-		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'That did not work.');
-		}
-		busy = false;
-	};
-
-	const approve = async (r: FirmwareRelease) => {
-		const yes = await ask({
-			title: 'Install this firmware?',
-			message: `The door will download ${r.version} and restart into it when idle.`,
-			confirmLabel: 'Approve'
-		});
-		if (yes) await act(() => approveFirmware(r.id), 'Approved. The door will fetch it now.');
 	};
 </script>
 
@@ -75,19 +46,6 @@
 				</p>
 				<p class="mt-2 text-sm" role="status">{describe(r)}</p>
 				{#if r.doorError}<p class="mt-1 text-sm text-red-600">{r.doorError}</p>{/if}
-				{#if r.status === 'pending'}
-					<div class="mt-3 flex gap-2">
-						<button
-							type="button"
-							class="key"
-							disabled={busy}
-							onclick={() => act(() => rejectFirmware(r.id), 'Rejected.')}>Reject</button
-						>
-						<button type="button" class="key key-signal" disabled={busy} onclick={() => approve(r)}
-							>Approve</button
-						>
-					</div>
-				{/if}
 			</li>
 		{/each}
 	</ul>
