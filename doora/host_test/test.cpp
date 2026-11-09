@@ -13,7 +13,6 @@
 #include "../src/Journal.h"
 #include "../src/Jwt.h"
 #include "../src/Ndef.h"
-#include "../src/OtaImage.h"
 #include "../src/Pn532Frame.h"
 #include "../src/Sha256.h"
 #include "../src/SigningKey.h"
@@ -825,51 +824,7 @@ static void testChimes() {
 }
 
 
-// OTA image trailer (src/OtaImage.h), with a signature openssl made over a 1000-byte pattern using a
-// throwaway key (not any door's).
-static const char* OTA_N = "f9c9a53d8b7fc603f560b9e02aa22493dc6917cac9ac9bd94bbf52686a81ee3f87f32fa51938e0d8f4d23a89f07fb23c93b27c711502a08acf46e7ae927d31f9ce3a22c3e7acee86f4031cb9cb6ed270d3e1ff9b175b820d28a6bcdb07636e81f54a68fb24cb63f495a9e3956f4f912e28db9d35ec7841f9fcbc52856c8d72565aac90fc697db3c344d5de45b51e631f85068627ee99f329beaceff22506f7167fc60515451a7bb3f066e7e32b7c664154fec2e47842d80ce039c79b74a1ef379ecf8d2acab1de99ca4fdc15be8fc54da7fd32a6970e0fdd41cdcb6b9c45705a57aaa6a34e7e9b31003c7b7851a80a1f84a1a38256367615af0f940d940a4c83";
-static const char* OTA_SIG = "c775703f3b5a537f94070eafd5442c12b85a8a00cb5ff0c92489e32dabf7a81a38b744c12768007b5f3c5f80623e5234eb65a774933d95d636edf9e4f1db868751cd97a276b4a8f4ba41d74521a08ee54cd87470a94f020c44d80f9e6b1f863017df2553a6e13d5025c144e24c2a04fcc6fe0c371e8ae0434d40fa624cc46954fd5a11ac5a206846735c8576e28d17f376bdf6c1d3e6f680ef07d9c224e88cfefb07ba02b4932dcf52d3dbbc6836241609a0f3f0c40f5b19199627e53148f5815f0291f29d0936aab784db91c875ced1e33b89df776ee9247b3b24083ef5d90c304b434dabc9c878fc462fd08ce69175fe6e4a694b6395d95b2943ec894bccc8";
-
-static bool memRead(void* ctx, size_t offset, uint8_t* out, size_t len) {
-	memcpy(out, static_cast<const uint8_t*>(ctx) + offset, len);
-	return true;
-}
-
-static void hexBytes(const char* hex, uint8_t* out) {
-	for (size_t i = 0; hex[2 * i]; i++) sscanf(hex + 2 * i, "%2hhx", &out[i]);
-}
-
-static void testOtaImage() {
-	uint8_t n[kRsaBytes];
-	hexBytes(OTA_N, n);
-	static RsaPublicKey key, other;
-	CHECK(rsaPrepare(n, key));
-	uint8_t otherN[kRsaBytes + 1];
-	CHECK(base64UrlDecode(RSA_OTHER_N, strlen(RSA_OTHER_N), otherN, sizeof(otherN)) == (int)kRsaBytes);
-	CHECK(rsaPrepare(otherN, other));
-
-	static uint8_t img[1000 + kOtaTrailer];
-	for (size_t i = 0; i < 1000; i++) img[i] = (uint8_t)(i * 7 + 3);
-	hexBytes(OTA_SIG, img + 1000);
-	memcpy(img + 1000 + kRsaBytes, kOtaMagic, sizeof(kOtaMagic));
-	size_t total = sizeof(img);
-
-	CHECK(otaImageSigned(key, memRead, img, total));
-	CHECK(!otaImageSigned(other, memRead, img, total));    // signed with another key
-	CHECK(!otaImageSigned(key, memRead, img, total - 1));  // trailer not at the end
-	CHECK(!otaImageSigned(key, memRead, img, kOtaTrailer));
-	img[500] ^= 1;                                          // image changed after signing
-	CHECK(!otaImageSigned(key, memRead, img, total));
-	img[500] ^= 1;
-	img[total - 1] ^= 1;                                    // no marker: an unsigned build
-	CHECK(!otaImageSigned(key, memRead, img, total));
-	img[total - 1] ^= 1;
-	img[1000] ^= 1;                                         // damaged signature
-	CHECK(!otaImageSigned(key, memRead, img, total));
-}
-
 int main() {
-	testOtaImage();
 	testChimes();
 	testWsBuild();
 	testWsParse();

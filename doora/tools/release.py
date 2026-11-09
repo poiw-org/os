@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
-"""Publishes the signed firmware.bin for approval in the portal.
+"""Publishes firmware.bin for approval in the portal.
 
-Needs DOORA_SUPABASE_URL (https://<project>.supabase.co) and DOORA_SUPABASE_KEY (the publishable key).
+The first run opens the portal to ask for permission to upload on your behalf. The answer is kept in
+~/.doora/release_token for 30 days.
 
     python3 tools/release.py [firmware.bin]
 """
+import base64
 import hashlib
+import http.server
 import json
 import os
+import secrets
 import ssl
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -19,32 +24,100 @@ import webbrowser
 import certifi
 
 PORTAL = os.environ.get("DOORA_PORTAL_URL", "https://poiw.org").rstrip("/")
+SUPABASE = os.environ.get("DOORA_SUPABASE_URL", "https://yshwchmbsuafribrttlt.supabase.co").rstrip("/")
+KEY = os.environ.get("DOORA_SUPABASE_KEY", "sb_publishable_Yqe-dl6usU3GEGPUbAIPTA_olGKWuMG")
+TOKEN_FILE = os.path.expanduser("~/.doora/release_token")
+CONSENT_WAIT_S = 300
+# PlatformIO's Python has no system certificates, but it does ship certifi.
+TLS = ssl.create_default_context(cafile=certifi.where())
+
+
+def post(path, data, headers):
+    request = urllib.request.Request(SUPABASE + path, data=data, method="POST", headers={"apikey": KEY, **headers})
+    with urllib.request.urlopen(request, timeout=120, context=TLS) as response:
+        return json.load(response)
+
+
+def wait_for_consent(state):
+    """Serves one callback on a loopback port; returns the port's server, already listening."""
+    answer = {}
+
+    class Callback(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            url = urllib.parse.urlsplit(self.path)
+            query = dict(urllib.parse.parse_qsl(url.query))
+            good = url.path == "/callback" and secrets.compare_digest(query.get("state", ""), state)
+            if good:
+                answer.update(query)
+            self.send_response(200 if good else 400)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"You can close this tab and return to the terminal.\n" if good else b"Bad request.\n")
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Callback)
+    server.timeout = 1
+    return server, answer
+
+
+def sign_in():
+    verifier = secrets.token_urlsafe(48)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    state = secrets.token_urlsafe(24)
+    server, answer = wait_for_consent(state)
+    query = urllib.parse.urlencode({"port": server.server_address[1], "state": state, "challenge": challenge})
+    link = "%s/os/firmware/authorize?%s" % (PORTAL, query)
+    print("Allow uploads in your browser. If it did not open:\n%s" % link)
+    webbrowser.open(link)
+    deadline = time.monotonic() + CONSENT_WAIT_S
+    while not answer and time.monotonic() < deadline:
+        server.handle_request()
+    server.server_close()
+    if "code" not in answer:
+        sys.exit("Permission was not granted.")
+    result = post("/functions/v1/firmware-cli-auth", json.dumps({"action": "token", "code": answer["code"], "verifier": verifier}).encode(),
+                  {"Content-Type": "application/json"})
+    os.makedirs(os.path.dirname(TOKEN_FILE), mode=0o700, exist_ok=True)
+    with open(os.open(TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
+        f.write(result["token"])
+    return result["token"]
+
+
+def saved_token():
+    if not os.path.exists(TOKEN_FILE):
+        return None
+    with open(TOKEN_FILE) as f:
+        return f.read().strip() or None
+
+
+def upload(image, version, token):
+    return post("/functions/v1/firmware-upload", image, {
+        "Authorization": "Bearer %s" % token,
+        "Content-Type": "application/octet-stream",
+        "x-firmware-version": version,
+    })
 
 
 def main():
     path = sys.argv[1] if len(sys.argv) > 1 else ".pio/build/esp32dev/firmware.bin"
-    url, key = os.environ.get("DOORA_SUPABASE_URL", "https://yshwchmbsuafribrttlt.supabase.co"), os.environ.get("DOORA_SUPABASE_KEY", "sb_publishable_Yqe-dl6usU3GEGPUbAIPTA_olGKWuMG")
-    if not url or not key:
-        sys.exit(__doc__)
     with open(path, "rb") as f:
         image = f.read()
-    if not image.endswith(b"DOORASIG"):
-        sys.exit("%s is not signed. Run tools/ota_keygen.py and rebuild." % path)
     version = subprocess.run(["git", "describe", "--always", "--dirty"], stdout=subprocess.PIPE,
                              check=True, text=True).stdout.strip()
 
-    request = urllib.request.Request(url.rstrip("/") + "/functions/v1/firmware-upload", data=image, method="POST", headers={
-        "apikey": key,
-        "Content-Type": "application/octet-stream",
-        "x-firmware-version": version,
-    })
+    token = saved_token() or sign_in()
     try:
-        # PlatformIO's Python has no system certificates, but it does ship certifi.
-        context = ssl.create_default_context(cafile=certifi.where())
-        with urllib.request.urlopen(request, timeout=120, context=context) as response:
-            result = json.load(response)
+        try:
+            result = upload(image, version, token)
+        except urllib.error.HTTPError as e:
+            if e.code != 401:
+                raise
+            result = upload(image, version, sign_in())  # expired: ask again
     except urllib.error.HTTPError as e:
         sys.exit("Upload refused (HTTP %d): %s" % (e.code, e.read().decode(errors="replace")))
+
     sha256 = hashlib.sha256(image).hexdigest()
     if result["sha256"] != sha256:
         sys.exit("The server stored a different image (%s). Do not approve it." % result["sha256"])

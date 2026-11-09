@@ -1,14 +1,11 @@
 // Over-the-air updates. The door downloads an admin-approved image from Supabase (Cloud.cpp) over
 // the connection its REST task already uses, so there is no listener on the door.
 //
-// The image signature is the lock that matters: after the download the door reads the image back
-// from flash and checks its RSA signature (OtaImage.h) against the public key built into the
-// firmware. Only then does it become the boot partition.
+// Images are not signed. What the door installs is decided by the approval it reads over TLS from
+// Supabase, and the download must match the SHA-256 that approval names.
 //
 // A new image then boots on trial: the boot loader falls back to the old one if the door resets
 // before confirm() is called, which happens once the door is back on the cloud.
-//
-// Updates need OTA_SIGNING_KEY in config.h.
 #pragma once
 #include <stddef.h>
 
@@ -20,7 +17,7 @@ void service(bool idle);
 // The download, from the REST task. `error()` says why a step returned false.
 bool open(size_t total);
 bool write(const char* data, size_t len);
-bool finish(size_t total, const char* releaseId);  // on success the door restarts when idle
+bool finish(const char* expectedSha256, const char* releaseId);  // on success the door restarts when idle
 void abort();
 const char* error();
 

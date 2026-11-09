@@ -37,7 +37,10 @@ export const load: LayoutLoad = async ({ url }) => {
 	if (user?.hasSecondFactor && url.pathname === '/security') redirect(307, '/os');
 	if (user && !user.isAdmin) {
 		if (url.pathname === '/os') redirect(307, '/os/keys');
-		if (adminRoutes.some((route) => url.pathname.startsWith(route))) redirect(307, '/os/keys');
+		// Key holders may grant `make release` access; that page turns away everyone else itself.
+		const consent = url.pathname.startsWith('/os/firmware/authorize');
+		if (!consent && adminRoutes.some((route) => url.pathname.startsWith(route)))
+			redirect(307, '/os/keys');
 	}
 
 	return { user };

@@ -20,7 +20,3 @@
 #define ERROR_LED 33
 #define SUCCESS_LED 23
 
-// Firmware updates over Bluetooth (optional; README.md, "Updates over Bluetooth").
-// `python3 tools/ota_keygen.py` creates the private key in ~/.doora and prints this line, which is
-// the public half of the key and not secret.
-// #define OTA_SIGNING_KEY { 0x.., ... }

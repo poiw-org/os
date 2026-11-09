@@ -228,6 +228,22 @@ test.describe('signed in', () => {
 		expect(renew).toMatchObject({ action: 'renew', id: firstId });
 	});
 
+	test('allowing make release answers only to this computer', async ({ page, api }) => {
+		const state = 'abcdefghijklmnop';
+		const challenge = 'a'.repeat(43);
+		await page.goto('/os/firmware/authorize?port=80&state=x&challenge=y');
+		await expect(page.getByRole('alert')).toContainText('not valid');
+		await expect(page.getByRole('button', { name: 'Allow' })).toHaveCount(0);
+
+		await page.route('http://127.0.0.1:49152/**', (route) => route.fulfill({ body: 'ok' }));
+		await page.goto(`/os/firmware/authorize?port=49152&state=${state}&challenge=${challenge}`);
+		await page.getByRole('button', { name: 'Allow' }).click();
+		await page.waitForURL(`http://127.0.0.1:49152/callback?code=the-code&state=${state}`);
+		expect(
+			api.bodies.find((b) => b.call === 'POST /functions/v1/firmware-cli-auth')?.body
+		).toMatchObject({ action: 'authorize', challenge });
+	});
+
 	test('an admin sees the door connected and uses its console', async ({ page, api }) => {
 		await page.goto('/os');
 		await page.getByRole('button', { name: 'Door connected' }).click();
@@ -425,6 +441,11 @@ test.describe('signed out', () => {
 		await expect(page).toHaveURL(/\/os\/keys$/);
 		await page.goto('/os/firmware/rel1?sha256=abc');
 		await expect(page).toHaveURL(/\/os\/keys$/);
+		await page.goto(
+			`/os/firmware/authorize?port=49152&state=abcdefghijklmnop&challenge=${'a'.repeat(43)}`
+		);
+		await expect(page.getByRole('alert')).toContainText('Only admins and members');
+		await expect(page.getByRole('button', { name: 'Allow' })).toHaveCount(0);
 	});
 
 	test('a member with a key and no 2FA is prompted once per sign-in', async ({ page }) => {

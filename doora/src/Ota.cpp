@@ -4,8 +4,7 @@
 #include <esp_partition.h>
 #include <atomic>
 #include "Log.h"
-#include "OtaImage.h"
-#include "Pins.h"  // config.h
+#include "Sha256.h"
 
 // Arduino confirms every image at startup unless told the application will do it.
 extern "C" bool verifyRollbackLater() { return true; }
@@ -14,24 +13,16 @@ namespace {
 constexpr uint32_t kTrialMs = 600000;
 constexpr const char* kPrefs = "ota";
 constexpr const char* kReleaseKey = "release";
-#ifdef OTA_SIGNING_KEY
-constexpr uint8_t kSigningKey[kRsaBytes] = OTA_SIGNING_KEY;
-#endif
 
-RsaPublicKey gKey;
-bool gReady = false;
 esp_ota_handle_t gHandle = 0;
 const esp_partition_t* gTarget = nullptr;
+Sha256 gHash;
 const char* gError = "";
 std::atomic<bool> gRestart{false};
 
 // Set in begin(), read by the REST task.
 char gRelease[40] = {0};
 std::atomic<bool> gTrial{false}, gRolledBack{false};
-
-bool readPartition(void* ctx, size_t offset, uint8_t* out, size_t len) {
-	return esp_partition_read(static_cast<const esp_partition_t*>(ctx), offset, out, len) == ESP_OK;
-}
 
 void storeRelease(const char* id) {
 	Preferences p;
@@ -48,12 +39,6 @@ bool fail(const char* why) {
 }  // namespace
 
 void Ota::begin() {
-#ifdef OTA_SIGNING_KEY
-	gReady = rsaPrepare(kSigningKey, gKey);
-	if (!gReady) LOG("OTA: OTA_SIGNING_KEY in config.h is not a 2048-bit RSA modulus; updates stay off.");
-#else
-	LOG("OTA: off (set OTA_SIGNING_KEY in config.h).");
-#endif
 	Preferences p;
 	p.begin(kPrefs, true);
 	p.getString(kReleaseKey, gRelease, sizeof(gRelease));
@@ -84,22 +69,30 @@ void Ota::service(bool idle) {
 }
 
 bool Ota::open(size_t total) {
-	if (!gReady) return fail("this door has no signing key");
 	gTarget = esp_ota_get_next_update_partition(nullptr);
-	if (!gTarget || total <= kOtaTrailer || total > gTarget->size) return fail("the image does not fit");
+	if (!gTarget || !total || total > gTarget->size) return fail("the image does not fit");
 	if (esp_ota_begin(gTarget, OTA_WITH_SEQUENTIAL_WRITES, &gHandle) != ESP_OK) return fail("could not start");
+	gHash.reset();
 	return true;
 }
 
 bool Ota::write(const char* data, size_t len) {
+	gHash.update(reinterpret_cast<const uint8_t*>(data), len);
 	return esp_ota_write(gHandle, data, len) == ESP_OK || fail("flash write failed");
 }
 
 void Ota::abort() { esp_ota_abort(gHandle); }
 
-bool Ota::finish(size_t total, const char* releaseId) {
+bool Ota::finish(const char* expectedSha256, const char* releaseId) {
+	uint8_t digest[32];
+	gHash.final(digest);
+	char hex[65];
+	for (size_t i = 0; i < sizeof(digest); i++) snprintf(hex + 2 * i, 3, "%02x", digest[i]);
+	if (strcmp(hex, expectedSha256) != 0) {
+		esp_ota_abort(gHandle);
+		return fail("the download does not match the approved hash");
+	}
 	if (esp_ota_end(gHandle) != ESP_OK) return fail("the image is corrupt");
-	if (!otaImageSigned(gKey, readPartition, (void*)gTarget, total)) return fail("the image is not signed with this door's key");
 	storeRelease(releaseId);
 	if (esp_ota_set_boot_partition(gTarget) != ESP_OK) {
 		storeRelease(nullptr);

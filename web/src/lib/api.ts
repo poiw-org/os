@@ -288,6 +288,9 @@ async function invoke<T>(name: string, body: Record<string, unknown> = {}): Prom
 	return data;
 }
 
+export const authorizeReleaseCli = async (challenge: string) =>
+	(await invoke<{ code: string }>('firmware-cli-auth', { action: 'authorize', challenge })).code;
+
 // Issuing and renewing sign the key's JWT, so they run in the `keys` edge function.
 const invokeKeys = (body: Record<string, unknown>) => invoke<{ id: string }>('keys', body);
 

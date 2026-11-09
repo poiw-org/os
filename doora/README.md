@@ -19,9 +19,9 @@ src/            firmware
   Actuators.*, Chimes.h    relay, LEDs, buzzer tones
   Settings.*, Console.*    EEPROM config and the serial console
   Bt.*, BtGate.h, Term.h   the console over Bluetooth, gated by admin approval
-  Ota.*, OtaImage.*        signed firmware updates, approved in the portal
+  Ota.*, OtaImage.*        firmware updates, approved in the portal
 host_test/      unit tests for the portable parts, run on the computer with `make test`
-tools/          ota_keygen.py and ota.py sign firmware; release.py publishes it for approval
+tools/          release.py publishes a build for approval
 config.example.h   pin template; copy it to config.h
 platformio.ini  build environment (esp32dev) and partition table
 ```
@@ -161,30 +161,26 @@ open its serial port (on a Mac, `/dev/cu.doora-<door id>`). Commands and logs ar
 
 #### Firmware updates
 
-The door has no listener. `make release` publishes a signed build to Supabase, an admin approves it
-under Firmware in the portal (for 30 minutes), and the door downloads it over its own connection.
+The door has no listener. `make release` uploads the build to Supabase and opens its approval page.
+An admin approves that exact hash (valid for 30 minutes), and the door downloads it over its own
+connection and installs it only if it matches the hash.
 
 ```sh
-python3 tools/ota_keygen.py          # once: creates ~/.doora/ota_key.pem, prints OTA_SIGNING_KEY for config.h
-pio run -t upload                    # once over USB, so the door has the update code and your public key
-export DOORA_SUPABASE_URL=https://<project>.supabase.co DOORA_SUPABASE_KEY=<publishable key>
+pio run -t upload                    # once over USB, so the door has the update code
 make release                         # from then on
 ```
 
-The `firmware-upload` function needs the secret `FIRMWARE_SIGNING_MODULUS` (the modulus as hex, from
-`openssl rsa -in ~/.doora/ota_key.pem -noout -modulus`) and is deployed with `--no-verify-jwt`.
+Builds are not signed, so the door trusts what its Supabase project approves: whoever controls that
+project can install firmware.
+
+Admins and members with an active key can publish builds; only admins approve them. The first
+`make release` opens the portal to ask for permission. The resulting token lasts 30 days, is kept in
+`~/.doora/release_token`, can only queue builds for approval, and stops working if its owner no longer
+qualifies. Rotating the function secret `FIRMWARE_CLI_JWT_SECRET` revokes
+all of them. `firmware-upload` and `firmware-cli-auth` are deployed with `--no-verify-jwt`.
 
 - **A new image runs on trial.** If the door resets before it is back on the cloud, or is not back
   within 10 minutes, the boot loader returns to the previous firmware and the portal says so.
-
-- **The signature is the lock that matters.** Every build signs `firmware.bin` (RSA-2048, SHA-256)
-  with the private key in `~/.doora` and appends the signature (`tools/ota.py`). After an upload the
-  door reads the image back from flash and checks it against the public key in its firmware. Only a
-  valid image becomes the boot partition; anything else is discarded and the door keeps running its
-  current firmware.
-- Keep `~/.doora/ota_key.pem` safe: whoever holds it can sign firmware for the door. To replace it,
-  run `ota_keygen.py` with a new `DOORA_OTA_KEY` path, update `config.h` and flash once over USB.
-  Without the `config.h` line updates stay off and the build is unsigned (USB only).
 
 ### 4. First boot
 

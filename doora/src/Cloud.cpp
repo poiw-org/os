@@ -536,8 +536,8 @@ void Cloud::updateFirmware() {
 			vTaskDelay(pdMS_TO_TICKS(3000));
 			continue;
 		}
-		if (Ota::finish(size, id)) {
-			LOG("OTA: signature good; restarting when the door is idle.");
+		if (Ota::finish(sha256, id)) {
+			LOG("OTA: hash matches the approval; restarting when the door is idle.");
 			reportFirmware(id, "rebooting", "");
 			return;
 		}

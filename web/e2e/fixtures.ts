@@ -319,6 +319,7 @@ async function mockSupabase(page: Page, state: ApiState) {
 		}
 		if (path === '/auth/v1/recover') return json({});
 		if (path === '/auth/v1/otp') return json({});
+		if (path === '/functions/v1/firmware-cli-auth') return json({ code: 'the-code' });
 		if (path === '/functions/v1/sign-in-method')
 			return json({ passkey: body.email === 'passkey@example.test' });
 		// Email confirmation on: a new account gets no session until the link is opened.

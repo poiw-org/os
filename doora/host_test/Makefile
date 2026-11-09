@@ -1,7 +1,7 @@
 # Host-side unit tests for the portable core (no PlatformIO toolchain needed).
 CXX ?= c++
 SRC = ../src/Sha256.cpp ../src/Rsa.cpp ../src/Jwt.cpp ../src/Access.cpp ../src/BlacklistSet.cpp ../src/SyncParser.cpp \
-      ../src/TimeUtil.cpp ../src/Journal.cpp ../src/Ndef.cpp ../src/Pn532Frame.cpp ../src/WsFrame.cpp ../src/OtaImage.cpp
+      ../src/TimeUtil.cpp ../src/Journal.cpp ../src/Ndef.cpp ../src/Pn532Frame.cpp ../src/WsFrame.cpp
 
 test:
 	$(CXX) -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -g -o /tmp/doora-test test.cpp $(SRC)

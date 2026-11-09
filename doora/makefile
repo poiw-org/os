@@ -1,7 +1,7 @@
 # Thin wrappers; PlatformIO (`pio`) does the real work. See platformio.ini.
 .PHONY: build upload monitor test release
 
-# Publishes the signed build for approval in the portal (see tools/release.py for the settings it needs).
+# Publishes the build for approval in the portal (see tools/release.py for the settings it needs).
 release: build
 	~/.platformio/penv/bin/python tools/release.py
 
