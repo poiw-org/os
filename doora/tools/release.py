@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Publishes firmware.bin for approval in the portal.
+"""Publishes firmware.bin to the door and follows the update until the door reports how it went.
+
+An admin's build is approved by the upload itself; anyone else's waits for an admin in the portal.
 
 The first run opens the portal to ask for permission to upload on your behalf. The answer is kept in
 ~/.doora/release_token for 30 days.
@@ -28,6 +30,17 @@ SUPABASE = os.environ.get("DOORA_SUPABASE_URL", "https://yshwchmbsuafribrttlt.su
 KEY = os.environ.get("DOORA_SUPABASE_KEY", "sb_publishable_Yqe-dl6usU3GEGPUbAIPTA_olGKWuMG")
 TOKEN_FILE = os.path.expanduser("~/.doora/release_token")
 CONSENT_WAIT_S = 300
+POLL_PENDING_S = 5
+POLL_DEPLOYING_S = 2
+# As long as the server accepts an approval, and a little past how long a door may fetch an approved build.
+PENDING_WAIT_S = 24 * 3600
+DEPLOY_WAIT_S = 40 * 60
+PROGRESS = {
+    "pending": "Waiting for an admin to approve it.",
+    "approved": "Approved. Waiting for the door to fetch it.",
+    "downloading": "The door is downloading it.",
+    "rebooting": "The door verified it and will restart when idle.",
+}
 # PlatformIO's Python has no system certificates, but it does ship certifi.
 TLS = ssl.create_default_context(cafile=certifi.where())
 
@@ -97,7 +110,41 @@ def upload(image, version, token):
         "Authorization": "Bearer %s" % token,
         "Content-Type": "application/octet-stream",
         "x-firmware-version": version,
+        "x-firmware-sha256": hashlib.sha256(image).hexdigest(),
     })
+
+
+def follow(release, token):
+    """Prints each change of state until the update ends. Exits non-zero if it did not install."""
+    body = json.dumps({"id": release}).encode()
+    headers = {"Authorization": "Bearer %s" % token, "Content-Type": "application/json"}
+    shown = None
+    deadline = time.monotonic() + PENDING_WAIT_S
+    while True:
+        try:
+            row = post("/functions/v1/firmware-status", body, headers)
+        except urllib.error.HTTPError as e:
+            if e.code < 500:
+                sys.exit("Could not read the update's state (HTTP %d): %s" % (e.code, e.read().decode(errors="replace")))
+            row = None
+        except OSError:  # the network dropping out does not stop the door
+            row = None
+        state = row and (row["door_state"] or row["status"])
+        if state and state != shown:
+            if shown in (None, "pending") and state != "pending":
+                deadline = time.monotonic() + DEPLOY_WAIT_S
+            shown = state
+            if state == "installed":
+                print("Installed. The door is running this build.")
+                return
+            if state == "rejected":
+                sys.exit("Rejected; the door will not install it.")
+            if state in ("failed", "rolled_back"):
+                sys.exit("The door did not install it (%s): %s" % (state, row["door_error"] or "no details"))
+            print(PROGRESS[state], flush=True)
+        if time.monotonic() > deadline:
+            sys.exit("Gave up waiting while the update was: %s. Check the portal." % (shown or "unknown"))
+        time.sleep(POLL_PENDING_S if shown in (None, "pending") else POLL_DEPLOYING_S)
 
 
 def main():
@@ -114,19 +161,27 @@ def main():
         except urllib.error.HTTPError as e:
             if e.code != 401:
                 raise
-            result = upload(image, version, sign_in())  # expired: ask again
+            token = sign_in()  # expired: ask again
+            result = upload(image, version, token)
     except urllib.error.HTTPError as e:
         sys.exit("Upload refused (HTTP %d): %s" % (e.code, e.read().decode(errors="replace")))
 
     sha256 = hashlib.sha256(image).hexdigest()
     if result["sha256"] != sha256:
-        sys.exit("The server stored a different image (%s). Do not approve it." % result["sha256"])
+        sys.exit("The server stored a different image (%s). Do not approve it; reject it if it is approved." % result["sha256"])
     # The address is fixed here, never taken from the response, and the hash is the one computed locally.
     link = "%s/os/firmware/%s?sha256=%s" % (PORTAL, urllib.parse.quote(result["id"], safe=""), sha256)
     print("Uploaded %s (%d bytes)." % (version, result["size"]))
     print("sha256: %s" % sha256)
-    print("Approve it, checking that the portal shows this hash:\n%s" % link)
-    webbrowser.open(link)
+    if result.get("approved"):
+        print("Approved automatically because you are an admin.")
+    else:
+        print("Approve it, checking that the portal shows this hash:\n%s" % link)
+        webbrowser.open(link)
+    try:
+        follow(result["id"], token)
+    except KeyboardInterrupt:
+        print("\nStopped watching. The update carries on; the portal shows how it goes.")
 
 
 if __name__ == "__main__":

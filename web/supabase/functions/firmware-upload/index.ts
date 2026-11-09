@@ -1,9 +1,10 @@
 // Publishes a firmware image for approval, on behalf of the person who granted the release token
-// (firmware-cli-auth). It only queues a build: an admin still has to approve that exact hash in the
-// portal before any door will fetch it.
+// (firmware-cli-auth). A build from an admin is approved here, and the door fetches it straight away;
+// anyone else's waits for an admin to approve that exact hash in the portal.
 //
-// POST <firmware.bin>, headers Authorization: Bearer <token>, x-firmware-version: <label>
-//   ->  { id, sha256, size }
+// POST <firmware.bin>, headers Authorization: Bearer <token>, x-firmware-version: <label>,
+//   x-firmware-sha256: <hash the CLI computed; without a match nothing is approved here>
+//   ->  { id, sha256, size, approved }
 import { accessToken, env, HttpError, handlePost, serviceClient } from "../_shared/http.ts";
 import { mayRelease, NOT_ALLOWED, UPLOAD_AUDIENCE, verifyReleaseToken } from "../_shared/release-token.ts";
 import { isFirmwareImage, MAX_IMAGE_BYTES, sha256Hex } from "./image.ts";
@@ -55,6 +56,17 @@ Deno.serve((req) =>
       .select("id")
       .single();
     if (error) throw new Error(error.message);
-    return { id: data.id, sha256, size: image.length };
+
+    // The build stays pending if this fails, so the uploader is sent to the portal as usual.
+    let approved = false;
+    if (req.headers.get("x-firmware-sha256") === sha256) {
+      const { data: done, error: refused } = await db.rpc("auto_approve_firmware", {
+        release: data.id,
+        uploader: claims.sub,
+      });
+      if (refused) console.error("auto-approval failed", refused.message);
+      approved = done === true;
+    }
+    return { id: data.id, sha256, size: image.length, approved };
   })
 );
