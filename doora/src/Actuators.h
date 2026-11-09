@@ -9,10 +9,9 @@
 
 class Actuators {
  public:
-	// The speaker is silent: its chords knocked the PN532 off the I2C bus (wiring or supply, not found
-	// yet). Every sound is still computed from the same timeline, so turning this on restores them all
-	// (and then the reader's hold-off during a denial matters again).
-	static constexpr bool kSound = false;
+	// Master switch for the speaker. Its chords have knocked the PN532 off the I2C bus (wiring or
+	// supply, cause not found), which is why the reader holds off during a denial while this is on.
+	static constexpr bool kSound = true;
 	void begin();
 	void service();
 	void grant();                // energise the relay and buzz for 3 s
