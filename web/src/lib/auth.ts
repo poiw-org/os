@@ -102,8 +102,8 @@ export async function signIn(email: string, password: string) {
 }
 
 /** WebAuthn sign-in with a passkey the user registered from the settings modal. */
-export async function signInWithPasskey(mediation?: 'conditional') {
-	const { error } = await supabase.auth.signInWithPasskey({ options: { mediation } });
+export async function signInWithPasskey() {
+	const { error } = await supabase.auth.signInWithPasskey();
 	if (error) throw error;
 }
 
@@ -123,21 +123,8 @@ export async function confirmEmailCode(code: string) {
 	throw new Error(reason?.error ?? 'Could not verify the code.');
 }
 
-/** Whether the browser or a password manager can offer passkeys in the email field's autofill. */
-export const passkeyAutofillSupported = async () =>
-	passkeyAutofillAllowed() &&
-	(await PublicKeyCredential.isConditionalMediationAvailable?.()) === true;
-
 export const passkeysSupported = () =>
 	typeof window !== 'undefined' && 'PublicKeyCredential' in window;
-
-// iPads report themselves as Macs, so touch support tells them apart.
-const onIOS = () =>
-	/iPhone|iPad|iPod/.test(navigator.userAgent) ||
-	(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-
-/** iOS passkey sign-ins stopped completing once autofill kept a request pending, so it goes without. */
-export const passkeyAutofillAllowed = () => passkeysSupported() && !onIOS();
 
 export async function registerPasskey() {
 	const { error } = await supabase.auth.registerPasskey();

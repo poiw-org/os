@@ -406,7 +406,6 @@ test.describe('signed out', () => {
 	test('wrong password shows the error and stays', async ({ page }) => {
 		await page.goto('/login');
 		await page.getByLabel('Email').fill('tester@example.test');
-		await page.getByRole('button', { name: 'Continue', exact: true }).click();
 		await page.getByLabel('Password', { exact: true }).fill('nope');
 		await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 		await expect(page.getByText('Invalid login credentials')).toBeVisible();
@@ -416,7 +415,6 @@ test.describe('signed out', () => {
 	test('admin signs in', async ({ page }) => {
 		await page.goto('/login');
 		await page.getByLabel('Email').fill('tester@example.test');
-		await page.getByRole('button', { name: 'Continue', exact: true }).click();
 		await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
 		await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 		await expect(page).toHaveURL(/\/os$/);
@@ -426,7 +424,6 @@ test.describe('signed out', () => {
 	test('a member lands on their keys and gets no admin controls', async ({ page }) => {
 		await page.goto('/login');
 		await page.getByLabel('Email').fill('nobody@example.test');
-		await page.getByRole('button', { name: 'Continue', exact: true }).click();
 		await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
 		await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 		await expect(page).toHaveURL(/\/os\/keys$/);
@@ -455,7 +452,6 @@ test.describe('signed out', () => {
 		);
 		await page.goto('/login');
 		await page.getByLabel('Email').fill('nobody@example.test');
-		await page.getByRole('button', { name: 'Continue', exact: true }).click();
 		await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
 		await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 		await expect(page).toHaveURL(/\/os\/keys$/);
@@ -466,14 +462,6 @@ test.describe('signed out', () => {
 		await page.reload();
 		await expect(page.getByRole('heading', { name: 'My keys' })).toBeVisible();
 		await expect(prompt).toBeHidden();
-	});
-
-	test('the password stays hidden until the email is known', async ({ page }) => {
-		await page.goto('/login');
-		await expect(page.getByLabel('Password', { exact: true })).toHaveCount(0);
-		await page.getByLabel('Email').fill('tester@example.test');
-		await page.getByRole('button', { name: 'Continue', exact: true }).click();
-		await expect(page.getByLabel('Password', { exact: true })).toBeVisible();
 	});
 
 	test('refusing the passkey asks for the password, then an emailed code', async ({
@@ -511,7 +499,6 @@ test.describe('signed out', () => {
 		await page.getByRole('button', { name: 'Sign in with a passkey' }).click();
 		await expect(page.getByText('Refused')).toBeVisible();
 		await page.getByLabel('Email').fill('passkey@example.test');
-		await page.getByRole('button', { name: 'Continue', exact: true }).click();
 		await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
 		await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
@@ -537,61 +524,10 @@ test.describe('signed out', () => {
 		);
 		await page.goto('/login');
 		await page.getByLabel('Email').fill('nobody@example.test');
-		await page.getByRole('button', { name: 'Continue', exact: true }).click();
 		await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
 		await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 		await expect(page).toHaveURL(/\/security$/);
 		await expect(page.getByRole('dialog', { name: 'Protect your key with 2FA' })).toHaveCount(0);
-	});
-
-	test('the email field offers a saved passkey straight away', async ({ page }) => {
-		await page.addInitScript(() => {
-			PublicKeyCredential.isConditionalMediationAvailable = () => Promise.resolve(true);
-			navigator.credentials.get = (options) => {
-				(window as unknown as { mediation?: string }).mediation = options?.mediation;
-				return new Promise(() => {});
-			};
-		});
-		await page.route('**/auth/v1/passkeys/authentication/options', (route) =>
-			route.fulfill({
-				json: {
-					challenge_id: 'challenge',
-					options: { challenge: 'AAAA', rpId: 'localhost', allowCredentials: [] }
-				}
-			})
-		);
-		await page.goto('/login');
-		await expect(page.getByLabel('Email')).toHaveAttribute('autocomplete', 'username webauthn');
-		await expect
-			.poll(() => page.evaluate(() => (window as unknown as { mediation?: string }).mediation))
-			.toBe('conditional');
-	});
-
-	test('an iPhone keeps only the tapped passkey prompt', async ({ page }) => {
-		await page.addInitScript(() => {
-			Object.defineProperty(navigator, 'userAgent', { get: () => 'Mozilla/5.0 (iPhone)' });
-			PublicKeyCredential.isConditionalMediationAvailable = () => Promise.resolve(true);
-			const seen: (string | undefined)[] = [];
-			(window as unknown as { seen: typeof seen }).seen = seen;
-			navigator.credentials.get = (options) => {
-				seen.push(options?.mediation);
-				return new Promise(() => {});
-			};
-		});
-		await page.route('**/auth/v1/passkeys/authentication/options', (route) =>
-			route.fulfill({
-				json: {
-					challenge_id: 'challenge',
-					options: { challenge: 'AAAA', rpId: 'localhost', allowCredentials: [] }
-				}
-			})
-		);
-		await page.goto('/login');
-		await expect(page.getByLabel('Email')).toHaveAttribute('autocomplete', 'username');
-		await page.getByRole('button', { name: /Quick unlock/ }).click();
-		await expect
-			.poll(() => page.evaluate(() => (window as unknown as { seen: unknown[] }).seen))
-			.toEqual([undefined]);
 	});
 
 	test('a session from an email link goes back to the password', async ({ page, api }) => {
@@ -600,7 +536,6 @@ test.describe('signed out', () => {
 		);
 		await page.goto('/login');
 		await page.getByLabel('Email').fill('linked@example.test');
-		await page.getByRole('button', { name: 'Continue', exact: true }).click();
 		await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
 		await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 		await expect(page).toHaveURL(/\/login\?password=required$/);
@@ -611,7 +546,6 @@ test.describe('signed out', () => {
 	test('forgot password sends a reset link', async ({ page, api }) => {
 		await page.goto('/login');
 		await page.getByLabel('Email').fill('tester@example.test');
-		await page.getByRole('button', { name: 'Continue', exact: true }).click();
 		await page.getByRole('button', { name: 'Forgot password?' }).click();
 		await page.getByLabel('Email').fill('tester@example.test');
 		await page.getByRole('button', { name: 'Send reset link' }).click();
