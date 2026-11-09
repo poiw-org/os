@@ -111,6 +111,8 @@ export type ApiState = {
 	bluetoothRequest?: boolean;
 	/** Whether the (mock) door answers force-open commands. */
 	doorAnswers: boolean;
+	/** Who uploaded the mock firmware build; the signed-in admin unless a test says otherwise. */
+	firmwareUploadedBy: string | null;
 	/** Emits a Realtime change to every channel subscribed to `table` (as the server would). */
 	push: (
 		table: string,
@@ -373,7 +375,8 @@ async function mockSupabase(page: Page, state: ApiState) {
 					size: 1048576,
 					status: 'pending',
 					door_state: null,
-					door_error: null
+					door_error: null,
+					uploaded_by: state.firmwareUploadedBy
 				}
 			]);
 		if (path === '/rest/v1/rpc/approve_firmware') return empty();
@@ -430,6 +433,7 @@ export const test = base.extend<{ api: ApiState; signedIn: boolean }>({
 				bodies: [],
 				broadcasts: [],
 				doorAnswers: true,
+				firmwareUploadedBy: ADMIN_ID,
 				push: () => {}
 			};
 			state.push = await mockRealtime(page, state);

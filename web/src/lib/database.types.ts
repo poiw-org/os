@@ -236,7 +236,7 @@ export type Database = {
 				Returns: undefined;
 			};
 			approve_firmware: {
-				Args: { release: string; expected_sha256: string };
+				Args: { release: string; expected_sha256: string; acknowledgement?: string };
 				Returns: undefined;
 			};
 			reject_firmware: {

@@ -42,7 +42,17 @@
 		const [
 			THREE,
 			{ RoundedBoxGeometry },
-			{ tokenColour, canvasTexture, createStage, spring, stepSprings, snapSprings, settled }
+			{
+				tokenColour,
+				canvasTexture,
+				createStage,
+				spring,
+				stepSprings,
+				snapSprings,
+				settled,
+				solid,
+				person
+			}
 		] = await Promise.all([
 			import('three'),
 			import('three/examples/jsm/geometries/RoundedBoxGeometry.js'),
@@ -54,11 +64,6 @@
 		if (!stage) return undefined;
 		const { world, camera, reduced } = stage;
 
-		const solid = (colour: string | number, roughness = 0.65) =>
-			new THREE.MeshStandardMaterial({
-				color: typeof colour === 'string' ? tokenColour(colour) : colour,
-				roughness
-			});
 		const box = (w: number, h: number, d: number, material: InstanceType<typeof THREE.Material>) =>
 			new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 2, Math.min(w, h, d) / 4), material);
 
@@ -83,51 +88,6 @@
 			art.position.set(x, 2, -1.88);
 			room.add(frame, art);
 		});
-
-		const person = (shirt: string, skin: number, hair: number) => {
-			const group = new THREE.Group();
-			const shirtMaterial = solid(shirt);
-			const skinMaterial = solid(skin, 0.75);
-			const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.34, 0.75, 8, 24), shirtMaterial);
-			torso.position.y = 0.75;
-
-			const head = new THREE.Group();
-			head.position.y = 1.72;
-			const face = new THREE.Mesh(new THREE.SphereGeometry(0.33, 32, 24), skinMaterial);
-			const hairCap = new THREE.Mesh(
-				new THREE.SphereGeometry(0.345, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.47),
-				solid(hair, 0.85)
-			);
-			hairCap.rotation.x = -0.25;
-			const eyeMaterial = solid(0x1c1a24, 0.3);
-			for (const x of [-0.11, 0.11]) {
-				const eye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 12, 12), eyeMaterial);
-				eye.position.set(x, 0.03, 0.31);
-				head.add(eye);
-			}
-			const smile = new THREE.Mesh(
-				new THREE.TorusGeometry(0.09, 0.013, 8, 20, Math.PI * 0.8),
-				eyeMaterial
-			);
-			smile.rotation.z = Math.PI + Math.PI * 0.1;
-			smile.position.set(0, -0.06, 0.31);
-			head.add(face, hairCap, smile);
-
-			const arm = (side: number) => {
-				const pivot = new THREE.Group();
-				pivot.position.set(side * 0.42, 1.2, 0);
-				const limb = new THREE.Mesh(new THREE.CapsuleGeometry(0.095, 0.5, 6, 16), shirtMaterial);
-				limb.position.y = -0.3;
-				const hand = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 12), skinMaterial);
-				hand.position.y = -0.66;
-				pivot.add(limb, hand);
-				group.add(pivot);
-				return pivot;
-			};
-
-			group.add(torso, head);
-			return { group, head, left: arm(-1), right: arm(1) };
-		};
 
 		// A speech bubble whose tail points at the person below it, drawn white in every theme.
 		const bubbleShape = canvasTexture(320, 260, (c) => {

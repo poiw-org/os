@@ -1,13 +1,18 @@
 import {
 	CanvasTexture,
+	CapsuleGeometry,
 	Color,
 	DirectionalLight,
+	Group,
 	HemisphereLight,
 	Mesh,
+	MeshStandardMaterial,
 	PerspectiveCamera,
 	Scene,
+	SphereGeometry,
 	SRGBColorSpace,
 	Texture,
+	TorusGeometry,
 	Vector3,
 	WebGLRenderer,
 	type Material,
@@ -32,6 +37,57 @@ export const tokenColour = (name: string) => {
 	swatch.fillRect(0, 0, 1, 1);
 	const [r, g, b] = swatch.getImageData(0, 0, 1, 1).data;
 	return new Color().setRGB(r / 255, g / 255, b / 255, SRGBColorSpace);
+};
+
+/** A plain surface in a design token or a raw hex colour. */
+export const solid = (colour: string | number, roughness = 0.65) =>
+	new MeshStandardMaterial({
+		color: typeof colour === 'string' ? tokenColour(colour) : colour,
+		roughness
+	});
+
+/** The cast of the scenes: a smiling capsule person with a head and two arms that can be posed. */
+export const person = (shirt: string, skin: number, hair: number) => {
+	const group = new Group();
+	const shirtMaterial = solid(shirt);
+	const skinMaterial = solid(skin, 0.75);
+	const torso = new Mesh(new CapsuleGeometry(0.34, 0.75, 8, 24), shirtMaterial);
+	torso.position.y = 0.75;
+
+	const head = new Group();
+	head.position.y = 1.72;
+	const face = new Mesh(new SphereGeometry(0.33, 32, 24), skinMaterial);
+	const hairCap = new Mesh(
+		new SphereGeometry(0.345, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.47),
+		solid(hair, 0.85)
+	);
+	hairCap.rotation.x = -0.25;
+	const eyeMaterial = solid(0x1c1a24, 0.3);
+	const eyes = [-0.11, 0.11].map((x) => {
+		const eye = new Mesh(new SphereGeometry(0.035, 12, 12), eyeMaterial);
+		eye.position.set(x, 0.03, 0.31);
+		head.add(eye);
+		return eye;
+	});
+	const smile = new Mesh(new TorusGeometry(0.09, 0.013, 8, 20, Math.PI * 0.8), eyeMaterial);
+	smile.rotation.z = Math.PI + Math.PI * 0.1;
+	smile.position.set(0, -0.06, 0.31);
+	head.add(face, hairCap, smile);
+
+	const arm = (side: number) => {
+		const pivot = new Group();
+		pivot.position.set(side * 0.42, 1.2, 0);
+		const limb = new Mesh(new CapsuleGeometry(0.095, 0.5, 6, 16), shirtMaterial);
+		limb.position.y = -0.3;
+		const hand = new Mesh(new SphereGeometry(0.11, 16, 12), skinMaterial);
+		hand.position.y = -0.66;
+		pivot.add(limb, hand);
+		group.add(pivot);
+		return pivot;
+	};
+
+	group.add(torso, head);
+	return { group, head, eyes, smile, left: arm(-1), right: arm(1) };
 };
 
 /** A texture drawn once with the 2D canvas API. */

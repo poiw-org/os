@@ -477,6 +477,7 @@ export type FirmwareRelease = {
 	status: string;
 	doorState: string | null;
 	doorError: string | null;
+	uploadedBy: string | null;
 };
 
 export const toFirmwareRelease = (row: Raw): FirmwareRelease => ({
@@ -487,7 +488,8 @@ export const toFirmwareRelease = (row: Raw): FirmwareRelease => ({
 	size: row.size as number,
 	status: row.status as string,
 	doorState: row.door_state as string | null,
-	doorError: row.door_error as string | null
+	doorError: row.door_error as string | null,
+	uploadedBy: row.uploaded_by as string | null
 });
 
 export async function listFirmwareReleases() {
@@ -516,10 +518,16 @@ export async function getFirmwareUploader(id: string) {
 	return data?.uploader?.email ?? null;
 }
 
-export async function approveFirmware(release: string, expectedSha256: string) {
+/** `acknowledgement` is the typed warning the server requires for someone else's build. */
+export async function approveFirmware(
+	release: string,
+	expectedSha256: string,
+	acknowledgement?: string
+) {
 	const { error } = await supabase.rpc('approve_firmware', {
 		release,
-		expected_sha256: expectedSha256
+		expected_sha256: expectedSha256,
+		acknowledgement
 	});
 	if (error) throw new Error(error.message);
 }

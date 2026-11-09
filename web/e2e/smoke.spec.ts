@@ -267,12 +267,45 @@ test.describe('signed in', () => {
 		await expect(page.getByRole('button', { name: 'Approve' })).toHaveCount(0);
 
 		await page.goto(`/os/firmware/rel1?sha256=${sha256}`);
+		await expect(page.getByText('You do not know what is in this binary')).toHaveCount(0);
 		await page.getByRole('button', { name: 'Approve' }).click();
 		await page.getByRole('dialog').getByRole('button', { name: 'Approve' }).click();
 		await expect
 			.poll(() => api.bodies.find((b) => b.call === 'POST /rest/v1/rpc/approve_firmware')?.body)
-			.toMatchObject({ release: 'rel1', expected_sha256: sha256 });
+			.toEqual({ release: 'rel1', expected_sha256: sha256 });
 	});
+
+	for (const uploader of ['b2222222-0000-4000-8000-000000000002', null])
+		test(`approving a build from ${uploader ? 'someone else' : 'an unknown uploader'} takes the typed warning`, async ({
+			page,
+			api
+		}) => {
+			const sha256 = 'a'.repeat(64);
+			api.firmwareUploadedBy = uploader;
+			await page.goto(`/os/firmware/rel1?sha256=${sha256}`);
+
+			const warning = page.getByRole('alert');
+			await expect(warning).toContainText('You do not know what is in this binary');
+			await expect(warning).toContainText('check the code yourself');
+			await expect(warning.locator('[data-scene="scared"]')).toBeAttached();
+
+			const approve = page.getByRole('button', { name: 'Approve' });
+			const box = warning.getByRole('textbox');
+			await expect(approve).toBeDisabled();
+			for (const wrong of ['this is', 'This is dangerous', 'this is dangerous ']) {
+				await box.fill(wrong);
+				await expect(approve).toBeDisabled();
+			}
+			await box.fill('this is dangerous');
+			await approve.click();
+			await expect
+				.poll(() => api.bodies.find((b) => b.call === 'POST /rest/v1/rpc/approve_firmware')?.body)
+				.toEqual({
+					release: 'rel1',
+					expected_sha256: sha256,
+					acknowledgement: 'this is dangerous'
+				});
+		});
 
 	test('an admin approves a Bluetooth connection the door asks about', async ({ page, api }) => {
 		api.bluetoothRequest = true;

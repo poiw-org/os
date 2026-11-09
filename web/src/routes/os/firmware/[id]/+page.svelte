@@ -11,6 +11,7 @@
 	import { liveRows } from '#lib/live.svelte.ts';
 	import Loading from '#lib/loading.svelte';
 	import { ask, toast } from '#lib/notify.svelte.ts';
+	import ScaredPerson from '#lib/ScaredPerson.svelte';
 
 	// Opened by `make release`. The hash in the link comes from the terminal that uploaded the build,
 	// and an approval only goes through for exactly that hash on exactly this release. Members land
@@ -18,6 +19,7 @@
 	const id = page.params.id as string;
 	const expected = page.url.searchParams.get('sha256') ?? '';
 	const isAdmin = page.data.user.isAdmin as boolean;
+	const ACKNOWLEDGEMENT = 'this is dangerous';
 
 	const rows = isAdmin
 		? liveRows({
@@ -30,7 +32,11 @@
 	const release = $derived(rows?.items?.find((r) => r.id === id));
 	const matches = $derived(release?.sha256 === expected);
 
+	// Unknown uploaders count too: a deleted account's build is still not the approver's own.
+	const someoneElses = $derived(release?.uploadedBy !== page.data.user.id);
+
 	let busy = $state(false);
+	let typed = $state('');
 	let uploader = $state<string | null>(null);
 
 	if (isAdmin) getFirmwareUploader(id).then((email) => (uploader = email));
@@ -47,13 +53,19 @@
 	};
 
 	const approve = async () => {
-		const yes = await ask({
-			title: 'Install this firmware?',
-			message: `This code will run on the door. Only approve it if you know what changed and the uploader confirms this hash: ${expected}`,
-			confirmLabel: 'Approve'
-		});
+		// Typing the warning is the confirmation for someone else's build.
+		const yes =
+			someoneElses ||
+			(await ask({
+				title: 'Install this firmware?',
+				message: `This code will run on the door. Only approve it if you know what changed and the uploader confirms this hash: ${expected}`,
+				confirmLabel: 'Approve'
+			}));
 		if (yes)
-			await act(() => approveFirmware(id, expected), 'Approved. The door will fetch it now.');
+			await act(
+				() => approveFirmware(id, expected, someoneElses ? typed : undefined),
+				'Approved. The door will fetch it now.'
+			);
 	};
 </script>
 
@@ -101,6 +113,34 @@
 				No longer waiting for approval ({release.doorState ?? release.status}).
 			</p>
 		{:else}
+			{#if someoneElses}
+				<section class="mt-4 rounded-md border-2 !border-red-500 bg-red-500/10 p-4" role="alert">
+					<ScaredPerson />
+					<h2 class="mt-3 text-lg font-bold text-red-600">
+						You do not know what is in this binary.
+					</h2>
+					<p class="mt-2 text-sm">
+						{uploader ?? 'Someone else'} uploaded it, not you. Once approved it runs on the door and can
+						do anything the door can do, including letting anyone in. A label and a hash cannot tell you
+						what the code does.
+					</p>
+					<p class="mt-2 text-sm font-bold">
+						You may want to check the code yourself before approving. If you cannot vouch for it,
+						reject it.
+					</p>
+					<label class="mt-3 block text-sm">
+						To approve anyway, type <strong class="font-mono">{ACKNOWLEDGEMENT}</strong>
+						<input
+							bind:value={typed}
+							class="mt-1 w-full px-3 py-2 font-mono"
+							autocomplete="off"
+							autocapitalize="none"
+							autocorrect="off"
+							spellcheck="false"
+						/>
+					</label>
+				</section>
+			{/if}
 			<div class="mt-3 flex gap-2">
 				<button
 					type="button"
@@ -108,8 +148,11 @@
 					disabled={busy}
 					onclick={() => act(() => rejectFirmware(id), 'Rejected.')}>Reject</button
 				>
-				<button type="button" class="key key-signal" disabled={busy} onclick={approve}
-					>Approve</button
+				<button
+					type="button"
+					class="key key-signal"
+					disabled={busy || (someoneElses && typed !== ACKNOWLEDGEMENT)}
+					onclick={approve}>Approve</button
 				>
 			</div>
 		{/if}
