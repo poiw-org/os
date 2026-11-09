@@ -9,6 +9,7 @@
 #include "Access.h"
 #include "Actuators.h"
 #include "BlacklistSet.h"
+#include "Bt.h"
 #include "Clock.h"
 #include "Chimes.h"
 #include "Cloud.h"
@@ -171,11 +172,24 @@ void printStatus() {
 	    (unsigned long)Persist::journalDropped(), (unsigned long)Persist::journalSuppressed());
 	reader.printStatus();
 	cloud.printStatus();
+	Bt::printStatus();
 }
 
-// The door's own timers (relay, force open), for code that has to wait outside loop(): the serial
-// console's prompts must not hold the relay energised or a force open back.
+void serviceTag() {
+	if (const TagRead* tag = reader.take()) {
+		actuators.reading(true);
+		handleTag(*tag);
+		actuators.reading(false);
+		reader.release();
+	}
+}
+
+// The door's own work, for code that has to wait outside loop(): a console prompt or a firmware
+// upload must not hold the relay energised, a force open back or a tap unanswered, and the
+// Bluetooth deadlines keep running.
 void serviceDoor() {
+	serviceTag();
+	Bt::service(cloud);
 	if (cloud.takeForceOpen()) actuators.forceOpen();
 	actuators.service();
 	if (actuators.takeForcedOpen()) onForcedOpened();
@@ -237,18 +251,15 @@ void setup() {
 	cloud.begin(settings, clock_, blacklist, signingKey);
 	char host[48];
 	snprintf(host, sizeof(host), "doora-%s", settings.doorId);  // the Wi-Fi hostname too
-	Ota::begin(host);
+	Ota::begin();
+	Bt::begin(host);
 }
 
 void loop() {
 	uint32_t ms = millis();
 
-	if (const TagRead* tag = reader.take()) {
-		actuators.reading(true);
-		handleTag(*tag);
-		actuators.reading(false);
-		reader.release();
-	}
+	serviceTag();
+	Bt::service(cloud);
 	serviceWriter();
 	if (cloud.takeForceOpen()) actuators.forceOpen();
 	actuators.service();

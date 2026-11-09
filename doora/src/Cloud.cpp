@@ -89,7 +89,7 @@ void Cloud::begin(const Settings& settings, Clock& clock, BlacklistSet& blacklis
 	WiFi.setHostname(name);  // must precede mode()
 	WiFi.mode(WIFI_STA);
 	WiFi.setAutoReconnect(true);
-	WiFi.setSleep(false);  // mains powered; sleeping only adds latency to commands
+	WiFi.setSleep(true);  // required: the ESP32 aborts if Wi-Fi does not sleep while Bluetooth shares the radio
 	WiFi.begin(settings.wifiSsid, settings.wifiPass[0] ? settings.wifiPass : nullptr);
 	wifiBeginMs_ = wifiKickMs_ = millis();
 	LOG("Connecting to Wi-Fi \"%s\"...", settings.wifiSsid);

@@ -7,6 +7,7 @@
 #include "../src/Access.h"
 #include "../src/Backoff.h"
 #include "../src/BlacklistSet.h"
+#include "../src/BtGate.h"
 #include "../src/Chimes.h"
 #include "../src/Crc.h"
 #include "../src/Journal.h"
@@ -40,6 +41,61 @@ static const char* RSA_N = "lN-_bUdgw9pu-N_S_sieK3dnECFbyJDfxMERNA3HU26oevw5Hs26
 static const char* RSA_OTHER_N = "uHR78K6Zw0tIHEt2-10YqJvNqj-hNmESDfuEYIe5cQ9BQxnTzWj-SbQ0ObrI3rwl0S0jMwx027e-PuUH_qWeq5dL1HwYj2sTFDle7zHgwYTFzY7ujgxiLeBBMo8jcW2KNPOogb8E9al1JgkE_Q3OImEQT0uF2-WytvnSfEhux7TyLQp-FjuTPU8mfm0oreIoS6zPbDLJWj5eWH0bu_mIpYMNEA8lY9gUKWyTKX0-oT_HfEyeyaCaeVT17NtNmpoF7AL1u9PpVH8U5dcUrCtM-1npBBFqk6qeYQnZhgBBSYlas5VOE9HZfOzj5ucvJwt_3zm_08qeBakXbJ6T667lSQ";
 static const char* RSA_GOOD = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJqdGkiOiJhYWFhYWFhYS1iYmJiLWNjY2MtZGRkZC1lZWVlZWVlZWVlZWUiLCJhdWQiOiIwNGExYjJjM2Q0ZTVmNiIsImlhdCI6MTcwMDAwMDAwMCwibmJmIjoxNzAwMDAwMTAwLCJleHAiOjE4MDAwMDAwMDB9.JIxMsTzVzPZEEauQSXUyt_VrvoTy6MDJ_UmN41Vlkifa12fMIucZ5MyaER9Odm3q0UPTIIsj9uBRB9WB2QxuLkitejirK1IYafHvLafYhUcYv79AusViyAN_7VuckN2uL705VC7eftWZC2K6rMnwyitWro1MbJd-llxzOuULseousm-1rADLFz-JuwW-7g8VIm71OGD3IRFhj6xg1Nh11wMIGSqBpQfWvZOkd4mqbx93s7D7skxSR7V-2oCuNQuUOqQUJu50J9EGyQ3vgpAqtPLRcW7NATWw2G5J2Sw9T9yvD87ZJfzMwKofGNwuCcyR0f9yQaiZJYGEOXrI6o6xCQ";
 static const char* RSA_OTHER = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJqdGkiOiJhYWFhYWFhYS1iYmJiLWNjY2MtZGRkZC1lZWVlZWVlZWVlZWUiLCJhdWQiOiIwNGExYjJjM2Q0ZTVmNiIsImlhdCI6MTcwMDAwMDAwMCwibmJmIjoxNzAwMDAwMTAwLCJleHAiOjE4MDAwMDAwMDB9.GJjToRmh4G-QRMB6nFVVPkvUB5FLbNCWPmz-xm5VxxccN6cIxT-DTG-xk6bfu-xoEJ8t3y8CtmlSOeW30KHez7CObflh28Q3qRlbxY_QLyKoVFRrrdN_1N_CdK6t0FWn7wqrjgS9PGw_l92EMAiJPrVC9_jgrT4kp8PJh7S6F7WNFuYD1t4Hta_glL9ZIQx8aK9EANa-YUMa18EFGAiDh23HOJ2iBPDSOS33esgSmc5xE--7N2yjqJ9GVYCC0fjfhqf4RaeA092RRxchZjsrocYiRMQq7T4FfW3nN5EBtu0BQunWYxoQ1O5j-IBcGhfbtPEbxHfJ3FOzzVs-pDNfgQ";
+
+static void testBtGate() {
+	using Link = BtGate::Link;
+	const uint8_t a[6] = {1, 2, 3, 4, 5, 6}, b[6] = {9, 9, 9, 9, 9, 9};
+	BtGate g;
+	uint32_t t = 0xFFFFF000u;  // across the millis() wrap
+
+	g.connected(a, t);
+	CHECK(g.link() == Link::Pending);
+	CHECK(!g.expired(t + BtGate::kApprovalMs - 1));
+	CHECK(g.expired(t + BtGate::kApprovalMs));
+	CHECK(!g.approve(t + BtGate::kApprovalMs));  // too late
+	CHECK(g.link() == Link::Pending);
+	g.closed();
+	CHECK(!g.approve(t));  // nobody is waiting
+
+	g.connected(a, t);
+	CHECK(g.approve(t + 5000));
+	CHECK(g.link() == Link::Open);
+	uint32_t end = t + 5000 + BtGate::kGrantMs;
+	CHECK(!g.expired(end - 1));
+	CHECK(g.expired(end));  // an open link is cut when the 24 hours end
+	g.closed();
+
+	g.connected(b, t + 6000);  // another device gets nothing from a's approval
+	CHECK(g.link() == Link::Pending);
+	g.closed();
+
+	g.connected(a, end - 1);  // comes back without asking, but the grant does not restart
+	CHECK(g.link() == Link::Open);
+	CHECK(g.expired(end));
+	g.closed();
+	g.connected(a, end);
+	CHECK(g.link() == Link::Pending);
+	CHECK(g.approve(end));
+	g.closed();
+
+	g.forget(a);  // paired anew: a different link key, so a different device
+	g.connected(a, end + 1);
+	CHECK(g.link() == Link::Pending);
+	g.closed();
+
+	BtGate full;  // the grant that ends first makes room
+	uint8_t d[6] = {0};
+	for (uint8_t i = 0; i < 5; i++) {
+		d[0] = i;
+		full.connected(d, i);
+		CHECK(full.approve(i));
+		full.closed();
+	}
+	d[0] = 0;
+	CHECK(!full.granted(d, 10));
+	d[0] = 4;
+	CHECK(full.granted(d, 10));
+}
 
 static void testRsaJwt() {
 	uint8_t nBytes[kRsaBytes + 1], otherBytes[kRsaBytes + 1];
@@ -823,6 +879,7 @@ int main() {
 	testNdef();
 	testPn532Frame();
 	testHash();
+	testBtGate();
 	testJwt();
 	testRsaJwt();
 	testAccess();

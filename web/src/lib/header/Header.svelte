@@ -4,6 +4,7 @@
 	import Avatar from '#lib/ui/Avatar.svelte';
 	import { resolve } from '$app/paths';
 	import OsLabel from '#lib/ui/OsLabel.svelte';
+	import BluetoothApproval from './BluetoothApproval.svelte';
 	import ForceOpenModal from './ForceOpenModal.svelte';
 	import MobileMenu from './MobileMenu.svelte';
 	import SettingsModal from './SettingsModal.svelte';
@@ -74,6 +75,10 @@
 			refocus();
 		}}
 	/>
+{/if}
+
+{#if user?.isAdmin}
+	<BluetoothApproval />
 {/if}
 
 {#if user && settingsOpen}

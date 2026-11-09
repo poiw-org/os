@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <string.h>
 #include "Log.h"
+#include "Ota.h"
 
 namespace {
 
@@ -17,26 +18,26 @@ int readLine(char* out, size_t cap, uint32_t timeoutMs, bool echo, uint32_t idle
 	uint32_t last = millis();
 	for (;;) {
 		if (gIdle) gIdle();
-		while (Serial.available()) {
-			int c = Serial.read();
+		while (Term.available()) {
+			int c = Term.read();
 			last = millis();
 			if (c == '\r' || c == '\n') {
 				if (n == 0 && c == '\n') continue;  // the LF of a CRLF pair
 				out[n] = 0;
-				Serial.println();
+				Term.println();
 				return (int)n;
 			}
 			if (c == 0x08 || c == 0x7f) {
-				if (n) { n--; if (echo) Serial.print(F("\b \b")); }
+				if (n) { n--; if (echo) Term.print(F("\b \b")); }
 				continue;
 			}
 			if (c < 0x20 || n + 1 >= cap) continue;
 			out[n++] = (char)c;
-			if (echo) Serial.write((uint8_t)c);
+			if (echo) Term.write((uint8_t)c);
 		}
 		if (idleSubmitMs && n && millis() - last > idleSubmitMs) {
 			out[n] = 0;
-			Serial.println();
+			Term.println();
 			return (int)n;
 		}
 		if (timeoutMs && millis() - last > timeoutMs) return -1;
@@ -76,7 +77,7 @@ const char* vDoorId(const char* v) {
 const char* vSecret(const char* v) {
 	if (strlen(v) > 128) return "at most 128 characters";
 	if (strlen(v) < 32)
-		Serial.println(F("  Warning: a short secret can be guessed from any v1 tag. Clear it once every v1 tag is reissued as v2."));
+		Term.println(F("  Warning: a short secret can be guessed from any v1 tag. Clear it once every v1 tag is reissued as v2."));
 	return nullptr;
 }
 const char* vNtp(const char* v) { return (strlen(v) < 3 || strlen(v) > 39) ? "a host name" : nullptr; }
@@ -95,28 +96,28 @@ bool ask(const char* label, const char* help, char* target, size_t cap, Validato
          bool optional = false, bool host = false) {
 	char line[300];
 	for (;;) {
-		Serial.println();
-		if (help && *help) { Serial.print(F("  ")); Serial.println(help); }
-		Serial.print(label);
+		Term.println();
+		if (help && *help) { Term.print(F("  ")); Term.println(help); }
+		Term.print(label);
 		if (target[0]) {
-			Serial.print(F(" ["));
-			if (secret) { Serial.print(F("hidden, ")); Serial.print(strlen(target)); Serial.print(F(" chars")); }
-			else Serial.print(target);
-			Serial.print(F(", Enter to keep]"));
-		} else if (optional) Serial.print(F(" [empty]"));
-		Serial.print(F(": "));
+			Term.print(F(" ["));
+			if (secret) { Term.print(F("hidden, ")); Term.print(strlen(target)); Term.print(F(" chars")); }
+			else Term.print(target);
+			Term.print(F(", Enter to keep]"));
+		} else if (optional) Term.print(F(" [empty]"));
+		Term.print(F(": "));
 
 		int n = readLine(line, sizeof(line), kWizardIdleMs, true);
 		if (n < 0) return false;
 		if (n == 0) {
 			if (target[0] || optional) return true;
-			Serial.println(F("  This one is required."));
+			Term.println(F("  This one is required."));
 			continue;
 		}
 		if (optional && !strcmp(line, "-")) { target[0] = 0; return true; }
 		if (host) normalizeHost(line);
 		const char* err = check(line);
-		if (err) { Serial.print(F("  Not accepted: ")); Serial.println(err); continue; }
+		if (err) { Term.print(F("  Not accepted: ")); Term.println(err); continue; }
 		strlcpy(target, line, cap);
 		return true;
 	}
@@ -127,9 +128,9 @@ bool wizard(Settings& s) {
 	if (!draft.ntpServer[0]) strlcpy(draft.ntpServer, "pool.ntp.org", sizeof(draft.ntpServer));
 	if (!draft.doorId[0]) strlcpy(draft.doorId, "main", sizeof(draft.doorId));
 
-	Serial.println(F("\n=== Doora setup ==="));
-	Serial.println(F("Answer each question and press Enter. Secrets are stored in EEPROM, not in the firmware."));
-	Serial.println(F("Idle for 3 minutes to cancel."));
+	Term.println(F("\n=== Doora setup ==="));
+	Term.println(F("Answer each question and press Enter. Secrets are stored in EEPROM, not in the firmware."));
+	Term.println(F("Idle for 3 minutes to cancel."));
 
 	bool ok = ask("Wi-Fi network name (SSID)", "", draft.wifiSsid, sizeof(draft.wifiSsid), vSsid, false) &&
 	          ask("Wi-Fi password", "Leave empty for an open network; type '-' to clear.", draft.wifiPass,
@@ -147,25 +148,25 @@ bool wizard(Settings& s) {
 	              "The old JWT_SIGNING_KEY, for HS256 keys issued before v2. Leave empty (or '-' to clear) to refuse v1 keys.",
 	              draft.jwtSecret, sizeof(draft.jwtSecret), vSecret, true, true) &&
 	          ask("NTP server", "", draft.ntpServer, sizeof(draft.ntpServer), vNtp, false);
-	if (!ok) { Serial.println(F("\nSetup cancelled, nothing was changed.")); return false; }
+	if (!ok) { Term.println(F("\nSetup cancelled, nothing was changed.")); return false; }
 
-	Serial.println(F("\nSave these settings? (y/n): "));
+	Term.println(F("\nSave these settings? (y/n): "));
 	char line[8];
 	if (readLine(line, sizeof(line), kWizardIdleMs, true) < 0 || (line[0] != 'y' && line[0] != 'Y')) {
-		Serial.println(F("Nothing was changed."));
+		Term.println(F("Nothing was changed."));
 		return false;
 	}
 	if (!SettingsStore::save(draft)) {
-		Serial.println(F("Could not write the settings to EEPROM. Nothing was changed."));
+		Term.println(F("Could not write the settings to EEPROM. Nothing was changed."));
 		return false;
 	}
 	s = draft;
-	Serial.println(F("Saved."));
+	Term.println(F("Saved."));
 	return true;
 }
 
 void showSettings(const Settings& s) {
-	Serial.printf("wifi ssid : %s\nwifi pass : %s\nsupabase  : %s\nanon key  : hidden (%u chars)\n"
+	Term.printf("wifi ssid : %s\nwifi pass : %s\nsupabase  : %s\nanon key  : hidden (%u chars)\n"
 	                     "door user : %s\ndoor pass : hidden\ndoor id   : %s\nv1 secret : %s (%u chars)\nntp       : %s\n",
 	                s.wifiSsid, s.wifiPass[0] ? "hidden" : "(open network)", s.supabaseHost, (unsigned)strlen(s.anonKey),
 	                s.email, s.doorId, s.jwtSecret[0] ? "hidden" : "none, v1 keys refused", (unsigned)strlen(s.jwtSecret),
@@ -188,15 +189,15 @@ bool eraseSettings(Settings& s, const char* arg) {
 	const EraseTarget* target = nullptr;
 	for (const EraseTarget& t : kEraseTargets) if (!strcmp(arg, t.name)) target = &t;
 	if (!all && !target) {
-		Serial.println(F("Usage: erase <category>, one of:"));
-		for (const EraseTarget& t : kEraseTargets) Serial.printf("  %-9s %s\n", t.name, t.what);
-		Serial.println(F("  all       everything above"));
+		Term.println(F("Usage: erase <category>, one of:"));
+		for (const EraseTarget& t : kEraseTargets) Term.printf("  %-9s %s\n", t.name, t.what);
+		Term.println(F("  all       everything above"));
 		return false;
 	}
-	Serial.printf("Erase %s? Type 'yes' to confirm: ", all ? "ALL settings" : target->what);
+	Term.printf("Erase %s? Type 'yes' to confirm: ", all ? "ALL settings" : target->what);
 	char answer[8];
 	if (readLine(answer, sizeof(answer), 30000, true, 600) < 0 || strcmp(answer, "yes")) {
-		Serial.println(F("Nothing was changed."));
+		Term.println(F("Nothing was changed."));
 		return false;
 	}
 	if (all) {
@@ -205,11 +206,11 @@ bool eraseSettings(Settings& s, const char* arg) {
 		Settings next = s;
 		SettingsStore::clear(next, target->cat);
 		if (!SettingsStore::save(next)) {
-			Serial.println(F("Could not write the settings to EEPROM. Nothing was changed."));
+			Term.println(F("Could not write the settings to EEPROM. Nothing was changed."));
 			return false;
 		}
 	}
-	Serial.println(F("Erased. Restarting into setup."));
+	Term.println(F("Erased. Restarting into setup."));
 	return true;
 }
 
@@ -219,10 +220,10 @@ namespace Console {
 
 void firstRunSetup(Settings& s) {
 	if (!SettingsStore::loadRaw(s)) memset(&s, 0, sizeof(s));  // keep what survived a partial erase
-	Serial.println(F("\nThis door is not configured yet."));
+	Term.println(F("\nThis door is not configured yet."));
 	// wizard() only returns true once the settings are validated and saved.
 	while (!wizard(s)) {
-		Serial.println(F("\nPress Enter to start the setup again."));
+		Term.println(F("\nPress Enter to start the setup again."));
 		char line[8];
 		readLine(line, sizeof(line), 0, false);
 	}
@@ -234,9 +235,9 @@ bool poll(Settings& s, void (*printStatus)(), void (*idle)()) {
 	static size_t n = 0;
 	static uint32_t lastByteMs = 0;
 	// Monitors set to "no line ending" never send \r or \n; treat a pause after typing as Enter.
-	bool idleFlush = n && !Serial.available() && millis() - lastByteMs > 400;
-	while (idleFlush || Serial.available()) {
-		int c = idleFlush ? '\n' : Serial.read();
+	bool idleFlush = n && !Term.available() && millis() - lastByteMs > 400;
+	while (idleFlush || Term.available()) {
+		int c = idleFlush ? '\n' : Term.read();
 		idleFlush = false;
 		lastByteMs = millis();
 		if (c != '\r' && c != '\n') {
@@ -255,10 +256,11 @@ bool poll(Settings& s, void (*printStatus)(), void (*idle)()) {
 		if (!strcmp(line, "config") || !strcmp(line, "setup")) return wizard(s);
 		if (!strcmp(line, "status")) printStatus();
 		else if (!strcmp(line, "show")) showSettings(s);
-		else if (!strcmp(line, "reboot")) { Serial.println(F("Restarting.")); delay(100); ESP.restart(); }
+		else if (!strcmp(line, "reboot")) { Term.println(F("Restarting.")); delay(100); ESP.restart(); }
 		else if (!strncmp(line, "erase", 5)) return eraseSettings(s, line + 5);
+		else if (!strncmp(line, "update ", 7)) Ota::receive(strtoul(line + 7, nullptr, 10), gIdle);
 		else
-			Serial.println(F("Commands:\n  status  network, clock, blacklist and journal state\n  show    current settings (secrets hidden)\n  config  run the setup wizard again\n  erase   wipe settings: erase [wifi|supabase|door|ntp|all]\n  reboot  restart the door"));
+			Term.println(F("Commands:\n  status  network, clock, blacklist and journal state\n  show    current settings (secrets hidden)\n  config  run the setup wizard again\n  erase   wipe settings: erase [wifi|supabase|door|ntp|all]\n  reboot  restart the door\n  update  receive signed firmware (tools/bt_update.py)"));
 	}
 	return false;
 }

@@ -108,6 +108,7 @@ export type ApiState = {
 	bodies: { call: string; body: unknown }[];
 	/** Broadcast messages clients sent, in order. */
 	broadcasts: { topic: string; event: string; payload: Record<string, unknown> }[];
+	bluetoothRequest?: boolean;
 	/** Whether the (mock) door answers force-open commands. */
 	doorAnswers: boolean;
 	/** Emits a Realtime change to every channel subscribed to `table` (as the server would). */
@@ -139,6 +140,9 @@ function decodeBroadcastPush(buf: Buffer): [string | null, string | null, string
 	];
 }
 
+const doorBroadcast = (topic: string, event: string, payload: Record<string, unknown>) =>
+	JSON.stringify([null, null, topic, 'broadcast', { type: 'broadcast', event, payload }]);
+
 // A minimal Phoenix/Realtime server: acknowledges joins and heartbeats, and can push changes.
 // Frames use the v2 array format: [join_ref, ref, topic, event, payload].
 async function mockRealtime(page: Page, state: ApiState) {
@@ -158,6 +162,10 @@ async function mockRealtime(page: Page, state: ApiState) {
 				);
 			} else if (event === 'broadcast') {
 				state.broadcasts.push({ topic, event: payload.event, payload: payload.payload });
+				if (payload.event === 'bt_approve')
+					ws.send(
+						doorBroadcast(topic, 'bt_result', { id: payload.payload.id, outcome: 'approved' })
+					);
 				// The door confirms a force-open command, as the firmware does.
 				if (payload.event === 'force_open' && state.doorAnswers) {
 					ws.send(
@@ -224,6 +232,15 @@ async function mockRealtime(page: Page, state: ApiState) {
 						{ status: 'ok', response: { postgres_changes: withIds } }
 					])
 				);
+				// The door asks the admins about a device connecting over Bluetooth.
+				if (state.bluetoothRequest && topic === 'realtime:door:front')
+					ws.send(
+						doorBroadcast(topic, 'bt_request', {
+							id: 'req1',
+							address: 'AA:BB:CC:DD:EE:FF',
+							left_ms: 20000
+						})
+					);
 			}
 		});
 	});

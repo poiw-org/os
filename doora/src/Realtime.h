@@ -18,6 +18,9 @@
 #include "WriteState.h"
 #include "WsClient.h"
 
+enum class BtDecision : uint8_t { None, Approve, Deny };
+enum class BtOutcome : uint8_t { None, Approved, Denied, Expired, Gone };
+
 // What the realtime task reports. Plain atomics: no task ever waits for another.
 struct RealtimeEvents {
 	std::atomic<bool> joined{false};            // the channel is up
@@ -36,6 +39,16 @@ struct RealtimeEvents {
 	std::atomic<bool> writeCancel{false};
 	std::atomic<WriteState> writeState{WriteState::Idle};
 	std::atomic<uint32_t> writeStateSeq{0};
+
+	// Bluetooth approval. loop() fills the request and sets btAsking; the realtime task announces it
+	// and hands back an admin's answer for that id. An approval only ever matches the current request.
+	char btId[17] = {0};
+	char btAddress[18] = {0};
+	char btDoneId[17] = {0};
+	std::atomic<uint32_t> btDeadlineMs{0};
+	std::atomic<bool> btAsking{false};
+	std::atomic<BtDecision> btDecision{BtDecision::None};
+	std::atomic<BtOutcome> btOutcome{BtOutcome::None};
 };
 
 class Realtime {
@@ -62,6 +75,7 @@ class Realtime {
 	void sendAck(const char* id);
 	void sendWriteStatus(const char* id, WriteState state);
 	void reportWrite();
+	void reportBluetooth();
 	bool commandValid(const char* what, const char* id, double sentAt);
 	bool firstSight(const char* id);
 	void onWriteCard(const JsonDocument& doc, const char* id, double sentAt, bool scan);
@@ -86,4 +100,6 @@ class Realtime {
 	uint8_t recentNext_ = 0;
 	char writeId_[40] = {0};  // the writer-mode session being reported
 	uint32_t writeSentSeq_ = 0;
+	char btSentId_[17] = {0};  // the Bluetooth request last announced
+	uint32_t btSentMs_ = 0;
 };

@@ -199,12 +199,16 @@ void Realtime::session() {
 		uint32_t deadline = lastHeartbeatMs_ + (heartbeatOutstanding_ ? kHeartbeatTimeoutMs : kHeartbeatMs);
 		int32_t left = (int32_t)(deadline - millis());
 		// While a writer session runs, wake often enough that its state reaches the screen promptly.
-		uint32_t cap = writeActive(events_->writeState.load(std::memory_order_acquire)) ? kWriteWaitMs : kMaxWaitMs;
+		bool prompt = writeActive(events_->writeState.load(std::memory_order_acquire)) ||
+		              events_->btAsking.load(std::memory_order_acquire);
+		uint32_t cap = prompt ? kWriteWaitMs : kMaxWaitMs;
 		if (left > 0) ws_.wait((uint32_t)left < cap ? (uint32_t)left : cap);
 
 		drain();
 		if (!joined_) return;
 		reportWrite();
+		if (!joined_) return;
+		reportBluetooth();
 		if (!joined_) return;
 
 		uint32_t now = millis();
@@ -276,6 +280,37 @@ void Realtime::sendAck(const char* id) {
 	                 "\"event\":\"force_open_ack\",\"payload\":{\"id\":\"%s\",\"delay_ms\":%lu}},\"ref\":\"%lu\"}",
 	                 cfg_->doorId, id,  // id passed safeId(): no escaping needed
 	                 (unsigned long)Chimes::kForceOpenDelayMs, (unsigned long)++ref_);
+	if (n <= 0 || !ws_.send((size_t)n)) drop("send failed", true);
+}
+
+// Broadcasts are not stored, so a request is repeated until it ends: an admin who opens the webapp
+// during the window still sees it, and the time left keeps every admin's countdown honest.
+void Realtime::reportBluetooth() {
+	static constexpr uint32_t kResendMs = 2000;
+	BtOutcome outcome = events_->btOutcome.exchange(BtOutcome::None, std::memory_order_acq_rel);
+	if (outcome != BtOutcome::None) {
+		static const char* const kNames[] = {"", "approved", "denied", "expired", "gone"};
+		char* msg = ws_.sendBuffer();
+		int n = snprintf(msg, WsClient::kMaxSend,
+		                 "{\"topic\":\"realtime:door:%s\",\"event\":\"broadcast\",\"payload\":{\"type\":\"broadcast\","
+		                 "\"event\":\"bt_result\",\"payload\":{\"id\":\"%s\",\"outcome\":\"%s\"}},\"ref\":\"%lu\"}",
+		                 cfg_->doorId, events_->btDoneId, kNames[(int)outcome], (unsigned long)++ref_);
+		if (n <= 0 || !ws_.send((size_t)n)) {
+			drop("send failed", true);
+			return;
+		}
+	}
+	if (!events_->btAsking.load(std::memory_order_acquire)) return;
+	uint32_t now = millis();
+	if (!strcmp(btSentId_, events_->btId) && now - btSentMs_ < kResendMs) return;
+	strlcpy(btSentId_, events_->btId, sizeof(btSentId_));
+	btSentMs_ = now;
+	int32_t left = (int32_t)(events_->btDeadlineMs.load(std::memory_order_acquire) - now);
+	char* msg = ws_.sendBuffer();
+	int n = snprintf(msg, WsClient::kMaxSend,
+	                 "{\"topic\":\"realtime:door:%s\",\"event\":\"broadcast\",\"payload\":{\"type\":\"broadcast\","
+	                 "\"event\":\"bt_request\",\"payload\":{\"id\":\"%s\",\"address\":\"%s\",\"left_ms\":%ld}},\"ref\":\"%lu\"}",
+	                 cfg_->doorId, btSentId_, events_->btAddress, (long)(left > 0 ? left : 0), (unsigned long)++ref_);
 	if (n <= 0 || !ws_.send((size_t)n)) drop("send failed", true);
 }
 
@@ -357,6 +392,11 @@ void Realtime::onBroadcast(const JsonDocument& doc) {
 	if (!strcmp(event, "scan_card")) return onWriteCard(doc, id, sentAt, true);
 	if (!strcmp(event, "write_cancel")) {
 		if (safeId(id) && !strcmp(id, writeId_)) events_->writeCancel.store(true, std::memory_order_release);
+		return;
+	}
+	if (!strcmp(event, "bt_approve") || !strcmp(event, "bt_deny")) {
+		if (commandValid(event, id, sentAt) && events_->btAsking.load(std::memory_order_acquire) && !strcmp(id, events_->btId))
+			events_->btDecision.store(event[3] == 'a' ? BtDecision::Approve : BtDecision::Deny, std::memory_order_release);
 		return;
 	}
 	if (strcmp(event, "force_open") != 0 || !commandValid("force_open", id, sentAt)) return;

@@ -43,6 +43,22 @@ class Cloud {
 		events_.writeState.store(s, std::memory_order_release);
 		events_.writeStateSeq.fetch_add(1, std::memory_order_acq_rel);
 	}
+	// Bluetooth approval: asks the admins (the realtime task repeats it until it ends) and reports how it ended.
+	void requestBluetooth(const char* id, const char* address, uint32_t deadlineMs) {
+		strlcpy(events_.btId, id, sizeof(events_.btId));
+		strlcpy(events_.btAddress, address, sizeof(events_.btAddress));
+		events_.btDeadlineMs.store(deadlineMs, std::memory_order_release);
+		events_.btDecision.store(BtDecision::None, std::memory_order_release);
+		events_.btAsking.store(true, std::memory_order_release);
+	}
+	BtDecision takeBluetoothDecision() {
+		return events_.btDecision.exchange(BtDecision::None, std::memory_order_acq_rel);
+	}
+	void endBluetoothRequest(BtOutcome outcome) {
+		strlcpy(events_.btDoneId, events_.btId, sizeof(events_.btDoneId));
+		events_.btAsking.store(false, std::memory_order_release);
+		events_.btOutcome.store(outcome, std::memory_order_release);
+	}
 	void printStatus();
 
  private:

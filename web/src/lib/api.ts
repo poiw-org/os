@@ -1,5 +1,6 @@
-import { FunctionsHttpError } from '@supabase/supabase-js';
+import { createClient, FunctionsHttpError } from '@supabase/supabase-js';
 import type { OnboardingAnswers } from '#lib/auth.ts';
+import { config } from '#lib/config.ts';
 import { withName } from '#lib/format.ts';
 import { supabase } from '#lib/supabase.ts';
 import {
@@ -462,6 +463,60 @@ export async function unlockDoor(onEvent: (event: ForceOpenEvent) => void = () =
 		emit({ step: 'log', state: 'done', dir: '<', text: 'Entry recorded under your name' });
 	else emit({ step: 'log', state: 'failed', dir: '<', text: 'Not logged' });
 	return { latencyMs: result.latency_ms, logged: result.logged };
+}
+
+export type BluetoothRequest = { id: string; address: string; leftMs: number };
+export type BluetoothOutcome = 'approved' | 'denied' | 'expired' | 'gone';
+
+// Listens for devices asking to use the door's Bluetooth console and answers them. supabase-js keeps
+// one channel per topic on a client, and the door commands above create and remove `door:<id>` as
+// they run, so this always-on listener needs a realtime connection of its own. It signs in with the
+// session's token; the channel's policy lets only admins send on it.
+export function watchBluetoothRequests(on: {
+	request: (request: BluetoothRequest) => void;
+	ended: (id: string, outcome: BluetoothOutcome) => void;
+}) {
+	const client = createClient(config.supabaseUrl, config.supabasePublishableKey, {
+		accessToken: async () => (await supabase.auth.getSession()).data.session?.access_token ?? null
+	});
+	const channel = client.channel(`door:${DOOR_ID}`, { config: { private: true } });
+	let resend: ReturnType<typeof setInterval> | undefined;
+
+	channel.on('broadcast', { event: 'bt_request' }, ({ payload }) =>
+		on.request({
+			id: String(payload.id),
+			address: String(payload.address),
+			leftMs: Number(payload.left_ms) || 0
+		})
+	);
+	channel.on('broadcast', { event: 'bt_result' }, ({ payload }) => {
+		clearInterval(resend);
+		on.ended(String(payload.id), payload.outcome as BluetoothOutcome);
+	});
+	channel.subscribe();
+
+	return {
+		// Repeated until the door reports the result, as broadcasts can be lost; it acts on the first.
+		decide(id: string, approve: boolean) {
+			const until = Date.now() + 20000;
+			const send = () => {
+				if (Date.now() > until) clearInterval(resend);
+				else
+					void channel.send({
+						type: 'broadcast',
+						event: approve ? 'bt_approve' : 'bt_deny',
+						payload: { id, ts: Date.now() }
+					});
+			};
+			clearInterval(resend);
+			send();
+			resend = setInterval(send, COMMAND_RESEND_MS);
+		},
+		stop() {
+			clearInterval(resend);
+			void client.removeAllChannels();
+		}
+	};
 }
 
 // Sends "force open" to the door over its private realtime channel, waits for the door to confirm,

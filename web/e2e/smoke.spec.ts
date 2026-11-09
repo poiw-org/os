@@ -228,6 +228,19 @@ test.describe('signed in', () => {
 		expect(renew).toMatchObject({ action: 'renew', id: firstId });
 	});
 
+	test('an admin approves a Bluetooth connection the door asks about', async ({ page, api }) => {
+		api.bluetoothRequest = true;
+		await page.goto('/os');
+		const prompt = page.getByRole('dialog', { name: 'Bluetooth connection' });
+		await expect(prompt).toContainText('AA:BB:CC:DD:EE:FF');
+		await prompt.getByRole('button', { name: 'Approve' }).click();
+		await expect(prompt).toBeHidden();
+		expect(api.broadcasts.find((b) => b.event === 'bt_approve')).toMatchObject({
+			topic: 'realtime:door:front',
+			payload: { id: 'req1', ts: expect.any(Number) }
+		});
+	});
+
 	test('force open is broadcast to the door, confirmed and logged as the admin', async ({
 		page,
 		api
