@@ -3,6 +3,7 @@
 	import {
 		approveFirmware,
 		getFirmwareRelease,
+		getFirmwareUploader,
 		rejectFirmware,
 		toFirmwareRelease
 	} from '#lib/api.ts';
@@ -12,20 +13,27 @@
 	import { ask, toast } from '#lib/notify.svelte.ts';
 
 	// Opened by `make release`. The hash in the link comes from the terminal that uploaded the build,
-	// and an approval only goes through for exactly that hash on exactly this release.
+	// and an approval only goes through for exactly that hash on exactly this release. Members land
+	// here after uploading; they cannot read releases, so they are only told to ask an admin.
 	const id = page.params.id as string;
 	const expected = page.url.searchParams.get('sha256') ?? '';
+	const isAdmin = page.data.user.isAdmin as boolean;
 
-	const rows = liveRows({
-		table: 'firmware_releases',
-		filter: `id=eq.${id}`,
-		load: () => getFirmwareRelease(id),
-		map: toFirmwareRelease
-	});
-	const release = $derived(rows.items?.find((r) => r.id === id));
+	const rows = isAdmin
+		? liveRows({
+				table: 'firmware_releases',
+				filter: `id=eq.${id}`,
+				load: () => getFirmwareRelease(id),
+				map: toFirmwareRelease
+			})
+		: null;
+	const release = $derived(rows?.items?.find((r) => r.id === id));
 	const matches = $derived(release?.sha256 === expected);
 
 	let busy = $state(false);
+	let uploader = $state<string | null>(null);
+
+	if (isAdmin) getFirmwareUploader(id).then((email) => (uploader = email));
 
 	const act = async (run: () => Promise<void>, done: string) => {
 		busy = true;
@@ -41,7 +49,7 @@
 	const approve = async () => {
 		const yes = await ask({
 			title: 'Install this firmware?',
-			message: `Only approve if this hash matches your terminal: ${expected}`,
+			message: `This code will run on the door. Only approve it if you know what changed and the uploader confirms this hash: ${expected}`,
 			confirmLabel: 'Approve'
 		});
 		if (yes)
@@ -53,14 +61,32 @@
 
 <h1 class="mb-4 text-lg font-bold">Approve firmware</h1>
 
-{#if !rows.items}
+{#if !isAdmin}
+	<div class="rounded-lg border p-4">
+		<p class="text-sm" role="status">
+			Your build is uploaded. Contact an admin to approve it; the door will not install it until
+			they do. Approval has to happen within 24 hours.
+		</p>
+		<p class="mt-3 text-sm">Send them this link:</p>
+		<p class="mt-1 font-mono text-sm break-all">{page.url.href}</p>
+	</div>
+{:else if !rows?.items}
 	<Loading />
 {:else if !release}
 	<p role="alert">This release does not exist.</p>
 {:else}
 	<div class="rounded-lg border p-4">
 		<p class="font-mono font-bold">{release.version}</p>
-		<p class="mt-2 text-sm">Compare this hash with the one printed in your terminal:</p>
+		<p class="mt-2 text-sm">Uploaded by <strong>{uploader ?? 'unknown'}</strong></p>
+		{#if release.version.endsWith('-dirty')}
+			<p class="mt-2 text-sm text-red-600" role="alert">
+				This label says the build has uncommitted changes, so its code may not be in the repository.
+			</p>
+		{/if}
+		<p class="mt-2 text-sm">
+			Compare this hash with the one printed in the uploader's terminal. If someone else uploaded
+			it, confirm the hash with them directly:
+		</p>
 		<p class="mt-1 font-mono text-sm break-all">{release.sha256}</p>
 		<p class="mt-2 text-sm text-gray-500">
 			{Math.round(release.size / 1024)} KB, uploaded {formatDate(new Date(release.createdAt))}

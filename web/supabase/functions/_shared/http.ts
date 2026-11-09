@@ -51,6 +51,17 @@ export async function callerId(
   return data.user.id;
 }
 
+/** A boolean database check run as the caller, for rules that depend on how their session signed in. */
+export async function askAsCaller(token: string, fn: string) {
+  const asCaller = createClient(env("SUPABASE_URL"), env("SUPABASE_ANON_KEY"), {
+    auth: { persistSession: false },
+    global: { headers: { Authorization: `Bearer ${token}` } },
+  });
+  const { data, error } = await asCaller.rpc(fn);
+  if (error) throw new Error(error.message);
+  return data === true;
+}
+
 /** Answers CORS preflights and non-POSTs, runs `handler`, and turns its result or error into JSON. */
 export async function handlePost(
   req: Request,

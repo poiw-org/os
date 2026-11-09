@@ -18,6 +18,7 @@ import { Buffer } from 'node:buffer';
 import { signRs256 } from '../_shared/rsa.ts';
 import {
 	accessToken,
+	askAsCaller,
 	callerId,
 	env,
 	HttpError,
@@ -28,7 +29,8 @@ import {
 type Db = ReturnType<typeof serviceClient>;
 
 async function requireAdmin(req: Request, db: Db) {
-	const id = await callerId(db, accessToken(req));
+	const token = accessToken(req);
+	const id = await callerId(db, token);
 
 	const { data: row, error } = await db
 		.from('admins')
@@ -37,6 +39,8 @@ async function requireAdmin(req: Request, db: Db) {
 		.maybeSingle();
 	if (error) throw new HttpError(500, 'Could not check permissions');
 	if (!row) throw new HttpError(403, 'Not an admin');
+	if (!(await askAsCaller(token, 'session_has_second_factor')))
+		throw new HttpError(403, 'Admins must be signed in with 2FA');
 
 	return id;
 }

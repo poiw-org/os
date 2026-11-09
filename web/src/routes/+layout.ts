@@ -37,9 +37,10 @@ export const load: LayoutLoad = async ({ url }) => {
 	if (user?.hasSecondFactor && url.pathname === '/security') redirect(307, '/os');
 	if (user && !user.isAdmin) {
 		if (url.pathname === '/os') redirect(307, '/os/keys');
-		// Key holders may grant `make release` access; that page turns away everyone else itself.
-		const consent = url.pathname.startsWith('/os/firmware/authorize');
-		if (!consent && adminRoutes.some((route) => url.pathname.startsWith(route)))
+		// Key holders may grant `make release` access; that page turns away everyone else itself. The
+		// page for one build only tells non-admins to ask an admin, and loads nothing for them.
+		const openToMembers = /^\/os\/firmware\/(authorize|[0-9a-f-]{36})\/?$/.test(url.pathname);
+		if (!openToMembers && adminRoutes.some((route) => url.pathname.startsWith(route)))
 			redirect(307, '/os/keys');
 	}
 

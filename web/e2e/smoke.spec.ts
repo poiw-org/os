@@ -439,8 +439,9 @@ test.describe('signed out', () => {
 		await expect(page).toHaveURL(/\/os\/keys$/);
 		await page.goto('/os/firmware');
 		await expect(page).toHaveURL(/\/os\/keys$/);
-		await page.goto('/os/firmware/rel1?sha256=abc');
-		await expect(page).toHaveURL(/\/os\/keys$/);
+		await page.goto(`/os/firmware/11111111-1111-4111-8111-111111111111?sha256=${'a'.repeat(64)}`);
+		await expect(page.getByRole('status')).toContainText('Contact an admin');
+		await expect(page.getByRole('button', { name: 'Approve' })).toHaveCount(0);
 		await page.goto(
 			`/os/firmware/authorize?port=49152&state=abcdefghijklmnop&challenge=${'a'.repeat(43)}`
 		);

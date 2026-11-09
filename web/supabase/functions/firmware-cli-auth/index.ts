@@ -1,18 +1,16 @@
 // Lets `make release` upload on someone's behalf, in the style of OAuth for native apps. Only admins
-// and members with an active key can grant it; admins must also be signed in with 2FA.
+// and members with an active key can grant it, from a session that passed any second factor they have.
 //
 // POST { action: "authorize", challenge }       as that signed-in user  ->  { code }
 // POST { action: "token", code, verifier }      from the CLI  ->  { token, expires_at }
 //
 // The portal hands the code only to a loopback address, and the code is useless without the verifier
 // the CLI generated, so a forged consent link cannot get a token out to anyone else.
-import { createClient } from "npm:@supabase/supabase-js@2";
-import { accessToken, callerId, env, HttpError, handlePost, serviceClient } from "../_shared/http.ts";
+import { accessToken, askAsCaller, callerId, env, HttpError, handlePost, serviceClient } from "../_shared/http.ts";
 import {
   challengeOf,
   CODE_AUDIENCE,
   CODE_SECONDS,
-  isAdmin,
   mayRelease,
   NOT_ALLOWED,
   signReleaseToken,
@@ -23,18 +21,6 @@ import {
 
 const CHALLENGE = /^[\w-]{43}$/;
 
-// Asked as the caller: only the database knows about passkey and email-code sessions, which can
-// stay aal1 in the token even though they passed the second step.
-async function sessionHasSecondFactor(token: string) {
-  const asCaller = createClient(env("SUPABASE_URL"), env("SUPABASE_ANON_KEY"), {
-    auth: { persistSession: false },
-    global: { headers: { Authorization: `Bearer ${token}` } },
-  });
-  const { data, error } = await asCaller.rpc("session_has_second_factor");
-  if (error) throw new Error(error.message);
-  return data === true;
-}
-
 Deno.serve((req) =>
   handlePost(req, async (body) => {
     const secret = env("FIRMWARE_CLI_JWT_SECRET");
@@ -44,8 +30,9 @@ Deno.serve((req) =>
       const token = accessToken(req);
       const user = await callerId(db, token); // validates the session with Supabase first
       if (!(await mayRelease(db, user))) throw new HttpError(403, NOT_ALLOWED);
-      if ((await isAdmin(db, user)) && !(await sessionHasSecondFactor(token)))
-        throw new HttpError(403, "Admins must be signed in with 2FA to allow this");
+      // Asked as the caller: only the database knows about passkey and email-code sessions.
+      if (!(await askAsCaller(token, "session_can_release")))
+        throw new HttpError(403, "Finish signing in with your second factor to allow this");
       if (typeof body.challenge !== "string" || !CHALLENGE.test(body.challenge))
         throw new HttpError(400, "Invalid challenge");
       const code = await signReleaseToken(

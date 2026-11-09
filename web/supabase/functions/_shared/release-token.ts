@@ -82,13 +82,3 @@ export async function mayRelease(
   if (error) throw new Error(error.message);
   return data === true;
 }
-
-export async function isAdmin(
-  // deno-lint-ignore no-explicit-any
-  db: any,
-  userId: string,
-) {
-  const { data, error } = await db.from("admins").select("user_id").eq("user_id", userId).maybeSingle();
-  if (error) throw new Error(error.message);
-  return data !== null;
-}

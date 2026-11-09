@@ -506,6 +506,16 @@ export async function getFirmwareRelease(id: string) {
 	return data.map(toFirmwareRelease);
 }
 
+export async function getFirmwareUploader(id: string) {
+	const { data, error } = await supabase
+		.from('firmware_releases')
+		.select('uploader:profiles!uploaded_by(email)')
+		.eq('id', id)
+		.maybeSingle();
+	if (error) throw new Error(error.message);
+	return data?.uploader?.email ?? null;
+}
+
 export async function approveFirmware(release: string, expectedSha256: string) {
 	const { error } = await supabase.rpc('approve_firmware', {
 		release,

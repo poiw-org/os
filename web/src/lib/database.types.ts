@@ -24,7 +24,15 @@ export type Database = {
 				};
 				Insert: never;
 				Update: never;
-				Relationships: [];
+				Relationships: [
+					{
+						foreignKeyName: 'firmware_releases_uploaded_by_fkey';
+						columns: ['uploaded_by'];
+						isOneToOne: false;
+						referencedRelation: 'profiles';
+						referencedColumns: ['id'];
+					}
+				];
 			};
 			admins: {
 				Row: { user_id: string };

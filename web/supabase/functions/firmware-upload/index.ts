@@ -9,6 +9,7 @@ import { mayRelease, NOT_ALLOWED, UPLOAD_AUDIENCE, verifyReleaseToken } from "..
 import { isFirmwareImage, MAX_IMAGE_BYTES, sha256Hex } from "./image.ts";
 
 const VERSION = /^[\w.+-]{1,64}$/;
+const MAX_UPLOADS_PER_HOUR = 5;
 
 Deno.serve((req) =>
   // handlePost reads the body as JSON, so the image is taken from an untouched copy.
@@ -23,6 +24,14 @@ Deno.serve((req) =>
     if (Number(req.headers.get("content-length")) > MAX_IMAGE_BYTES)
       throw new HttpError(413, "The image does not fit an app slot");
 
+    const { count, error: counted } = await db
+      .from("firmware_releases")
+      .select("id", { count: "exact", head: true })
+      .eq("uploaded_by", claims.sub)
+      .gt("created_at", new Date(Date.now() - 3600_000).toISOString());
+    if (counted) throw new Error(counted.message);
+    if ((count ?? 0) >= MAX_UPLOADS_PER_HOUR) throw new HttpError(429, "Too many uploads; try again later");
+
     const image = new Uint8Array(await req.arrayBuffer());
     if (!isFirmwareImage(image)) throw new HttpError(400, "That is not an ESP32 firmware image");
 
@@ -32,11 +41,12 @@ Deno.serve((req) =>
       .upload(`${sha256}.bin`, image, { upsert: true, contentType: "application/octet-stream" });
     if (stored) throw new Error(stored.message);
 
-    // A new upload replaces whatever was still waiting for approval.
+    // A new upload replaces the uploader's own waiting build, never someone else's.
     const { error: replaced } = await db
       .from("firmware_releases")
       .update({ status: "rejected" })
-      .eq("status", "pending");
+      .eq("status", "pending")
+      .eq("uploaded_by", claims.sub);
     if (replaced) throw new Error(replaced.message);
 
     const { data, error } = await db
