@@ -27,6 +27,7 @@ struct RealtimeEvents {
 	std::atomic<bool> forceOpen{false};         // open the door now (loop() takes it)
 	std::atomic<bool> resync{true};             // the blacklist may be stale; the REST task refetches it
 	std::atomic<bool> blacklistChanged{false};  // the in-memory blacklist should be written to flash
+	std::atomic<bool> firmwareCheck{true};      // an update may be approved; the REST task asks
 
 	// Writer mode. The realtime task fills `write` and sets writePending; loop() consumes it and then
 	// clears the flag. loop() publishes the session's state, which the realtime task reports.

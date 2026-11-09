@@ -361,6 +361,20 @@ async function mockSupabase(page: Page, state: ApiState) {
 		}
 		if (path === '/rest/v1/doors' && req.method() === 'PATCH') return empty();
 		if (path === '/rest/v1/rpc/log_web_open') return json(1);
+		if (path === '/rest/v1/firmware_releases')
+			return json([
+				{
+					id: 'rel1',
+					created_at: '2026-03-01T11:00:00Z',
+					version: 'abc123',
+					sha256: 'a'.repeat(64),
+					size: 1048576,
+					status: 'pending',
+					door_state: null,
+					door_error: null
+				}
+			]);
+		if (path === '/rest/v1/rpc/approve_firmware') return empty();
 		// A member without an active key.
 		if (path === '/rest/v1/rpc/can_unlock') return json(false);
 		if (path === '/rest/v1/rpc/security_status') return json({ has_factor: true, required: false });

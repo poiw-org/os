@@ -182,6 +182,11 @@ void onClosed(Cloud& cloud) {
 namespace Bt {
 
 void begin(const char* name) {
+	if (!kEnabled) {
+		esp_bt_controller_mem_release(ESP_BT_MODE_BTDM);  // Arduino keeps it reserved once this file links its btInUse()
+		LOG("Bluetooth: off in this build.");
+		return;
+	}
 	// Referencing the Arduino Bluetooth layer also links its btInUse(); without that, Arduino's
 	// startup hands the controller's memory back to the heap and Bluetooth can never start.
 	if (btStarted()) return;
@@ -202,8 +207,13 @@ void begin(const char* name) {
 	     esp_spp_register_callback(&onSpp) == ESP_OK;
 	if (ok) {
 		esp_bt_io_cap_t noScreen = ESP_BT_IO_CAP_NONE;
+		// The stack's default class (loudspeaker) does not work with macOS; these are the Arduino library's values.
+		esp_bt_cod_t cod = {};
+		cod.major = 0b00001;
+		cod.minor = 0b000100;
+		cod.service = 0b00000010110;
 		ok = esp_bt_gap_set_security_param(ESP_BT_SP_IOCAP_MODE, &noScreen, sizeof(noScreen)) == ESP_OK &&
-		     esp_spp_init(ESP_SPP_MODE_CB) == ESP_OK;
+		     esp_bt_gap_set_cod(cod, ESP_BT_INIT_COD) == ESP_OK && esp_spp_init(ESP_SPP_MODE_CB) == ESP_OK;
 	}
 	if (!ok) {
 		LOG("Bluetooth: could not start; the console stays on USB only.");

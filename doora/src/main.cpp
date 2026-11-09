@@ -268,6 +268,7 @@ void loop() {
 	cloud.service();
 	clock_.service();
 	housekeeping(ms);
+	Ota::service(!actuators.busy() && !writeActive(reader.writeState()) && ms - lastTapMs > 10000);
 	if (Console::poll(settings, printStatus, serviceDoor)) {
 		LOG("Settings changed; restarting.");
 		delay(200);

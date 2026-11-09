@@ -83,6 +83,10 @@ class Cloud {
 	bool syncBlacklist();
 	bool fetchSigningKey();
 	bool flushJournal();
+	void updateFirmware();
+	bool downloadFirmware(const char* sha256, size_t size);
+	bool reportFirmware(const char* id, const char* state, const char* error);
+	void reportFirmwareOutcome();
 	void persistBlacklistIfDirty(uint32_t ms);
 
 	const Settings* cfg_ = nullptr;

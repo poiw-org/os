@@ -1,9 +1,11 @@
 #include "Cloud.h"
+#include "Bt.h"
 #include <ArduinoJson.h>
 #include "Journal.h"
 #include "Jwt.h"
 #include "Log.h"
 #include "Net.h"
+#include "Ota.h"
 #include "Persist.h"
 #include "SyncParser.h"
 #include "TimeUtil.h"
@@ -89,7 +91,7 @@ void Cloud::begin(const Settings& settings, Clock& clock, BlacklistSet& blacklis
 	WiFi.setHostname(name);  // must precede mode()
 	WiFi.mode(WIFI_STA);
 	WiFi.setAutoReconnect(true);
-	WiFi.setSleep(true);  // required: the ESP32 aborts if Wi-Fi does not sleep while Bluetooth shares the radio
+	WiFi.setSleep(Bt::kEnabled);  // mains powered, so no sleep; but the ESP32 aborts without it if Bluetooth shares the radio
 	WiFi.begin(settings.wifiSsid, settings.wifiPass[0] ? settings.wifiPass : nullptr);
 	wifiBeginMs_ = wifiKickMs_ = millis();
 	LOG("Connecting to Wi-Fi \"%s\"...", settings.wifiSsid);
@@ -447,12 +449,103 @@ void Cloud::restLoop() {
 		refreshSession(ms);
 		if (token_.present()) {
 			if (Persist::journalCount() && journalBackoff_.due(millis())) flushJournal();
-			if (syncDue(millis())) syncBlacklist();
+			if (syncDue(millis())) {
+				syncBlacklist();
+				events_.firmwareCheck.store(true, std::memory_order_release);  // in case the wake-up was missed
+			}
+			reportFirmwareOutcome();
+			if (events_.firmwareCheck.exchange(false, std::memory_order_acq_rel)) updateFirmware();
 			uint32_t now = millis();
 			if (keyBackoff_.due(now) && (!keyFetched_ || now - keyFetchedMs_ >= kKeyRefreshMs)) fetchSigningKey();
 		}
 		persistBlacklistIfDirty(millis());
 	}
+}
+
+bool Cloud::reportFirmware(const char* id, const char* state, const char* error) {
+	char report[200];  // ids and states are ours or came through safe JSON from the server; errors are fixed text
+	int n = snprintf(report, sizeof(report), "{\"release\":\"%s\",\"state\":\"%s\",\"error\":\"%s\"}", id, state, error);
+	int code = request("POST", "/rest/v1/rpc/firmware_report", report, (size_t)n, nullptr, true);
+	finish();
+	return code >= 200 && code < 300;
+}
+
+// A trial ends here: being signed in and back on the channel is what proves the new image works.
+void Cloud::reportFirmwareOutcome() {
+	if (const char* failed = Ota::rolledBackRelease()) {
+		if (reportFirmware(failed, "rolled_back", "the new firmware failed its trial")) Ota::clearRolledBack();
+	}
+	const char* trial = Ota::trialRelease();
+	if (trial && online() && (!*trial || reportFirmware(trial, "installed", ""))) Ota::confirm();
+}
+
+// Streams the image into the spare app slot. The buffer is the one journal uploads use, and only
+// this task touches it.
+bool Cloud::downloadFirmware(const char* sha256, size_t size) {
+	char path[120];
+	snprintf(path, sizeof(path), "/storage/v1/object/authenticated/firmware/%s.bin", sha256);
+	int code = request("GET", path, "", 0, nullptr, true);
+	if (code != 200) {
+		LOG("OTA: download refused (HTTP %d).", code);
+		finish();
+		return false;
+	}
+	if (!Ota::open(size)) {
+		LOG("OTA: %s.", Ota::error());
+		finish();
+		return false;
+	}
+	for (size_t got = 0; got < size;) {
+		size_t want = size - got < sizeof(body_) ? size - got : sizeof(body_);
+		BodyReader reader(tls_, millis() + kHttpTimeoutMs);
+		size_t n = reader.readBytes(body_, want);
+		if (n == 0 || !Ota::write(body_, n)) {
+			LOG("OTA: download stopped after %u of %u bytes.", (unsigned)got, (unsigned)size);
+			Ota::abort();
+			finish();
+			return false;
+		}
+		got += n;
+	}
+	finish();
+	return true;
+}
+
+void Cloud::updateFirmware() {
+	if (Ota::trialRelease()) return;  // the update before this one is not proven yet
+	int code = request("POST", "/rest/v1/rpc/door_firmware", "{}", 2, nullptr, true);
+	char id[40] = {0}, sha256[65] = {0};
+	size_t size = 0;
+	if (code == 200) {
+		JsonDocument doc;
+		BodyReader reader(tls_, millis() + kHttpTimeoutMs);
+		if (!deserializeJson(doc, reader)) {
+			strlcpy(id, doc["id"] | "", sizeof(id));
+			strlcpy(sha256, doc["sha256"] | "", sizeof(sha256));
+			size = doc["size"] | 0;
+		}
+	}
+	finish();
+	if (!id[0] || strlen(sha256) != 64 || !size) return;
+
+	LOG("OTA: an update is approved (%u bytes); downloading.", (unsigned)size);
+	reportFirmware(id, "downloading", "");
+	static constexpr int kAttempts = 3;
+	for (int attempt = 0; attempt < kAttempts; attempt++) {
+		if (!downloadFirmware(sha256, size)) {
+			vTaskDelay(pdMS_TO_TICKS(3000));
+			continue;
+		}
+		if (Ota::finish(size, id)) {
+			LOG("OTA: signature good; restarting when the door is idle.");
+			reportFirmware(id, "rebooting", "");
+			return;
+		}
+		LOG("OTA: %s; keeping the running firmware.", Ota::error());
+		reportFirmware(id, "failed", Ota::error());
+		return;
+	}
+	reportFirmware(id, "failed", "the download kept failing");
 }
 
 void Cloud::printStatus() {

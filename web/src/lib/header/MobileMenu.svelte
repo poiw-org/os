@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import { withName } from '#lib/format.ts';
 	import type { Snippet } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
@@ -251,6 +252,9 @@
 					{/if}
 					{#if user.isAdmin}
 						<IssueKeyMenu trigger="btn btn-primary py-3 text-sm" inline onnavigate={close} />
+						<a href={resolve('/os/firmware')} onclick={close} class="btn py-3 text-center text-sm"
+							>Firmware</a
+						>
 					{/if}
 				</div>
 			{/if}

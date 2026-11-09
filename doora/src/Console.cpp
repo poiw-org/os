@@ -2,7 +2,6 @@
 #include <Arduino.h>
 #include <string.h>
 #include "Log.h"
-#include "Ota.h"
 
 namespace {
 
@@ -258,9 +257,8 @@ bool poll(Settings& s, void (*printStatus)(), void (*idle)()) {
 		else if (!strcmp(line, "show")) showSettings(s);
 		else if (!strcmp(line, "reboot")) { Term.println(F("Restarting.")); delay(100); ESP.restart(); }
 		else if (!strncmp(line, "erase", 5)) return eraseSettings(s, line + 5);
-		else if (!strncmp(line, "update ", 7)) Ota::receive(strtoul(line + 7, nullptr, 10), gIdle);
 		else
-			Term.println(F("Commands:\n  status  network, clock, blacklist and journal state\n  show    current settings (secrets hidden)\n  config  run the setup wizard again\n  erase   wipe settings: erase [wifi|supabase|door|ntp|all]\n  reboot  restart the door\n  update  receive signed firmware (tools/bt_update.py)"));
+			Term.println(F("Commands:\n  status  network, clock, blacklist and journal state\n  show    current settings (secrets hidden)\n  config  run the setup wizard again\n  erase   wipe settings: erase [wifi|supabase|door|ntp|all]\n  reboot  restart the door"));
 	}
 	return false;
 }

@@ -155,6 +155,7 @@ Realtime::Outcome Realtime::connect() {
 			joined_ = true;
 			events_->joined.store(true, std::memory_order_release);
 			events_->resync.store(true, std::memory_order_release);  // whatever happened while we were away
+			events_->firmwareCheck.store(true, std::memory_order_release);
 			heartbeatOutstanding_ = false;
 			lastHeartbeatMs_ = joinedAtMs_ = millis();
 			LOG("Realtime connected (channel door:%s).", cfg_->doorId);
@@ -392,6 +393,10 @@ void Realtime::onBroadcast(const JsonDocument& doc) {
 	if (!strcmp(event, "scan_card")) return onWriteCard(doc, id, sentAt, true);
 	if (!strcmp(event, "write_cancel")) {
 		if (safeId(id) && !strcmp(id, writeId_)) events_->writeCancel.store(true, std::memory_order_release);
+		return;
+	}
+	if (!strcmp(event, "firmware_update")) {  // only a wake-up; door_firmware() says what is approved
+		if (commandValid(event, id, sentAt)) events_->firmwareCheck.store(true, std::memory_order_release);
 		return;
 	}
 	if (!strcmp(event, "bt_approve") || !strcmp(event, "bt_deny")) {

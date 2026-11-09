@@ -1,9 +1,9 @@
 # Thin wrappers; PlatformIO (`pio`) does the real work. See platformio.ini.
-.PHONY: build upload monitor test update
+.PHONY: build upload monitor test release
 
-# Signed firmware over an approved Bluetooth link: make update PORT=/dev/cu.doora-main
-update: build
-	~/.platformio/penv/bin/python tools/bt_update.py $(PORT)
+# Publishes the signed build for approval in the portal (see tools/release.py for the settings it needs).
+release: build
+	python3 tools/release.py
 
 build:
 	@test -f config.h || (echo "config.h is missing: copy config.example.h and set your wiring" && exit 1)

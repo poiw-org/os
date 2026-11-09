@@ -19,9 +19,9 @@ src/            firmware
   Actuators.*, Chimes.h    relay, LEDs, buzzer tones
   Settings.*, Console.*    EEPROM config and the serial console
   Bt.*, BtGate.h, Term.h   the console over Bluetooth, gated by admin approval
-  Ota.*, OtaImage.*        signed firmware updates over the console
+  Ota.*, OtaImage.*        signed firmware updates, approved in the portal
 host_test/      unit tests for the portable parts, run on the computer with `make test`
-tools/          ota_keygen.py and ota.py sign firmware; bt_update.py sends it over Bluetooth
+tools/          ota_keygen.py and ota.py sign firmware; release.py publishes it for approval
 config.example.h   pin template; copy it to config.h
 platformio.ini  build environment (esp32dev) and partition table
 ```
@@ -159,13 +159,23 @@ open its serial port (on a Mac, `/dev/cu.doora-<door id>`). Commands and logs ar
 - First-run setup is USB only, because the door needs its settings to reach the webapp. For the same
   reason `erase` over Bluetooth can lock Bluetooth out until someone runs setup over USB.
 
-#### Updates over Bluetooth
+#### Firmware updates
+
+The door has no listener. `make release` publishes a signed build to Supabase, an admin approves it
+under Firmware in the portal (for 30 minutes), and the door downloads it over its own connection.
 
 ```sh
 python3 tools/ota_keygen.py          # once: creates ~/.doora/ota_key.pem, prints OTA_SIGNING_KEY for config.h
-pio run -t upload                    # once over USB, so the door has the partition table and your public key
-make update PORT=/dev/cu.doora-main  # from then on, over an approved Bluetooth link
+pio run -t upload                    # once over USB, so the door has the update code and your public key
+export DOORA_SUPABASE_URL=https://<project>.supabase.co DOORA_SUPABASE_KEY=<publishable key>
+make release                         # from then on
 ```
+
+The `firmware-upload` function needs the secret `FIRMWARE_SIGNING_MODULUS` (the modulus as hex, from
+`openssl rsa -in ~/.doora/ota_key.pem -noout -modulus`) and is deployed with `--no-verify-jwt`.
+
+- **A new image runs on trial.** If the door resets before it is back on the cloud, or is not back
+  within 10 minutes, the boot loader returns to the previous firmware and the portal says so.
 
 - **The signature is the lock that matters.** Every build signs `firmware.bin` (RSA-2048, SHA-256)
   with the private key in `~/.doora` and appends the signature (`tools/ota.py`). After an upload the

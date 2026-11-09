@@ -54,6 +54,7 @@
 				>
 			{/if}
 			{#if user.isAdmin}
+				<a href={resolve('/os/firmware')} class="key">Firmware</a>
 				<IssueKeyMenu trigger="key key-signal" align="right" />
 			{/if}
 			<button

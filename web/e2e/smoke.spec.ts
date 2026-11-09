@@ -228,6 +228,16 @@ test.describe('signed in', () => {
 		expect(renew).toMatchObject({ action: 'renew', id: firstId });
 	});
 
+	test('an admin approves a firmware release in the portal', async ({ page, api }) => {
+		await page.goto('/os/firmware');
+		await expect(page.getByText('Waiting for approval')).toBeVisible();
+		await page.getByRole('button', { name: 'Approve' }).click();
+		await page.getByRole('dialog').getByRole('button', { name: 'Approve' }).click();
+		await expect
+			.poll(() => api.bodies.find((b) => b.call === 'POST /rest/v1/rpc/approve_firmware')?.body)
+			.toMatchObject({ release: 'rel1' });
+	});
+
 	test('an admin approves a Bluetooth connection the door asks about', async ({ page, api }) => {
 		api.bluetoothRequest = true;
 		await page.goto('/os');

@@ -8,6 +8,24 @@ export type Database = {
 	};
 	public: {
 		Tables: {
+			firmware_releases: {
+				Row: {
+					id: string;
+					created_at: string;
+					version: string;
+					sha256: string;
+					size: number;
+					status: string;
+					approved_by: string | null;
+					approved_at: string | null;
+					door_state: string | null;
+					door_error: string | null;
+					door_updated_at: string | null;
+				};
+				Insert: never;
+				Update: never;
+				Relationships: [];
+			};
 			admins: {
 				Row: { user_id: string };
 				Insert: { user_id: string };
@@ -205,6 +223,14 @@ export type Database = {
 		};
 		Views: { [_ in never]: never };
 		Functions: {
+			approve_firmware: {
+				Args: { release: string };
+				Returns: undefined;
+			};
+			reject_firmware: {
+				Args: { release: string };
+				Returns: undefined;
+			};
 			can_unlock: {
 				Args: Record<string, never>;
 				Returns: boolean;

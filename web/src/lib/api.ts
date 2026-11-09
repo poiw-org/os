@@ -465,6 +465,48 @@ export async function unlockDoor(onEvent: (event: ForceOpenEvent) => void = () =
 	return { latencyMs: result.latency_ms, logged: result.logged };
 }
 
+export type FirmwareRelease = {
+	id: string;
+	createdAt: string;
+	version: string;
+	sha256: string;
+	size: number;
+	status: string;
+	doorState: string | null;
+	doorError: string | null;
+};
+
+export const toFirmwareRelease = (row: Raw): FirmwareRelease => ({
+	id: row.id as string,
+	createdAt: row.created_at as string,
+	version: row.version as string,
+	sha256: row.sha256 as string,
+	size: row.size as number,
+	status: row.status as string,
+	doorState: row.door_state as string | null,
+	doorError: row.door_error as string | null
+});
+
+export async function listFirmwareReleases() {
+	const { data, error } = await supabase
+		.from('firmware_releases')
+		.select('*')
+		.order('created_at', { ascending: false })
+		.limit(20);
+	if (error) throw new Error(error.message);
+	return data.map(toFirmwareRelease);
+}
+
+export async function approveFirmware(release: string) {
+	const { error } = await supabase.rpc('approve_firmware', { release });
+	if (error) throw new Error(error.message);
+}
+
+export async function rejectFirmware(release: string) {
+	const { error } = await supabase.rpc('reject_firmware', { release });
+	if (error) throw new Error(error.message);
+}
+
 export type BluetoothRequest = { id: string; address: string; leftMs: number };
 export type BluetoothOutcome = 'approved' | 'denied' | 'expired' | 'gone';
 
