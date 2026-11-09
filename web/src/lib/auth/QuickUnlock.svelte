@@ -2,8 +2,6 @@
 	import { unlockDoor, type ForceOpenEvent } from '#lib/api.ts';
 	import { signInWithPasskey, signOut } from '#lib/auth.ts';
 
-	let { captcha }: { captcha: () => Promise<string> } = $props();
-
 	type Phase = 'idle' | 'passkey' | 'door' | 'unlocking' | 'done' | 'failed';
 
 	const COPY: Record<Phase, [string, string]> = {
@@ -58,7 +56,7 @@
 		error = '';
 		totalSeconds = secondsLeft = 0;
 		try {
-			await signInWithPasskey(await captcha());
+			await signInWithPasskey();
 			await unlockDoor(follow);
 			settle('done', 3500);
 		} catch (e) {

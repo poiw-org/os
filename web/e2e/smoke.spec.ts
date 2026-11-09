@@ -572,6 +572,18 @@ test.describe('signed out', () => {
 			.toBe('conditional');
 	});
 
+	test('a passkey prompt does not wait for the captcha', async ({ page }) => {
+		await page.route('https://challenges.cloudflare.com/**', (route) => route.abort());
+		await page.addInitScript(() => {
+			navigator.credentials.get = () => new Promise(() => {});
+		});
+		const options = page.waitForRequest('**/auth/v1/passkeys/authentication/options');
+		await page.goto('/login');
+		await page.getByRole('button', { name: /Quick unlock/ }).click();
+		const body = (await options).postDataJSON();
+		expect(body.gotrue_meta_security?.captcha_token).toBeUndefined();
+	});
+
 	test('a session from an email link goes back to the password', async ({ page, api }) => {
 		await page.route('**/rest/v1/rpc/security_status', (route) =>
 			route.fulfill({ json: { has_factor: true, required: false, needs_email_code: true } })

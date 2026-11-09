@@ -105,11 +105,12 @@ export async function signIn(email: string, password: string, captchaToken: stri
 	if (error) throw error;
 }
 
-/** WebAuthn sign-in with a passkey the user registered from the settings modal. */
-export async function signInWithPasskey(captchaToken: string, mediation?: 'conditional') {
-	const { error } = await supabase.auth.signInWithPasskey({
-		options: { captchaToken, mediation }
-	});
+/**
+ * WebAuthn sign-in with a passkey the user registered from the settings modal. Takes no captcha:
+ * Safari only opens the prompt shortly after the tap, and waiting for a token outlasts that.
+ */
+export async function signInWithPasskey(mediation?: 'conditional') {
+	const { error } = await supabase.auth.signInWithPasskey({ options: { mediation } });
 	if (error) throw error;
 }
 

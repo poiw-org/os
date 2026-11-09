@@ -46,10 +46,8 @@
 	// background until one is picked, and a modal passkey prompt replaces it.
 	const offerAutofill = async () => {
 		if (!(await passkeyAutofillSupported())) return;
-		const captchaToken = await token().catch(() => undefined);
-		if (!captchaToken) return;
 		try {
-			await signInWithPasskey(captchaToken, 'conditional');
+			await signInWithPasskey('conditional');
 			enter();
 		} catch (e) {
 			if (e instanceof Error && !['NotAllowedError', 'AbortError'].includes(e.name))
@@ -87,7 +85,7 @@
 	// A refused or unavailable passkey reaches us as NotAllowedError: fall back to the password, which /verify follows with an emailed code.
 	const usePasskey = async () => {
 		try {
-			await signInWithPasskey(await token());
+			await signInWithPasskey();
 			enter();
 		} catch (e) {
 			if (e instanceof Error && e.name === 'NotAllowedError') switchTo('password');
@@ -128,7 +126,7 @@
 
 <AuthShell title={copy[step].title} subtitle={copy[step].subtitle}>
 	{#if step === 'email' && canUsePasskey}
-		<QuickUnlock captcha={token} />
+		<QuickUnlock />
 	{/if}
 
 	<form onsubmit={submit} class="flex flex-col gap-4">
