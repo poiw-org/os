@@ -50,8 +50,7 @@
 			await signInWithPasskey('conditional');
 			enter();
 		} catch (e) {
-			if (e instanceof Error && !['NotAllowedError', 'AbortError'].includes(e.name))
-				report(e.message);
+			if (e instanceof Error && e.name !== 'AbortError') report(e.message);
 		}
 	};
 
@@ -88,8 +87,9 @@
 			await signInWithPasskey();
 			enter();
 		} catch (e) {
-			if (e instanceof Error && e.name === 'NotAllowedError') switchTo('password');
-			else throw e;
+			if (!(e instanceof Error && e.name === 'NotAllowedError')) throw e;
+			switchTo('password');
+			report(e.message);
 		}
 	};
 

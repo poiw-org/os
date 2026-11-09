@@ -60,12 +60,9 @@
 			await unlockDoor(follow);
 			settle('done', 3500);
 		} catch (e) {
-			// Closing the browser's passkey prompt is not worth an error.
-			if (e instanceof Error && e.name === 'NotAllowedError') phase = 'idle';
-			else {
-				error = e instanceof Error ? e.message : 'Something went wrong.';
-				settle('failed', 5000);
-			}
+			// A closed prompt and a failed passkey are both NotAllowedError, so show the browser's reason.
+			error = e instanceof Error ? e.message : 'Something went wrong.';
+			settle('failed', 5000);
 		}
 		await signOut();
 	};
