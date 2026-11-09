@@ -2,7 +2,6 @@
 	import { onMount } from 'svelte';
 	import { confirmEmailCode, sendEmailCode, signOut, verifyTotp } from '#lib/auth.ts';
 	import AuthShell from '#lib/auth/AuthShell.svelte';
-	import Turnstile from '#lib/auth/Turnstile.svelte';
 
 	let { data } = $props();
 
@@ -11,13 +10,12 @@
 	let code = $state('');
 	let message = $state('');
 	let busy = $state(false);
-	let captcha = $state<Turnstile>();
 
 	const send = async () => {
 		busy = true;
 		message = '';
 		try {
-			await sendEmailCode(email, await captcha!.take());
+			await sendEmailCode(email);
 		} catch (e) {
 			message = e instanceof Error ? e.message : 'Could not send the code.';
 		}
@@ -72,7 +70,6 @@
 			class="px-3.5 py-2.5 font-mono"
 		/>
 		{#if message}<p role="alert" class="text-red-400">{message}</p>{/if}
-		{#if email}<Turnstile bind:this={captcha} />{/if}
 		<button type="submit" disabled={busy} class="btn btn-primary py-2.5">
 			{busy ? 'One moment…' : 'Verify'}
 		</button>

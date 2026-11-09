@@ -9,7 +9,6 @@
 		type OnboardingAnswers
 	} from '#lib/auth.ts';
 	import OnboardingStage from '#lib/auth/OnboardingStage.svelte';
-	import Turnstile from '#lib/auth/Turnstile.svelte';
 	import { easeOut, reduced } from '#lib/motion.ts';
 	import { PASSWORD_RULES, passwordIsStrong } from '#lib/password.ts';
 	import Brand from '#lib/ui/Brand.svelte';
@@ -48,7 +47,6 @@
 	let busy = $state(false);
 	let waitingForEmail = $state(false);
 	let knock = $state(0);
-	let captcha = $state<Turnstile>();
 
 	const step = $derived(steps[index]);
 	const last = $derived(index === steps.length - 1);
@@ -106,8 +104,7 @@
 				window.location.href = '/security';
 				return;
 			}
-			const token = await captcha!.take();
-			if (await signUp(email, password, answers(), token)) window.location.href = '/security';
+			if (await signUp(email, password, answers())) window.location.href = '/security';
 			else {
 				waitingForEmail = true;
 				busy = false;
@@ -289,7 +286,6 @@
 											class="slot"
 										/>
 									</label>
-									<Turnstile bind:this={captcha} lang="el" />
 								{/if}
 							</div>
 						{/key}

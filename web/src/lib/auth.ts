@@ -96,40 +96,22 @@ export function dismissSecondFactorPrompt(user: CurrentUser) {
 	}
 }
 
-export async function signIn(email: string, password: string, captchaToken: string) {
-	const { error } = await supabase.auth.signInWithPassword({
-		email,
-		password,
-		options: { captchaToken }
-	});
+export async function signIn(email: string, password: string) {
+	const { error } = await supabase.auth.signInWithPassword({ email, password });
 	if (error) throw error;
 }
 
-/**
- * WebAuthn sign-in with a passkey the user registered from the settings modal. Takes no captcha:
- * Safari only opens the prompt shortly after the tap, and waiting for a token outlasts that.
- */
+/** WebAuthn sign-in with a passkey the user registered from the settings modal. */
 export async function signInWithPasskey(mediation?: 'conditional') {
 	const { error } = await supabase.auth.signInWithPasskey({ options: { mediation } });
 	if (error) throw error;
 }
 
-/**
- * Whether this email should be offered a passkey. A failed lookup answers false, so the password
- * form still works when the check is down.
- */
-export async function hasPasskey(email: string, captchaToken: string) {
-	const { data, error } = await supabase.functions.invoke('sign-in-method', {
-		body: { email, captcha_token: captchaToken }
-	});
-	return !error && data?.passkey === true;
-}
-
 /** Emails the code for the second step of a password sign-in; never creates an account. */
-export async function sendEmailCode(email: string, captchaToken: string) {
+export async function sendEmailCode(email: string) {
 	const { error } = await supabase.auth.signInWithOtp({
 		email,
-		options: { captchaToken, shouldCreateUser: false }
+		options: { shouldCreateUser: false }
 	});
 	if (error) throw error;
 }
@@ -229,14 +211,12 @@ export async function deletePasskey(passkeyId: string) {
 export async function signUp(
 	email: string,
 	password: string,
-	a: OnboardingAnswers,
-	captchaToken: string
+	a: OnboardingAnswers
 ) {
 	const { data, error } = await supabase.auth.signUp({
 		email,
 		password,
 		options: {
-			captchaToken,
 			emailRedirectTo: `${window.location.origin}/security`,
 			data: {
 				onboarding: {
@@ -271,9 +251,8 @@ export async function setEmail(email: string) {
 	if (error) throw error;
 }
 
-export async function sendPasswordReset(email: string, captchaToken: string) {
+export async function sendPasswordReset(email: string) {
 	const { error } = await supabase.auth.resetPasswordForEmail(email, {
-		captchaToken,
 		redirectTo: `${window.location.origin}/reset-password`
 	});
 	if (error) throw error;

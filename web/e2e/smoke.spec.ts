@@ -468,17 +468,12 @@ test.describe('signed out', () => {
 		await expect(prompt).toBeHidden();
 	});
 
-	test('the password stays hidden until the email is known', async ({ page, api }) => {
+	test('the password stays hidden until the email is known', async ({ page }) => {
 		await page.goto('/login');
 		await expect(page.getByLabel('Password', { exact: true })).toHaveCount(0);
 		await page.getByLabel('Email').fill('tester@example.test');
 		await page.getByRole('button', { name: 'Continue', exact: true }).click();
 		await expect(page.getByLabel('Password', { exact: true })).toBeVisible();
-		const lookup = api.bodies.find((b) => b.call === 'POST /functions/v1/sign-in-method')?.body;
-		expect(lookup).toMatchObject({
-			email: 'tester@example.test',
-			captcha_token: 'captcha-token'
-		});
 	});
 
 	test('refusing the passkey asks for the password, then an emailed code', async ({
@@ -513,10 +508,10 @@ test.describe('signed out', () => {
 			);
 		});
 		await page.goto('/login');
+		await page.getByRole('button', { name: 'Sign in with a passkey' }).click();
+		await expect(page.getByText('Refused')).toBeVisible();
 		await page.getByLabel('Email').fill('passkey@example.test');
 		await page.getByRole('button', { name: 'Continue', exact: true }).click();
-		await expect(page.getByLabel('Password', { exact: true })).toHaveCount(0);
-		await page.getByRole('button', { name: 'Continue with passkey' }).click();
 		await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
 		await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
@@ -599,18 +594,6 @@ test.describe('signed out', () => {
 			.toEqual([undefined]);
 	});
 
-	test('a passkey prompt does not wait for the captcha', async ({ page }) => {
-		await page.route('https://challenges.cloudflare.com/**', (route) => route.abort());
-		await page.addInitScript(() => {
-			navigator.credentials.get = () => new Promise(() => {});
-		});
-		const options = page.waitForRequest('**/auth/v1/passkeys/authentication/options');
-		await page.goto('/login');
-		await page.getByRole('button', { name: /Quick unlock/ }).click();
-		const body = (await options).postDataJSON();
-		expect(body.gotrue_meta_security?.captcha_token).toBeUndefined();
-	});
-
 	test('a session from an email link goes back to the password', async ({ page, api }) => {
 		await page.route('**/rest/v1/rpc/security_status', (route) =>
 			route.fulfill({ json: { has_factor: true, required: false, needs_email_code: true } })
@@ -665,7 +648,6 @@ test.describe('signed out', () => {
 			any
 		>;
 		expect(signup.data.onboarding.referral_source).toBe('newsletter');
-		expect(signup.gotrue_meta_security.captcha_token).toBe('captcha-token');
 	});
 
 	test('reset page without a session says the link is invalid', async ({ page }) => {

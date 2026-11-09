@@ -320,8 +320,6 @@ async function mockSupabase(page: Page, state: ApiState) {
 		if (path === '/auth/v1/recover') return json({});
 		if (path === '/auth/v1/otp') return json({});
 		if (path === '/functions/v1/firmware-cli-auth') return json({ code: 'the-code' });
-		if (path === '/functions/v1/sign-in-method')
-			return json({ passkey: body.email === 'passkey@example.test' });
 		// Email confirmation on: a new account gets no session until the link is opened.
 		if (path === '/auth/v1/signup') return json({ id: 'new-user', email: body.email });
 		if (path === '/auth/v1/logout') return empty();
@@ -439,12 +437,6 @@ export const test = base.extend<{ api: ApiState; signedIn: boolean }>({
 			// Avatars fall back to the generated one; never hit Gravatar from tests.
 			await page.route(/gravatar\.com/, (route) => route.fulfill({ status: 404 }));
 			await page.route(/sentry\.io/, (route) => route.fulfill({ status: 200, body: '' }));
-			await page.route(/challenges\.cloudflare\.com/, (route) =>
-				route.fulfill({
-					contentType: 'text/javascript',
-					body: "window.turnstile={render:(h,o)=>{window.__ts=o;o.callback('captcha-token');return 'w'},reset(){window.__ts.callback('captcha-token')},remove(){}}"
-				})
-			);
 			await use(state);
 		},
 		{ auto: true }

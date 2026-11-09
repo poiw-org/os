@@ -2,7 +2,6 @@
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import {
-		hasPasskey,
 		passkeyAutofillAllowed,
 		passkeyAutofillSupported,
 		passkeysSupported,
@@ -12,18 +11,12 @@
 	} from '#lib/auth.ts';
 	import AuthShell from '#lib/auth/AuthShell.svelte';
 	import QuickUnlock from '#lib/auth/QuickUnlock.svelte';
-	import Turnstile from '#lib/auth/Turnstile.svelte';
 	import { arrive, reveal as unfold } from '#lib/motion.ts';
 
-	type Step = 'email' | 'password' | 'passkey' | 'reset';
+	type Step = 'email' | 'password' | 'reset';
 	const copy: Record<Step, { title: string; subtitle: string; action: string }> = {
 		email: { title: 'Sign in', subtitle: '', action: 'Continue' },
 		password: { title: 'Sign in', subtitle: '', action: 'Sign in' },
-		passkey: {
-			title: 'Use your passkey',
-			subtitle: 'Your device will ask you to confirm it is you.',
-			action: 'Continue with passkey'
-		},
 		reset: {
 			title: 'Reset password',
 			subtitle: 'We will email you a link to choose a new one.',
@@ -39,9 +32,7 @@
 	let failed = $state(false);
 	let busy = $state(false);
 	let canUsePasskey = $state(false);
-	let captcha = $state<Turnstile>();
-	const token = () => captcha!.take();
-	const emailLocked = $derived(step === 'password' || step === 'passkey');
+	const emailLocked = $derived(step === 'password');
 
 	// Lets the browser or password manager offer a passkey from the email field. It waits in the
 	// background until one is picked, and a modal passkey prompt replaces it.
@@ -77,23 +68,6 @@
 		window.location.href = '/os';
 	};
 
-	const lookUp = async () => {
-		const offerPasskey = (await hasPasskey(email, await token())) && canUsePasskey;
-		switchTo(offerPasskey ? 'passkey' : 'password');
-	};
-
-	// A refused or unavailable passkey reaches us as NotAllowedError: fall back to the password, which /verify follows with an emailed code.
-	const usePasskey = async () => {
-		try {
-			await signInWithPasskey();
-			enter();
-		} catch (e) {
-			if (!(e instanceof Error && e.name === 'NotAllowedError')) throw e;
-			switchTo('password');
-			report(e.message);
-		}
-	};
-
 	const run = async (action: () => Promise<void>) => {
 		message = '';
 		busy = true;
@@ -105,16 +79,21 @@
 		busy = false;
 	};
 
+	const usePasskey = () =>
+		run(async () => {
+			await signInWithPasskey();
+			enter();
+		});
+
 	const submit = (event: SubmitEvent) => {
 		event.preventDefault();
 		return run(async () => {
-			if (step === 'email') await lookUp();
-			else if (step === 'passkey') await usePasskey();
+			if (step === 'email') switchTo('password');
 			else if (step === 'password') {
-				await signIn(email, password, await token());
+				await signIn(email, password);
 				enter();
 			} else if (step === 'reset') {
-				await sendPasswordReset(email, await token());
+				await sendPasswordReset(email);
 				report('If an account exists for this email, a reset link is on its way.', false);
 			}
 		});
@@ -191,16 +170,14 @@
 			<p role="status" in:arrive class={failed ? 'text-red-400' : 'text-green-700'}>{message}</p>
 		{/if}
 
-		<Turnstile bind:this={captcha} />
-
 		<button type="submit" disabled={busy} class="btn btn-primary mt-1 py-2.5">
 			{busy ? 'One moment…' : copy[step].action}
 		</button>
 	</form>
 
-	{#if step === 'passkey'}
-		<button type="button" onclick={() => switchTo('password')} disabled={busy} class="btn py-2.5"
-			>Use password and email code instead</button
+	{#if step !== 'reset' && canUsePasskey}
+		<button type="button" onclick={usePasskey} disabled={busy} class="btn py-2.5"
+			>Sign in with a passkey</button
 		>
 	{/if}
 
