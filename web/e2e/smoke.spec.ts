@@ -572,6 +572,33 @@ test.describe('signed out', () => {
 			.toBe('conditional');
 	});
 
+	test('an iPhone keeps only the tapped passkey prompt', async ({ page }) => {
+		await page.addInitScript(() => {
+			Object.defineProperty(navigator, 'userAgent', { get: () => 'Mozilla/5.0 (iPhone)' });
+			PublicKeyCredential.isConditionalMediationAvailable = () => Promise.resolve(true);
+			const seen: (string | undefined)[] = [];
+			(window as unknown as { seen: typeof seen }).seen = seen;
+			navigator.credentials.get = (options) => {
+				seen.push(options?.mediation);
+				return new Promise(() => {});
+			};
+		});
+		await page.route('**/auth/v1/passkeys/authentication/options', (route) =>
+			route.fulfill({
+				json: {
+					challenge_id: 'challenge',
+					options: { challenge: 'AAAA', rpId: 'localhost', allowCredentials: [] }
+				}
+			})
+		);
+		await page.goto('/login');
+		await expect(page.getByLabel('Email')).toHaveAttribute('autocomplete', 'username');
+		await page.getByRole('button', { name: /Quick unlock/ }).click();
+		await expect
+			.poll(() => page.evaluate(() => (window as unknown as { seen: unknown[] }).seen))
+			.toEqual([undefined]);
+	});
+
 	test('a passkey prompt does not wait for the captcha', async ({ page }) => {
 		await page.route('https://challenges.cloudflare.com/**', (route) => route.abort());
 		await page.addInitScript(() => {

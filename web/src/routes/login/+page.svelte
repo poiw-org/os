@@ -3,6 +3,7 @@
 	import { onMount } from 'svelte';
 	import {
 		hasPasskey,
+		passkeyAutofillAllowed,
 		passkeyAutofillSupported,
 		passkeysSupported,
 		sendPasswordReset,
@@ -147,7 +148,7 @@
 				type="email"
 				required
 				readonly={emailLocked}
-				autocomplete="username webauthn"
+				autocomplete={passkeyAutofillAllowed() ? 'username webauthn' : 'username'}
 				placeholder="you@example.com"
 				bind:value={email}
 				class="px-3.5 py-2.5"
