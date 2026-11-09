@@ -15,15 +15,13 @@
 		user,
 		brand,
 		onunlock,
-		onsettings,
-		onlogout
+		onsettings
 	}: {
 		user: CurrentUser;
 		/** The header's brand link, so the bar inside the sheet matches the real one exactly. */
 		brand: Snippet;
 		onunlock: () => void;
 		onsettings: () => void;
-		onlogout: () => Promise<void>;
 	} = $props();
 
 	let trigger = $state<HTMLButtonElement>();
@@ -34,7 +32,6 @@
 	let mounted = $state(false);
 	/** Where the sheet is heading; drives the Menu/Close word. */
 	let shown = $state(false);
-	let leaving = $state(false);
 
 	/** Returns focus here when a dialog opened from the menu closes. */
 	export const focus = () => trigger?.focus();
@@ -88,11 +85,6 @@
 	const handOff = (action: () => void) => {
 		close();
 		action();
-	};
-
-	const logout = () => {
-		leaving = true;
-		onlogout().catch(() => (leaving = false));
 	};
 
 	// ---- swipe up to dismiss
@@ -207,7 +199,7 @@
 		></div>
 
 		<!-- Sits exactly over the real header, so "Menu" simply becomes "Close" in place. -->
-		<div class="bar full relative z-10">
+		<div class="bar full app-bar relative z-10">
 			{@render brand()}
 			<div class="grow"></div>
 			<span class="only-sm">
@@ -258,14 +250,6 @@
 					{/if}
 				</div>
 			{/if}
-
-			<button
-				type="button"
-				onclick={logout}
-				disabled={leaving}
-				class="flex w-full items-center border-t px-4 py-3.5 text-left text-gray-600 active:bg-paper-2 disabled:opacity-45"
-				>{leaving ? 'Logging out…' : 'Log out'}</button
-			>
 
 			<div aria-hidden="true" class="flex justify-center pt-1 pb-2.5">
 				<span class="h-1 w-9 rounded-sm bg-gray-300"></span>

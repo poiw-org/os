@@ -211,6 +211,30 @@
 	gap: 0;
 }
 
+/* The signed-in header on a phone: its dropdown has to escape the bar, so the bar cannot scroll
+   sideways. The brand gives way while it still reads "Operating System". */
+@media (max-width: 767px) {
+	.console .bar.app-bar {
+		overflow: visible;
+	}
+	.console .app-bar > * {
+		padding-inline: 0.75rem;
+	}
+	.console .app-bar > :first-child {
+		min-width: 0;
+		overflow: hidden;
+	}
+	.console .app-bar > :not(:first-child) {
+		flex-shrink: 0;
+	}
+	.console .app-bar .key-cell {
+		padding: 0;
+	}
+	.console .app-bar .key {
+		margin-inline: 0.5rem;
+	}
+}
+
 /* Form fields on a faceplate: recessed slots. */
 .console .slot {
 	width: 100%;

@@ -150,9 +150,9 @@
 	{onclose}
 	onclick={(e) => e.target === dialog && dialog?.close()}
 	aria-labelledby="settings-title"
-	class="sheet m-auto w-[calc(100%-2rem)] max-w-lg overflow-hidden rounded-lg border bg-paper p-0 text-ink backdrop:bg-black/70"
+	class="sheet m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg flex-col overflow-hidden rounded-lg border bg-paper p-0 text-ink backdrop:bg-black/70 open:flex"
 >
-	<header class="relative flex items-center gap-4 border-b px-6 pt-6 pb-5">
+	<header class="relative flex shrink-0 items-center gap-4 border-b px-6 pt-6 pb-5">
 		<Avatar email={user.email} size={56} />
 		<span class="flex min-w-0 flex-col pr-8">
 			<h2 id="settings-title" class="truncate text-base font-bold">
@@ -169,7 +169,7 @@
 		>
 	</header>
 
-	<div role="tablist" class="flex gap-1 border-b px-4">
+	<div role="tablist" class="flex shrink-0 gap-1 border-b px-4">
 		{#each tabs as [value, label] (value)}
 			<button
 				type="button"
@@ -183,194 +183,201 @@
 		{/each}
 	</div>
 
-	<div class="flex min-h-[300px] flex-col gap-6 p-6">
-		{#if tab === 'profile'}
-			<form onsubmit={saveName} class="flex flex-col gap-1.5">
-				<label for="settings-name">{@render heading('Display name', 'Shown in key logs')}</label>
-				<span class="flex gap-2">
+	<div class="min-h-0 overflow-y-auto overscroll-contain">
+		<div class="flex min-h-[300px] flex-col gap-6 p-6">
+			{#if tab === 'profile'}
+				<form onsubmit={saveName} class="flex flex-col gap-1.5">
+					<label for="settings-name">{@render heading('Display name', 'Shown in key logs')}</label>
+					<span class="flex gap-2">
+						<input
+							id="settings-name"
+							required
+							maxlength="40"
+							bind:value={nickname}
+							class="min-w-0 flex-1 px-3.5 py-2.5"
+						/>
+						<button type="submit" disabled={busy || !nameChanged} class="btn btn-primary px-4"
+							>Save</button
+						>
+					</span>
+				</form>
+
+				<div class="flex items-center gap-4 rounded-lg border p-4">
+					<Avatar email={user.email} size={40} />
+					<p class="flex-1 text-gray-400">
+						Your avatar comes from Gravatar, with a generated one as fallback.
+					</p>
+					<a href="https://gravatar.com/profile" target="_blank" rel="noreferrer" class="btn"
+						>Change</a
+					>
+				</div>
+
+				<dl class="grid grid-cols-2 gap-4 border-t pt-5">
+					<div class="flex flex-col gap-1">
+						<dt class="eyebrow">Member since</dt>
+						<dd>{user.createdAt.toLocaleDateString('el-GR', { dateStyle: 'medium' })}</dd>
+					</div>
+					<div class="flex flex-col gap-1">
+						<dt class="eyebrow">Last sign-in</dt>
+						<dd>{user.lastSignInAt ? timeAgo(user.lastSignInAt) : '—'}</dd>
+					</div>
+					<div class="col-span-2 flex flex-col gap-1">
+						<dt class="eyebrow">User ID</dt>
+						<dd class="font-mono text-xs text-gray-600 select-all">{user.id}</dd>
+					</div>
+				</dl>
+			{:else if tab === 'security'}
+				<form onsubmit={saveEmail} class="flex flex-col gap-1.5">
+					<label for="settings-email">{@render heading('Email', 'Needs confirmation')}</label>
+					<span class="flex gap-2">
+						<input
+							id="settings-email"
+							type="email"
+							required
+							autocomplete="email"
+							bind:value={email}
+							class="min-w-0 flex-1 px-3.5 py-2.5"
+						/>
+						<button type="submit" disabled={busy || !emailChanged} class="btn btn-primary px-4"
+							>Update</button
+						>
+					</span>
+					{#if user.pendingEmail}
+						<span class="text-xs text-yellow-500"
+							>Waiting for confirmation of {user.pendingEmail}.</span
+						>
+					{/if}
+				</form>
+
+				<form onsubmit={savePassword} class="flex flex-col gap-3 border-t pt-5">
+					{@render heading('New password', '12+ characters')}
 					<input
-						id="settings-name"
+						type="password"
 						required
-						maxlength="40"
-						bind:value={nickname}
-						class="min-w-0 flex-1 px-3.5 py-2.5"
+						minlength="12"
+						autocomplete="new-password"
+						placeholder="New password"
+						aria-label="New password"
+						bind:value={password}
+						class="px-3.5 py-2.5"
 					/>
-					<button type="submit" disabled={busy || !nameChanged} class="btn btn-primary px-4"
-						>Save</button
-					>
-				</span>
-			</form>
-
-			<div class="flex items-center gap-4 rounded-lg border p-4">
-				<Avatar email={user.email} size={40} />
-				<p class="flex-1 text-gray-400">
-					Your avatar comes from Gravatar, with a generated one as fallback.
-				</p>
-				<a href="https://gravatar.com/profile" target="_blank" rel="noreferrer" class="btn"
-					>Change</a
-				>
-			</div>
-
-			<dl class="grid grid-cols-2 gap-4 border-t pt-5">
-				<div class="flex flex-col gap-1">
-					<dt class="eyebrow">Member since</dt>
-					<dd>{user.createdAt.toLocaleDateString('el-GR', { dateStyle: 'medium' })}</dd>
-				</div>
-				<div class="flex flex-col gap-1">
-					<dt class="eyebrow">Last sign-in</dt>
-					<dd>{user.lastSignInAt ? timeAgo(user.lastSignInAt) : '—'}</dd>
-				</div>
-				<div class="col-span-2 flex flex-col gap-1">
-					<dt class="eyebrow">User ID</dt>
-					<dd class="font-mono text-xs text-gray-600 select-all">{user.id}</dd>
-				</div>
-			</dl>
-		{:else if tab === 'security'}
-			<form onsubmit={saveEmail} class="flex flex-col gap-1.5">
-				<label for="settings-email">{@render heading('Email', 'Needs confirmation')}</label>
-				<span class="flex gap-2">
 					<input
-						id="settings-email"
-						type="email"
+						type="password"
 						required
-						autocomplete="email"
-						bind:value={email}
-						class="min-w-0 flex-1 px-3.5 py-2.5"
+						autocomplete="new-password"
+						placeholder="Confirm new password"
+						aria-label="Confirm new password"
+						bind:value={confirm}
+						class="px-3.5 py-2.5"
 					/>
-					<button type="submit" disabled={busy || !emailChanged} class="btn btn-primary px-4"
-						>Update</button
+					<button
+						type="submit"
+						disabled={busy || !password}
+						class="btn btn-primary self-end px-4 py-2">Change password</button
 					>
-				</span>
-				{#if user.pendingEmail}
-					<span class="text-xs text-yellow-500"
-						>Waiting for confirmation of {user.pendingEmail}.</span
-					>
-				{/if}
-			</form>
+				</form>
 
-			<form onsubmit={savePassword} class="flex flex-col gap-3 border-t pt-5">
-				{@render heading('New password', '12+ characters')}
-				<input
-					type="password"
-					required
-					minlength="12"
-					autocomplete="new-password"
-					placeholder="New password"
-					aria-label="New password"
-					bind:value={password}
-					class="px-3.5 py-2.5"
-				/>
-				<input
-					type="password"
-					required
-					autocomplete="new-password"
-					placeholder="Confirm new password"
-					aria-label="Confirm new password"
-					bind:value={confirm}
-					class="px-3.5 py-2.5"
-				/>
-				<button
-					type="submit"
-					disabled={busy || !password}
-					class="btn btn-primary self-end px-4 py-2">Change password</button
-				>
-			</form>
-
-			{#if passkeysSupported()}
-				<section class="flex flex-col gap-3 border-t pt-5">
-					{@render heading('Passkeys', 'Face ID, Touch ID or a security key')}
-					{#if passkeys.length}
-						<ul class="panel">
-							{#each passkeys as key (key.id)}
-								<li class="row">
-									<span class="flex min-w-0 flex-col">
-										<span class="truncate font-medium">{key.friendly_name || 'Passkey'}</span>
-										<span class="text-xs text-gray-400"
-											>Added {timeAgo(new Date(key.created_at))}{key.last_used_at
-												? ` · used ${timeAgo(new Date(key.last_used_at))}`
-												: ''}</span
+				{#if passkeysSupported()}
+					<section class="flex flex-col gap-3 border-t pt-5">
+						{@render heading('Passkeys', 'Face ID, Touch ID or a security key')}
+						{#if passkeys.length}
+							<ul class="panel">
+								{#each passkeys as key (key.id)}
+									<li class="row">
+										<span class="flex min-w-0 flex-col">
+											<span class="truncate font-medium">{key.friendly_name || 'Passkey'}</span>
+											<span class="text-xs text-gray-400"
+												>Added {timeAgo(new Date(key.created_at))}{key.last_used_at
+													? ` · used ${timeAgo(new Date(key.last_used_at))}`
+													: ''}</span
+											>
+										</span>
+										<button
+											type="button"
+											disabled={busy}
+											onclick={() => removePasskey(key.id)}
+											class="btn tone-red shrink-0">Remove</button
 										>
-									</span>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+						<button type="button" disabled={busy} onclick={addPasskey} class="btn self-start"
+							>+ Add a passkey</button
+						>
+					</section>
+				{/if}
+
+				<section class="flex flex-col gap-3 border-t pt-5">
+					{@render heading('Authenticator app', 'Six-digit codes')}
+					{#if totp.length}
+						<ul class="panel">
+							{#each totp as factor (factor.id)}
+								<li class="row">
+									<span class="truncate font-medium">{factor.friendly_name || 'Authenticator'}</span
+									>
 									<button
 										type="button"
 										disabled={busy}
-										onclick={() => removePasskey(key.id)}
+										onclick={() => removeAuthenticator(factor.id)}
 										class="btn tone-red shrink-0">Remove</button
 									>
 								</li>
 							{/each}
 						</ul>
+					{:else if addingTotp}
+						<TotpEnroll
+							ondone={async () => {
+								addingTotp = false;
+								await refreshTotp();
+							}}
+						/>
+					{:else}
+						<button type="button" onclick={() => (addingTotp = true)} class="btn self-start"
+							>+ Add an authenticator</button
+						>
 					{/if}
-					<button type="button" disabled={busy} onclick={addPasskey} class="btn self-start"
-						>+ Add a passkey</button
-					>
 				</section>
+			{:else}
+				<div class="panel">
+					<div class="row py-4">
+						<span class="flex flex-col">
+							<span class="font-medium">This device</span>
+							<span class="text-gray-400">Sign out of the operating system here.</span>
+						</span>
+						<button type="button" disabled={busy} onclick={() => leave(false)} class="btn"
+							>Sign out</button
+						>
+					</div>
+					<div class="row py-4">
+						<span class="flex flex-col">
+							<span class="font-medium">All devices</span>
+							<span class="text-gray-400">Revoke every session, including this one.</span>
+						</span>
+						<button
+							type="button"
+							disabled={busy}
+							onclick={() => leave(true)}
+							class="btn tone-red shrink-0">Sign out all</button
+						>
+					</div>
+				</div>
 			{/if}
 
-			<section class="flex flex-col gap-3 border-t pt-5">
-				{@render heading('Authenticator app', 'Six-digit codes')}
-				{#if totp.length}
-					<ul class="panel">
-						{#each totp as factor (factor.id)}
-							<li class="row">
-								<span class="truncate font-medium">{factor.friendly_name || 'Authenticator'}</span>
-								<button
-									type="button"
-									disabled={busy}
-									onclick={() => removeAuthenticator(factor.id)}
-									class="btn tone-red shrink-0">Remove</button
-								>
-							</li>
-						{/each}
-					</ul>
-				{:else if addingTotp}
-					<TotpEnroll
-						ondone={async () => {
-							addingTotp = false;
-							await refreshTotp();
-						}}
-					/>
-				{:else}
-					<button type="button" onclick={() => (addingTotp = true)} class="btn self-start"
-						>+ Add an authenticator</button
-					>
-				{/if}
-			</section>
-		{:else}
-			<div class="panel">
-				<div class="row py-4">
-					<span class="flex flex-col">
-						<span class="font-medium">This device</span>
-						<span class="text-gray-400">Sign out of the operating system here.</span>
-					</span>
-					<button type="button" disabled={busy} onclick={() => leave(false)} class="btn"
-						>Sign out</button
-					>
-				</div>
-				<div class="row py-4">
-					<span class="flex flex-col">
-						<span class="font-medium">All devices</span>
-						<span class="text-gray-400">Revoke every session, including this one.</span>
-					</span>
-					<button
-						type="button"
-						disabled={busy}
-						onclick={() => leave(true)}
-						class="btn tone-red shrink-0">Sign out all</button
-					>
-				</div>
-			</div>
-		{/if}
-
-		{#if message}
-			<p
-				role="status"
-				class="rounded-lg border px-3.5 py-2.5 {failed
-					? 'border-red-500/40 text-red-400'
-					: 'border-green-700/40 text-green-700'}"
-			>
-				{message}
-			</p>
-		{/if}
+			{#if message}
+				<p
+					role="status"
+					class="rounded-lg border px-3.5 py-2.5 {failed
+						? 'border-red-500/40 text-red-400'
+						: 'border-green-700/40 text-green-700'}"
+				>
+					{message}
+				</p>
+			{/if}
+		</div>
 	</div>
+
+	<footer class="flex shrink-0 justify-end border-t px-6 py-3">
+		<button type="button" disabled={busy} onclick={() => leave(false)} class="btn">Log out</button>
+	</footer>
 </dialog>

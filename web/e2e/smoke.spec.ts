@@ -246,7 +246,9 @@ test.describe('signed in', () => {
 
 	test('an admin sees the door connected and uses its console', async ({ page, api }) => {
 		await page.goto('/os');
-		await page.getByRole('button', { name: 'Door connected' }).click();
+		await page.getByRole('button', { name: 'Devices' }).click();
+		await expect(page.getByRole('status').filter({ hasText: 'Connected' })).toBeVisible();
+		await page.getByRole('button', { name: 'Connect' }).click();
 		const dialog = page.getByRole('dialog');
 		await expect(dialog.getByRole('log')).toContainText('hello from the door');
 		await dialog.getByLabel('Command').fill('status');
@@ -414,10 +416,13 @@ test.describe('signed in', () => {
 	test('log out returns to the sign-in page', async ({ page, api }) => {
 		await page.goto('/os');
 		// Retry the click: under load it can land before the page has hydrated.
+		const logOut = page.getByRole('dialog').getByRole('button', { name: 'Log out' });
 		await expect(async () => {
-			await page.getByRole('button', { name: 'Log out' }).click({ timeout: 1000 });
-			await expect(page).toHaveURL(/\/login$/, { timeout: 1500 });
+			await page.getByRole('button', { name: 'Settings' }).click({ timeout: 1000 });
+			await expect(logOut).toBeVisible({ timeout: 1000 });
 		}).toPass();
+		await logOut.click();
+		await expect(page).toHaveURL(/\/login$/);
 		expect(api.calls).toContain('POST /auth/v1/logout');
 	});
 

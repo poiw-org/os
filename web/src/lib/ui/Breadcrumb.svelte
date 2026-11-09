@@ -6,7 +6,7 @@
 	let {
 		crumbs
 	}: {
-		crumbs: { label: string; href?: '/os' | '/os/keys' | { user: string } }[];
+		crumbs: { label: string; href?: '/os' | '/os/keys' | '/os/firmware' | { user: string } }[];
 	} = $props();
 </script>
 

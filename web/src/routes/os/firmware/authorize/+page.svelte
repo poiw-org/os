@@ -40,36 +40,46 @@
 
 <svelte:head><title>Allow firmware uploads</title></svelte:head>
 
-<div class="m-auto max-w-md rounded-lg border p-6">
-	<h1 class="text-lg font-bold">Allow `make release`?</h1>
+<div class="rise mx-auto flex max-w-lg flex-col gap-6 px-4 py-6 md:py-16">
+	<h1 class="text-2xl">Allow <code class="font-mono">make release</code>?</h1>
 	{#if !allowed}
-		<p class="mt-3 text-sm text-red-600" role="alert">
+		<p class="text-red-400" role="alert">
 			Only admins and members with an active key can upload firmware.
 		</p>
 	{:else if !valid}
-		<p class="mt-3 text-sm text-red-600" role="alert">
-			This link is not valid. Run `make release` again.
+		<p class="text-red-400" role="alert">
+			This link is not valid. Run <code class="font-mono">make release</code> again.
 		</p>
 	{:else}
-		<p class="mt-3 text-sm">
+		<p>
 			The release tool on this computer is asking to upload firmware builds as <strong
 				>{email}</strong
 			>
 			for the next 30 days.
 		</p>
-		<ul class="mt-3 list-disc pl-5 text-sm">
-			<li>
+		<ul class="panel">
+			<li class="row">
 				It can only queue builds. An admin still has to approve each one before the door installs
 				it.
 			</li>
-			<li>It cannot open the door, change keys or use the door console.</li>
+			<li class="row">It cannot open the door, change keys or use the door console.</li>
 		</ul>
-		<p class="mt-3 text-sm text-gray-500">Only continue if you just ran `make release` yourself.</p>
-		<div class="mt-4 flex justify-end gap-2">
-			<button type="button" class="key" disabled={busy} onclick={() => back({ error: 'denied' })}
-				>Deny</button
+		<p class="text-gray-400">
+			Only continue if you just ran <code class="font-mono">make release</code> yourself.
+		</p>
+		<div class="flex justify-end gap-2">
+			<button
+				type="button"
+				class="key flex-1 sm:flex-none"
+				disabled={busy}
+				onclick={() => back({ error: 'denied' })}>Deny</button
 			>
-			<button type="button" class="key key-signal" disabled={busy} onclick={allow}>Allow</button>
+			<button
+				type="button"
+				class="key key-signal flex-1 sm:flex-none"
+				disabled={busy}
+				onclick={allow}>Allow</button
+			>
 		</div>
 	{/if}
 </div>

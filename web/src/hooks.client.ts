@@ -5,6 +5,11 @@ import { trackRequests } from '#lib/busy.ts';
 
 trackRequests();
 
+// iOS ignores user-scalable=no, so a pinch has to be refused by hand. Macs report no touch points,
+// which leaves trackpad zoom alone.
+if (navigator.maxTouchPoints > 0)
+	document.addEventListener('gesturestart', (event) => event.preventDefault());
+
 // Auth email links land with the session in the URL fragment (#access_token=...&refresh_token=...)
 // until supabase-js consumes it. Sentry keeps fragments, so drop them from every URL it records.
 const stripFragment = (url: unknown) => {

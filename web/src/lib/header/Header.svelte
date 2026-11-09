@@ -1,12 +1,11 @@
 <script lang="ts">
-	import { signOut } from '#lib/auth.ts';
 	import type { CurrentUser } from '#lib/types.ts';
 	import Avatar from '#lib/ui/Avatar.svelte';
 	import { resolve } from '$app/paths';
 	import OsLabel from '#lib/ui/OsLabel.svelte';
 	import BluetoothApproval from './BluetoothApproval.svelte';
 	import DoorConsole from './DoorConsole.svelte';
-	import DoorIndicator from './DoorIndicator.svelte';
+	import DevicesMenu from './DevicesMenu.svelte';
 	import ForceOpenModal from './ForceOpenModal.svelte';
 	import MobileMenu from './MobileMenu.svelte';
 	import SettingsModal from './SettingsModal.svelte';
@@ -20,11 +19,6 @@
 	let forceOpenOpen = $state(false);
 	let menu = $state<MobileMenu>();
 
-	const logout = async () => {
-		await signOut();
-		window.location.href = '/login';
-	};
-
 	// A dialog opened from the phone menu returns focus to "Menu": the row that opened it is gone.
 	let fromMenu = false;
 	const refocus = () => {
@@ -37,11 +31,16 @@
 	<a href={resolve('/os')} class="label"><OsLabel /></a>
 {/snippet}
 
-<header id="menu" class="bar full print:hidden">
+<header id="menu" class="bar full app-bar print:hidden">
 	{@render brand()}
+	{#if user?.isAdmin}
+		<a href={resolve('/os/firmware')} class="label only-md">Firmware</a>
+	{/if}
 	<div class="grow"></div>
 	{#if user?.isAdmin}
-		<DoorIndicator bind:label={doorLabel} onopen={() => (consoleOpen = true)} />
+		<span class="key-cell">
+			<DevicesMenu bind:label={doorLabel} onopen={() => (consoleOpen = true)} />
+		</span>
 	{/if}
 	{#if user}
 		<span class="only-sm">
@@ -51,7 +50,6 @@
 				{brand}
 				onunlock={() => (fromMenu = forceOpenOpen = true)}
 				onsettings={() => (fromMenu = settingsOpen = true)}
-				onlogout={logout}
 			/>
 		</span>
 		<span class="only-md">
@@ -61,7 +59,6 @@
 				>
 			{/if}
 			{#if user.isAdmin}
-				<a href={resolve('/os/firmware')} class="key">Firmware</a>
 				<IssueKeyMenu trigger="key key-signal" align="right" />
 			{/if}
 			<button
@@ -70,7 +67,6 @@
 				aria-label="Settings"
 				class="ml-1 rounded-full hover:opacity-80"><Avatar email={user.email} size={28} /></button
 			>
-			<button type="button" class="label" onclick={logout}>Log out</button>
 		</span>
 	{/if}
 </header>
