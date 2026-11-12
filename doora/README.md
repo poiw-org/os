@@ -167,21 +167,74 @@ own small driver (`Pn532.cpp`, over a bit-banged I2C bus), so there are no NFC l
 | Power | 5V / VIN | 5V |
 | Optional reset | `BRIDGE_RESET` (e.g. GPIO 27) | the board's EN/RST pad |
 
-Keep the bridge's antenna clear of metal. Flashing the bridge: `bridge/README.md`.
+Keep the bridge's antenna clear of metal. Flashing the bridge: section 3.2 and `src/bridge/README.md`.
 
 ### 3. Build and flash
 
-Install [PlatformIO Core](https://docs.platformio.org/en/latest/core/installation/) (or use the VS Code
-extension). The first build downloads the ESP32 toolchain and ArduinoJson.
+The repository holds two firmwares, each built by its own PlatformIO environment: `esp32dev` is the
+door controller (an ESP32) and `bridge` is the Bluetooth bridge (an ESP32-C3 Super Mini, optional; see
+section 2b). The two are flashed independently, and the door works without the bridge.
 
-```sh
-pio run                # build
-pio run -t upload      # flash
-pio device monitor     # console, 115200 baud
-```
+**Prerequisites.** Install [PlatformIO Core](https://docs.platformio.org/en/latest/core/installation/)
+(or the VS Code extension). The first build of each environment downloads its toolchain and libraries,
+which requires an internet connection. A USB data cable (not a charge-only cable) is needed per board.
 
-`make build|upload|monitor|test` are shortcuts for the same commands. The board is `esp32dev`; change
-`board` in `platformio.ini` for other ESP32 modules.
+#### 3.1 The door (ESP32, environment `esp32dev`)
+
+1. Copy the wiring template and set the pins: `cp config.example.h config.h` (section 2). The build is
+   refused without `config.h`.
+2. Connect the ESP32 to the computer by USB.
+3. Build, flash and open the console:
+
+   ```sh
+   make upload      # builds, then flashes (equivalent to: pio run -e esp32dev -t upload)
+   make monitor     # serial console, 115200 baud (equivalent to: pio device monitor)
+   ```
+
+4. On the first start the console asks for the settings (section 4).
+
+The first flash of a board, and any change of the partition table, must be done over USB. Later
+versions are published with `make release` and installed over the air after approval in the portal
+(see "Firmware updates"). If the serial port is not detected, hold the **BOOT** button while flashing
+starts. If several boards are connected, name the port explicitly:
+`pio run -e esp32dev -t upload --upload-port /dev/cu.usbserial-XXXX` (list ports with `pio device list`).
+
+#### 3.2 The Bluetooth bridge (ESP32-C3 Super Mini, environment `bridge`)
+
+The bridge needs no `config.h` and no settings; it contains no secrets. It is flashed over USB only, as
+it has no over-the-air update.
+
+1. Connect the Super Mini to the computer by USB. Do this **before** wiring it to the door, or with the
+   door unpowered, so that the two boards are not powered from different sources at once.
+2. Build and flash:
+
+   ```sh
+   make upload ENV=bridge      # equivalent to: pio run -e bridge -t upload
+   ```
+
+3. If the port does not appear or flashing fails, put the board in download mode: hold **BOOT**, press
+   and release **RESET** (or re-plug the cable while holding **BOOT**), then release **BOOT**, and
+   repeat the command.
+4. Check the result on the bridge's own console (its native USB serial; it is not the link to the door):
+
+   ```sh
+   pio device monitor -e bridge
+   ```
+
+   The line `doora-bridge <version>` confirms that the firmware is running.
+5. Disconnect the USB cable, wire the bridge to the door as in section 2b, and power both from the
+   door's supply. Within about ten seconds the door's `status` command reports `bridge : online`.
+
+#### 3.3 Reference
+
+| Task | Command |
+| --- | --- |
+| Build the door / the bridge | `make build` / `make build ENV=bridge` |
+| Flash the door / the bridge | `make upload` / `make upload ENV=bridge` |
+| Console of the door / the bridge | `pio device monitor` / `pio device monitor -e bridge` |
+| Unit tests (no board needed) | `make test` |
+
+The door's board definition is `esp32dev`; change `board` in `platformio.ini` for other ESP32 modules.
 
 #### The console over Bluetooth
 

@@ -5,17 +5,43 @@ bytes between the phone and the door over UART. It holds no keys and no secrets 
 door creates every nonce and judges every request. A bridge that is replaced, reflashed or misbehaving can
 refuse service, but it cannot open the door. The contract is `docs/ble-protocol.md` (sections 2, 3, 6).
 
-It is the `bridge` environment of this PlatformIO project, built from `src/bridge/` plus the shared
-`src/BridgeLink.cpp` (the same framing code the door compiles):
+It is the `bridge` environment of the PlatformIO project in `doora/`, built from `src/bridge/` plus the
+shared `src/BridgeLink.cpp` (the same framing code the door compiles). The environment is selected at
+build time with `ENV=bridge`; without it the make targets build the door.
 
-```sh
-make build  ENV=bridge   # compile
-make upload ENV=bridge   # flash over USB (hold BOOT while plugging in if the port does not appear)
-pio device monitor -e bridge   # the console is the native USB serial
-```
+## Flashing
 
-There is no OTA and no portal for the bridge; it is deliberately dumb so it rarely changes. Its version
-(`BRIDGE_FIRMWARE_VERSION` in `platformio.ini`) is sent to the door in `HELLO` and shown by the door's `status`.
+The bridge is flashed over USB only. It has no over-the-air update and no portal; it is deliberately
+simple so that it rarely changes. Run the commands from the `doora/` directory.
+
+1. Install [PlatformIO Core](https://docs.platformio.org/en/latest/core/installation/). The first build
+   downloads the toolchain and NimBLE-Arduino and therefore needs an internet connection.
+2. Connect the Super Mini to the computer with a USB data cable. Do this while it is **not** wired to
+   the door, or while the door is unpowered.
+3. Build and flash:
+
+   ```sh
+   make upload ENV=bridge      # equivalent to: pio run -e bridge -t upload
+   ```
+
+   No `config.h` is needed for this environment.
+4. If the serial port does not appear or the upload fails, enter download mode: hold **BOOT**, press and
+   release **RESET** (or re-plug the cable while holding **BOOT**), release **BOOT**, and repeat step 3.
+   With several boards connected, add `--upload-port <port>` to the `pio` command (`pio device list`
+   shows the ports).
+5. Verify the firmware on the bridge's console, which is its native USB serial:
+
+   ```sh
+   pio device monitor -e bridge
+   ```
+
+   The line `doora-bridge <version>` confirms that it runs. The version is `BRIDGE_FIRMWARE_VERSION` in
+   `platformio.ini`; the bridge sends it to the door in `HELLO`, and the door's `status` shows it.
+6. Unplug the USB cable and wire the bridge to the door as described below. In the door's console,
+   `status` reports `bridge : online` within about ten seconds of both boards being powered.
+
+To build without flashing, run `make build ENV=bridge`. The door is flashed separately; see section 3.1
+of `../../README.md`.
 
 ## Wiring
 
