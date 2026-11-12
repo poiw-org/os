@@ -8,6 +8,7 @@
 		deleteKey as removeKey,
 		getKey,
 		getKeyBySerialNumber,
+		getUnidentifiedTag,
 		setSerialReleased,
 		listEntries,
 		setKeyDisabled,
@@ -21,7 +22,8 @@
 	import { sameSerial } from '#lib/serial.ts';
 	import { keyStatus } from '#lib/status.ts';
 	import Loading from '#lib/loading.svelte';
-	import { EntryType, type Entry, type Key } from '#lib/types.ts';
+	import { EntryType, type Entry, type Key, type UnidentifiedTag } from '#lib/types.ts';
+	import UnidentifiedTagView from '#lib/ui/UnidentifiedTagView.svelte';
 	import Breadcrumb from '#lib/ui/Breadcrumb.svelte';
 	import KeyStatusBadge from '#lib/ui/KeyStatusBadge.svelte';
 	import V1Badge from '#lib/ui/V1Badge.svelte';
@@ -36,6 +38,8 @@
 	const admin = page.data.user.isAdmin as boolean;
 
 	let key = $state.raw<Key>();
+	// A tag no key accounts for (its key was deleted, or it was never one of ours) has this page too.
+	let strayTag = $state.raw<UnidentifiedTag>();
 	let selectedId = $state<number>();
 	let showAllEntries = $state(false);
 	let writerOpen = $state(false);
@@ -209,7 +213,8 @@
 		(async () => {
 			try {
 				if (keyId) key = await getKey(keyId);
-				if (!key) loadError = 'Key not found.';
+				if (!key && keyId && admin) strayTag = await getUnidentifiedTag(keyId);
+				if (!key && !strayTag) loadError = 'Key not found.';
 			} catch (e) {
 				loadError = e instanceof Error ? e.message : 'Could not load the key.';
 			}
@@ -247,7 +252,9 @@
 </script>
 
 <div class="stagger flex max-w-4xl flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
-	{#if loadError}
+	{#if strayTag}
+		<UnidentifiedTagView tag={strayTag} />
+	{:else if loadError}
 		<span class="flex w-full justify-center px-10 pt-20 text-red-500">{loadError}</span>
 	{:else if processing || !key}
 		<span class="w-full text-gray-400">{status}</span>
@@ -345,7 +352,7 @@
 		{/if}
 	{/if}
 
-	{#if entries.items}
+	{#if entries.items && !strayTag}
 		<div class="flex flex-col gap-2">
 			<h2 class="font-bold">Log</h2>
 			<div class="panel">

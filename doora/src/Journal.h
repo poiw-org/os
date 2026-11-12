@@ -9,7 +9,9 @@ enum JournalFlags : uint8_t {
 	kClockEstimated = 1,  // the timestamp is a lower bound, not a synced time
 	kForced = 2,          // opened by a force-open command, not a key
 	kInvalidToken = 4,    // the tag did not carry a valid key token
-	kOffline = 8          // the door had no cloud connection at the time
+	kOffline = 8,         // the door had no cloud connection at the time
+	kClaims = 16,         // sub/iat/nbf/exp/aud below were read from the tag's token
+	kUnverified = 32      // ...but its signature did not verify, so they only help identify the tag
 };
 
 struct __attribute__((packed)) JournalRecord {
@@ -22,12 +24,22 @@ struct __attribute__((packed)) JournalRecord {
 	uint8_t uid[10];
 	uint8_t keyLen;
 	char key[36];     // the token's jti, not NUL terminated
-	uint8_t reserved[6];
+	uint8_t subLen;
+	char sub[36];     // the token's sub (user id), not NUL terminated
+	uint8_t audLen;
+	uint8_t aud[10];  // the serial number the token was issued for
+	uint32_t iat, nbf, exp;
+	uint8_t reserved[10];
 	uint16_t crc;
 };
-static_assert(sizeof(JournalRecord) == 64, "journal records are 64 bytes");
+static_assert(sizeof(JournalRecord) == 128, "journal records are 128 bytes");
 
 constexpr uint8_t kJournalMagic = 0xD0;
+
+struct KeyClaims;
+// Copies what the tag's token says about itself into the record, so a tag whose key is deleted or
+// unknown can still be identified. `verified` is false for a token that failed its signature check.
+void journalSetClaims(JournalRecord& r, const KeyClaims& key, bool verified);
 
 void journalSeal(JournalRecord& r);
 bool journalValid(const JournalRecord& r);

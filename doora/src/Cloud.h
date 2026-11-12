@@ -68,7 +68,7 @@ class Cloud {
 
  private:
 	static constexpr size_t kFlushBatch = 8;
-	static constexpr size_t kRecordJson = 400;
+	static constexpr size_t kRecordJson = 640;
 
 	static void runRest(void* self);
 	[[noreturn]] void restLoop();

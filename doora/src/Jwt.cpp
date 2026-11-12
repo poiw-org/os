@@ -70,6 +70,30 @@ static bool readUint(const char* json, const char* key, uint32_t& out) {
 	return true;
 }
 
+// Reads the claims from the base64url payload.
+static JwtResult readClaims(const char* encoded, size_t len, KeyClaims& out) {
+	char payload[576];
+	int p = base64UrlDecode(encoded, len, (uint8_t*)payload, sizeof(payload) - 1);
+	if (p < 0) return JwtResult::Malformed;
+	payload[p] = 0;
+
+	// Legacy (pre-Supabase) tokens may write aud as "0x04 0xa1 ..." and leave out jti or nbf, which
+	// the old firmware accepted, so only aud and exp are required.
+	char aud[64];
+	memset(&out, 0, sizeof(out));
+	if (!readString(payload, "aud", aud, sizeof(aud)) || !readUint(payload, "exp", out.exp))
+		return JwtResult::BadClaims;
+	readString(payload, "jti", out.jti, sizeof(out.jti));
+	readUint(payload, "nbf", out.nbf);
+	readString(payload, "sub", out.sub, sizeof(out.sub));
+	readUint(payload, "iat", out.iat);
+
+	int uid = parseUid(aud, out.aud, sizeof(out.aud));
+	if (uid <= 0) return JwtResult::BadClaims;
+	out.audLen = (uint8_t)uid;
+	return JwtResult::Ok;
+}
+
 JwtResult jwtVerify(const char* token, size_t len, const VerifyKeys& keys, KeyClaims& out) {
 	if (len < 16 || len > kMaxTokenLen) return JwtResult::Malformed;
 	const char* dot1 = (const char*)memchr(token, '.', len);
@@ -112,24 +136,15 @@ JwtResult jwtVerify(const char* token, size_t len, const VerifyKeys& keys, KeyCl
 		return JwtResult::BadClaims;
 	}
 
-	char payload[576];
-	int p = base64UrlDecode(dot1 + 1, payloadLen, (uint8_t*)payload, sizeof(payload) - 1);
-	if (p < 0) return JwtResult::Malformed;
-	payload[p] = 0;
+	return readClaims(dot1 + 1, payloadLen, out);
+}
 
-	// Legacy (pre-Supabase) tokens may write aud as "0x04 0xa1 ..." and leave out jti or nbf, which
-	// the old firmware accepted, so only aud and exp are required.
-	char aud[64];
+JwtResult jwtPeek(const char* token, size_t len, KeyClaims& out) {
 	memset(&out, 0, sizeof(out));
-	if (!readString(payload, "aud", aud, sizeof(aud)) || !readUint(payload, "exp", out.exp))
-		return JwtResult::BadClaims;
-	readString(payload, "jti", out.jti, sizeof(out.jti));
-	readUint(payload, "nbf", out.nbf);
-	readString(payload, "sub", out.sub, sizeof(out.sub));
-	readUint(payload, "iat", out.iat);
-
-	int uid = parseUid(aud, out.aud, sizeof(out.aud));
-	if (uid <= 0) return JwtResult::BadClaims;
-	out.audLen = (uint8_t)uid;
-	return JwtResult::Ok;
+	if (len < 16 || len > kMaxTokenLen) return JwtResult::Malformed;
+	const char* dot1 = (const char*)memchr(token, '.', len);
+	if (!dot1) return JwtResult::Malformed;
+	const char* dot2 = (const char*)memchr(dot1 + 1, '.', len - (size_t)(dot1 + 1 - token));
+	if (!dot2 || dot2 - dot1 - 1 > 760) return JwtResult::Malformed;
+	return readClaims(dot1 + 1, (size_t)(dot2 - dot1 - 1), out);
 }

@@ -10,7 +10,8 @@ namespace {
 const char* kBlacklist = "/blacklist.bin";
 const char* kClock = "/clock.bin";
 const char* kSigningKey = "/signing.bin";
-const char* kJournal = "/journal.bin";
+const char* kJournal = "/journal2.bin";
+const char* kJournalV1 = "/journal.bin";  // 64-byte records of firmware before the token claims
 const char* kDropped = "/dropped.bin";
 const char* kTmp = "/tmp.bin";
 constexpr uint32_t kClockMagic = 0x314B4C43;    // "CLK1"
@@ -106,6 +107,50 @@ void saveDropped(uint32_t n) {
 	v[2] = crc32((const uint8_t*)v, 8);
 	replaceFile(kDropped, (const uint8_t*)v, sizeof(v));
 }
+// Converts the journal of older firmware, which had 64-byte records without the token claims, so an
+// update never loses events that were not uploaded yet. The old file goes once its records are
+// copied; a power cut before that just repeats the copy on the next boot.
+void upgradeJournal() {
+	struct __attribute__((packed)) V1 {
+		uint8_t magic, allowed, verdict, flags;
+		uint32_t ts;
+		uint8_t uidLen, uid[10], keyLen;
+		char key[36];
+		uint8_t reserved[6];
+		uint16_t crc;
+	};
+	static_assert(sizeof(V1) == 64, "v1 journal records are 64 bytes");
+	File in = LittleFS.open(kJournalV1, "r");
+	if (!in) return;
+	File out = LittleFS.open(kJournal, "w");
+	size_t moved = 0;
+	bool ok = (bool)out;
+	V1 old;
+	while (ok && in.read((uint8_t*)&old, sizeof(old)) == sizeof(old)) {
+		if (old.magic != kJournalMagic || old.uidLen > sizeof(old.uid) || old.keyLen > sizeof(old.key) ||
+		    old.crc != crc16((const uint8_t*)&old, sizeof(old) - 2))
+			continue;
+		JournalRecord r;
+		memset(&r, 0, sizeof(r));
+		r.allowed = old.allowed;
+		r.verdict = old.verdict;
+		r.flags = old.flags;
+		r.ts = old.ts;
+		r.uidLen = old.uidLen;
+		memcpy(r.uid, old.uid, sizeof(r.uid));
+		r.keyLen = old.keyLen;
+		memcpy(r.key, old.key, sizeof(r.key));
+		journalSeal(r);
+		ok = out.write((const uint8_t*)&r, sizeof(r)) == sizeof(r);
+		moved += ok;
+	}
+	in.close();
+	if (out) out.close();
+	if (!ok) { LOG("Journal upgrade failed; will retry on the next boot."); return; }
+	LittleFS.remove(kJournalV1);
+	LOG("Journal upgraded: %u events kept.", (unsigned)moved);
+}
+
 }  // namespace
 
 namespace Persist {
@@ -124,6 +169,8 @@ bool begin() {
 		if (!ok) { LOG("Flash storage is unusable; running without persistence."); return false; }
 	}
 	LittleFS.remove(kTmp);  // leftover of an interrupted replace
+
+	upgradeJournal();
 
 	// Repair the journal: a power cut during an append leaves a partial record at the end.
 	File f = LittleFS.open(kJournal, "r");

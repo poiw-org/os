@@ -12,7 +12,9 @@ import {
 	type Key,
 	type KeySummary,
 	type UserOption,
-	type UserSummary
+	type UserSummary,
+	type TagClaims,
+	type UnidentifiedTag
 } from '#lib/types.ts';
 
 // There is a single door; entries are logged per door id. This must match the id the door was
@@ -43,12 +45,20 @@ export const toKeySummary = (row: Raw): KeySummary => ({
 	notBefore: new Date(row.not_before as string),
 	expiresAt: new Date(row.expires_at as string),
 	disabled: row.disabled as boolean,
-	v1: row.legacy_id != null
+	v1: row.legacy_id != null,
+	legacyId: (row.legacy_id as string | null) ?? null
 });
 
 export const toEntry = (row: Raw): Entry => {
-	const metadata = (row.metadata ?? {}) as { serialNumberFromTag?: string };
+	const metadata = (row.metadata ?? {}) as {
+		serialNumberFromTag?: string;
+		claims?: { jti?: string };
+	};
+	const serial = row.serial_number as string | null;
 	return {
+		// Mirrors private.tag_identity in the database.
+		tagId:
+			(row.key_id as string | null) || metadata.claims?.jti || (serial ? `sn:${serial}` : null),
 		id: row.id as number,
 		keyId: (row.key_id as string | null) ?? null,
 		type: row.type as EntryType,
@@ -174,7 +184,48 @@ function toKey(row: {
 	};
 }
 
+export const toUnidentifiedTag = (row: Raw): UnidentifiedTag => ({
+	id: row.id as string,
+	serialNumber: (row.serial_number as string | null) ?? null,
+	claims: (row.claims as TagClaims | null) ?? null,
+	firstSeen: new Date(row.first_seen as string),
+	lastSeen: new Date(row.last_seen as string),
+	sightings: row.sightings as number,
+	lastReason: (row.last_reason as string | null) ?? null,
+	userId: (row.user_id as string | null) ?? null,
+	attachedAt: row.attached_at ? new Date(row.attached_at as string) : null
+});
+
+export async function listUnidentifiedTags(): Promise<UnidentifiedTag[]> {
+	const { data, error } = await supabase
+		.from('unidentified_tags')
+		.select('*')
+		.order('last_seen', { ascending: false });
+	if (error) throw error;
+	return data.map(toUnidentifiedTag);
+}
+
+export async function getUnidentifiedTag(id: string): Promise<UnidentifiedTag | undefined> {
+	const { data, error } = await supabase
+		.from('unidentified_tags')
+		.select('*')
+		.eq('id', id)
+		.maybeSingle();
+	if (error) throw error;
+	return data ? toUnidentifiedTag(data) : undefined;
+}
+
+/** Says whose tag it is (null detaches it). Grants no access. */
+export async function attachUnidentifiedTag(id: string, userId: string | null) {
+	const { error } = await supabase.rpc('attach_unidentified_tag', { tag: id, target: userId });
+	if (error) throw error;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function getKey(id: string): Promise<Key | undefined> {
+	// Unidentified tags share the key pages; theirs are not always uuids.
+	if (!UUID.test(id)) return undefined;
 	const { data, error } = await supabase
 		.from('keys')
 		.select(KEY_COLUMNS)
@@ -235,6 +286,8 @@ export async function listEntries(
 	options: {
 		keyIds?: string[];
 		openedBy?: string[];
+		/** The entries of one tag: its key id or, for tags without a trusted key, its serial. */
+		tag?: { keyId: string; serialNumber: string | null };
 		since?: Date;
 		until?: Date;
 		type?: EntryType;
@@ -251,6 +304,14 @@ export async function listEntries(
 		const keys = options.keyIds?.length ? `,key_id.in.(${options.keyIds.join(',')})` : '';
 		query = query.or(`opened_by.in.(${options.openedBy.join(',')})${keys}`);
 	} else if (options.keyIds) query = query.in('key_id', options.keyIds);
+	else if (options.tag) {
+		const { keyId, serialNumber } = options.tag;
+		// An unverified tag's id is whatever its token said: quote it as a value, never syntax.
+		const quote = (value: string) => `"${value.replace(/["\\]/g, '\\$&')}"`;
+		query = query.or(
+			`key_id.eq.${quote(keyId)}${serialNumber ? `,serial_number.eq.${quote(serialNumber)}` : ''}`
+		);
+	}
 	if (options.since) query = query.gte('created_at', options.since.toISOString());
 	if (options.until) query = query.lt('created_at', options.until.toISOString());
 	if (options.type) query = query.eq('type', options.type);

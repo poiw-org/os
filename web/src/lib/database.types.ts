@@ -8,6 +8,23 @@ export type Database = {
 	};
 	public: {
 		Tables: {
+			unidentified_tags: {
+				Row: {
+					id: string;
+					serial_number: string | null;
+					claims: Json | null;
+					first_seen: string;
+					last_seen: string;
+					sightings: number;
+					last_reason: string | null;
+					user_id: string | null;
+					attached_by: string | null;
+					attached_at: string | null;
+				};
+				Insert: never;
+				Update: never;
+				Relationships: [];
+			};
 			firmware_releases: {
 				Row: {
 					id: string;
@@ -231,6 +248,10 @@ export type Database = {
 		};
 		Views: { [_ in never]: never };
 		Functions: {
+			attach_unidentified_tag: {
+				Args: { tag: string; target: string | null };
+				Returns: undefined;
+			};
 			send_door_command: {
 				Args: { door: string; command: string };
 				Returns: undefined;

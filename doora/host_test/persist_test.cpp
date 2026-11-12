@@ -6,6 +6,8 @@
 #include <Arduino.h>
 #include <LittleFS.h>
 #include "../src/Persist.h"
+#include "../src/Crc.h"
+#include "../src/Journal.h"
 
 uint64_t g_nowUs = 0;
 HostSerial Serial;
@@ -151,14 +153,40 @@ static void testReplaceKeepsOldUntilRename() {
 static void testTornTailRepair() {
 	freshFlash();
 	fill(10, 3);
-	g_fs.files["/journal.bin"].resize(g_fs.files["/journal.bin"].size() - 20);  // power cut mid-append
+	g_fs.files["/journal2.bin"].resize(g_fs.files["/journal2.bin"].size() - 20);  // power cut mid-append
 	CHECK(Persist::begin());
 	CHECK(Persist::journalCount() == 2);
 	JournalRecord out[4];
 	uint32_t seq;
 	CHECK(Persist::journalRead(out, 4, &seq) == 2 && out[1].ts == 11 && journalValid(out[1]));
-	CHECK(g_fs.files["/journal.bin"].size() == 2 * sizeof(JournalRecord));
+	CHECK(g_fs.files["/journal2.bin"].size() == 2 * sizeof(JournalRecord));
 	CHECK(!g_fs.files.count("/tmp.bin"));
+}
+
+// Events queued by firmware with 64-byte records survive the update to the wider records.
+static void testJournalUpgrade() {
+	freshFlash();
+	uint8_t old[64];
+	memset(old, 0, sizeof(old));
+	old[0] = kJournalMagic;
+	old[1] = 1;                               // allowed
+	uint32_t ts = 4242;
+	memcpy(old + 4, &ts, 4);
+	old[8] = 2; old[9] = 0x04; old[10] = 0xa1;  // uid
+	old[19] = 3; memcpy(old + 20, "abc", 3);  // key
+	uint16_t crc = crc16(old, 62);
+	memcpy(old + 62, &crc, 2);
+	auto& v1 = g_fs.files["/journal.bin"];
+	v1.assign(old, old + 64);
+	v1.insert(v1.end(), old, old + 64);
+	v1[64 + 5] ^= 1;  // the second record is corrupt and is skipped
+	g_fs.files.erase("/journal2.bin");
+	CHECK(Persist::begin());
+	CHECK(!g_fs.files.count("/journal.bin") && Persist::journalCount() == 1);
+	JournalRecord out[2];
+	uint32_t seq;
+	CHECK(Persist::journalRead(out, 2, &seq) == 1 && journalValid(out[0]) && out[0].ts == 4242 &&
+	      out[0].uidLen == 2 && out[0].uid[1] == 0xa1 && out[0].keyLen == 3 && !memcmp(out[0].key, "abc", 3));
 }
 
 static void testFailedWrites() {
@@ -219,6 +247,7 @@ int main() {
 	testDenialsNeverShedOpenings();
 	testReplaceKeepsOldUntilRename();
 	testTornTailRepair();
+	testJournalUpgrade();
 	testFailedWrites();
 	testBlacklistFile();
 	testClockFile();

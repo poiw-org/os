@@ -109,6 +109,7 @@ static void testRsaJwt() {
 	CHECK(k.exp == 1800000000u && k.nbf == 1700000100u);
 	// Signed by another key pair, or checked against another public key.
 	CHECK(jwtVerify(RSA_OTHER, strlen(RSA_OTHER), keys, k) == JwtResult::BadSignature);
+	CHECK(jwtPeek(RSA_OTHER, strlen(RSA_OTHER), k) == JwtResult::Ok && k.audLen > 0);
 	VerifyKeys wrong{(const uint8_t*)SECRET, strlen(SECRET), &other};
 	CHECK(jwtVerify(RSA_GOOD, strlen(RSA_GOOD), wrong, k) == JwtResult::BadSignature);
 	// No public key known yet.
@@ -426,6 +427,30 @@ static void testJournal() {
 	      strstr(json, "\"serial_number\":\"04:a1:b2:c3\"") && strstr(json, "\"created_at\":\"2026-11-03T15:04:05Z\"") &&
 	      strstr(json, "\"clock\":\"estimated\"") && strstr(json, "\"offline\":true"));
 	CHECK(journalToJson(r, "main", json, 20) == 0);
+	CHECK(!strstr(json, "claims"));
+
+	// Claims of a token whose signature failed: shown for identification, never as the key id.
+	KeyClaims claimed;
+	memset(&claimed, 0, sizeof(claimed));
+	strcpy(claimed.jti, "11111111-2222-3333-4444-555555555555");
+	strcpy(claimed.sub, "99999999-8888-7777-6666-555555555555");
+	claimed.aud[0] = 0x04; claimed.aud[1] = 0xa1; claimed.audLen = 2;
+	claimed.iat = 10; claimed.nbf = 11; claimed.exp = 12;
+	JournalRecord u;
+	memset(&u, 0, sizeof(u));
+	u.flags = kInvalidToken;
+	journalSetClaims(u, claimed, false);
+	journalSeal(u);
+	CHECK(journalValid(u));
+	char big[700];
+	CHECK(journalToJson(u, "main", big, sizeof(big)) > 0);
+	CHECK(strstr(big, "\"key_id\":null") && strstr(big, "\"jti\":\"11111111-2222-3333-4444-555555555555\"") &&
+	      strstr(big, "\"sub\":\"99999999-8888-7777-6666-555555555555\"") && strstr(big, "\"aud\":\"04:a1\"") &&
+	      strstr(big, "\"exp\":12") && strstr(big, "\"verified\":false"));
+	journalSetClaims(r, claimed, true);
+	journalSeal(r);
+	CHECK(journalToJson(r, "main", big, sizeof(big)) > 0);
+	CHECK(strstr(big, "\"key_id\":\"11111111-2222-3333-4444-555555555555\"") && strstr(big, "\"verified\":true"));
 
 	// A torn write fails the checksum.
 	JournalRecord torn = r;

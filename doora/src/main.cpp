@@ -131,6 +131,8 @@ void handleTag(const TagRead& tag) {
 		actuators.service();
 		r.verdict = 255;  // no Verdict applies; stored as reason "Unknown"
 		r.flags |= kInvalidToken;
+		KeyClaims claimed;
+		if (tag.token && jwtPeek(tag.token, tag.tokenLen, claimed) == JwtResult::Ok) journalSetClaims(r, claimed, false);
 		static const char* const kWhy[] = {"ok", "malformed token", "bad signature (check the signing secret)", "missing or bad claims", "v2 key but the door has not received the public key yet"};
 		LOG("Denied: the tag carries no valid key (%s).", tag.token ? kWhy[(int)parsed] : "no token found on the tag");
 		if (millis() - lastFailureLogMs >= kFailureLogGapMs || !lastFailureLogMs) {
@@ -140,8 +142,7 @@ void handleTag(const TagRead& tag) {
 		return;
 	}
 
-	r.keyLen = (uint8_t)strnlen(key.jti, sizeof(r.key));
-	memcpy(r.key, key.jti, r.keyLen);
+	journalSetClaims(r, key, true);
 
 	Verdict v = decide(key, tag.uid, tag.uidLen, r.ts, clock_.synced(), blacklist.contains(key.jti));
 	if (v == Verdict::Allow) {

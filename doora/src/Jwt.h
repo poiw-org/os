@@ -29,5 +29,9 @@ constexpr size_t kMaxTokenLen = 860;  // fills an NTAG216
 // Verifies the signature first and only then reads the claims.
 JwtResult jwtVerify(const char* token, size_t len, const VerifyKeys& keys, KeyClaims& out);
 
+// Reads the claims WITHOUT checking the signature. Only for identifying a tag whose token did not
+// verify; never for an access decision.
+JwtResult jwtPeek(const char* token, size_t len, KeyClaims& out);
+
 // Exposed for tests: base64url without padding. Returns the decoded size or -1.
 int base64UrlDecode(const char* in, size_t len, uint8_t* out, size_t cap);

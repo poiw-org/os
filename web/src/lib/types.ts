@@ -27,6 +27,8 @@ export type KeySummary = {
 	disabled: boolean;
 	/** Imported from the Firestore setup; its card may still carry the old token. */
 	v1: boolean;
+	/** The v1 key's old id, which its old token (and the door's entries) still carry. */
+	legacyId: string | null;
 };
 
 export type KeyStatus = 'active' | 'disabled' | 'expired' | 'pending';
@@ -54,6 +56,8 @@ export type Entry = {
 	reason?: FailReason;
 	timestamp: Date;
 	serialNumberFromTag?: string;
+	/** The tag as unidentified_tags names it (key id, the token's jti, or "sn:" + serial). */
+	tagId: string | null;
 	/** Set when an admin opened the door from the web UI: who gave the command. */
 	openedBy: string | null;
 };
@@ -122,4 +126,30 @@ export type CurrentUser = {
 	pendingEmail?: string;
 	createdAt: Date;
 	lastSignInAt?: Date;
+};
+
+/** What a tag's token said about itself, as the door decoded it. */
+export type TagClaims = {
+	jti: string;
+	sub: string;
+	aud: string;
+	iat: number;
+	nbf: number;
+	exp: number;
+	/** False when the signature did not verify: the claims only help identify the tag. */
+	verified: boolean;
+};
+
+/** A tag tapped at the door that no existing key accounts for. */
+export type UnidentifiedTag = {
+	id: string;
+	serialNumber: string | null;
+	claims: TagClaims | null;
+	firstSeen: Date;
+	lastSeen: Date;
+	sightings: number;
+	lastReason: string | null;
+	/** Whom an admin attached the tag to; null while it is still unidentified. */
+	userId: string | null;
+	attachedAt: Date | null;
 };

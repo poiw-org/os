@@ -2,7 +2,14 @@
 	import { keyPath, userPath } from '#lib/routes.ts';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { getKeyBySerialNumber, listAllKeys, listAllUsers, listEntries } from '#lib/api.ts';
+	import {
+		getKeyBySerialNumber,
+		listAllKeys,
+		listAllUsers,
+		listEntries,
+		listUnidentifiedTags,
+		toUnidentifiedTag
+	} from '#lib/api.ts';
 	import { toEntry, toKeySummary, toUserSummary } from '#lib/api.ts';
 	import { timeAgo, withName } from '#lib/format.ts';
 	import { liveRows } from '#lib/live.svelte.ts';
@@ -11,7 +18,7 @@
 	import { toast } from '#lib/notify.svelte.ts';
 	import { canonicalSerial, serialDigits } from '#lib/serial.ts';
 	import { keyStatus } from '#lib/status.ts';
-	import { EntryType, type Entry, type UserOption } from '#lib/types.ts';
+	import { EntryType, type Entry, type KeySummary, type UserOption } from '#lib/types.ts';
 	import Loading from '#lib/loading.svelte';
 	import ActivityRow from '#lib/ui/ActivityRow.svelte';
 	import Avatar from '#lib/ui/Avatar.svelte';
@@ -41,6 +48,14 @@
 		load: () => listAllKeys(),
 		map: toKeySummary
 	});
+	// Tags tapped at the door that no key accounts for; attached ones still name their owner.
+	const strayTags = liveRows({
+		table: 'unidentified_tags',
+		load: listUnidentifiedTags,
+		map: toUnidentifiedTag,
+		sort: (a, b) => b.lastSeen.getTime() - a.lastSeen.getTime()
+	});
+	const unattached = $derived((strayTags.items ?? []).filter((tag) => !tag.userId));
 	const activity = liveRows({
 		table: 'entries',
 		load: () => listEntries({ limit: 40 }),
@@ -201,15 +216,17 @@
 		fallback: string
 	) => (user ? withName(user) : fallback);
 	const keysByUser = $derived(Map.groupBy(keys.items ?? [], (key) => key.userId));
+	// Entries name a v1 key by its legacy id, so both ids map to the key's owner.
+	const keyIds = (key: KeySummary) => (key.legacyId ? [key.id, key.legacyId] : [key.id]);
 	const emailByKey = $derived(
 		new Map(
-			(keys.items ?? []).map((key) => [
-				key.id,
-				withNameOrFallback(
+			(keys.items ?? []).flatMap((key) => {
+				const name = withNameOrFallback(
 					users.items?.find((user) => user.id === key.userId),
 					'Unknown user'
-				)
-			])
+				);
+				return keyIds(key).map((id) => [id, name] as const);
+			})
 		)
 	);
 
@@ -217,18 +234,37 @@
 	// A typed S/N matches however it is spelled ("04A2", "04:a2").
 	// Only for queries that look like a serial, so typing a name does not match stray hex digits.
 	const queryDigits = $derived(/^[0-9a-fx:\s-]+$/.test(query) ? serialDigits(query) : '');
-	const keyOwner = $derived(new Map((keys.items ?? []).map((key) => [key.id, key.userId])));
+	const keyOwner = $derived(
+		new Map((keys.items ?? []).flatMap((key) => keyIds(key).map((id) => [id, key.userId] as const)))
+	);
+	const tagOwner = $derived(
+		new Map((strayTags.items ?? []).flatMap((tag) => (tag.userId ? [[tag.id, tag.userId]] : [])))
+	);
+	// Whose tag opened (or tried) the door: the key's owner, else whom an admin attached it to.
+	const ownerOf = (entry: Entry) =>
+		(entry.keyId ? keyOwner.get(entry.keyId) : undefined) ??
+		(entry.tagId ? tagOwner.get(entry.tagId) : undefined);
+	const tagLabel = (entry: Entry) => {
+		if (entry.keyId && emailByKey.has(entry.keyId)) return emailByKey.get(entry.keyId)!;
+		const owner = ownerOf(entry);
+		if (owner)
+			return withNameOrFallback(
+				users.items?.find((user) => user.id === owner),
+				'Unknown user'
+			);
+		return entry.keyId ? 'Deleted key' : 'Unidentified tag';
+	};
 	const emailById = $derived(new Map((users.items ?? []).map((user) => [user.id, user.email])));
 	// A web open belongs to the admin who gave it; a tag open to the key's owner.
 	const unlockedBy = (entry: Entry) => {
-		const userId = entry.openedBy ?? (entry.keyId ? keyOwner.get(entry.keyId) : undefined);
+		const userId = entry.openedBy ?? ownerOf(entry);
 		return userId ? emailById.get(userId) || undefined : undefined;
 	};
 	// Latest door open per user, only while it still counts as recent.
 	const lastSeen = $derived.by(() => {
 		const seen = new Map<string, Date>();
 		for (const entry of recent.items ?? []) {
-			const userId = entry.keyId ? keyOwner.get(entry.keyId) : undefined;
+			const userId = ownerOf(entry);
 			if (userId && !seen.has(userId) && now - entry.timestamp.getTime() < RECENT_MS)
 				seen.set(userId, entry.timestamp);
 		}
@@ -321,6 +357,41 @@
 		<div class="flex flex-col gap-1">
 			<h1 class="text-xl font-bold">Users</h1>
 		</div>
+
+		{#if unattached.length}
+			<section class="panel border-red-500/60 bg-red-500/5" aria-labelledby="stray-tags-title">
+				<div class="flex flex-col gap-1 border-b border-red-500/30 px-4 py-3">
+					<h2 id="stray-tags-title" class="flex items-center gap-2 font-bold text-red-500">
+						<span class="lamp lamp-red"></span>
+						{unattached.length}
+						{unattached.length === 1 ? 'unidentified tag needs' : 'unidentified tags need'} an owner
+					</h2>
+					<p class="text-xs text-gray-600">
+						These tags were used at the door but no key accounts for them. Open each one and attach
+						it to the person it belongs to.
+					</p>
+				</div>
+				{#each unattached as tag, at (tag.id)}
+					<a href={keyPath(tag.id)} in:arrive={{ index: at }} class="row">
+						<span class="flex min-w-0 flex-col">
+							<span class="truncate font-mono"
+								>{tag.serialNumber ?? tag.claims?.aud ?? 'No serial number'}</span
+							>
+							<span class="truncate text-xs text-gray-400"
+								>{tag.claims?.jti
+									? `Key ${tag.claims.jti.slice(0, 8)}${tag.claims.verified ? '' : ' (unverified)'}`
+									: 'No key on the tag'}</span
+							>
+						</span>
+						<span
+							class="shrink-0 text-right text-xs text-gray-400"
+							title={tag.lastSeen.toLocaleString('el-GR')}
+							>{tag.sightings}× · last {timeAgo(tag.lastSeen, now)}</span
+						>
+					</a>
+				{/each}
+			</section>
+		{/if}
 
 		{#if !scanning}
 			<div
@@ -429,7 +500,7 @@
 									users.items?.find((user) => user.id === entry.openedBy),
 									'An admin'
 								)
-							: (entry.keyId && emailByKey.get(entry.keyId)) || 'Deleted key'}
+							: tagLabel(entry)}
 					/>
 				</div>
 			{:else}
