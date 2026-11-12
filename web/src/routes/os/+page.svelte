@@ -18,7 +18,7 @@
 	import { toast } from '#lib/notify.svelte.ts';
 	import { canonicalSerial, serialDigits } from '#lib/serial.ts';
 	import { keyStatus } from '#lib/status.ts';
-	import { EntryType, type Entry, type KeySummary, type UserOption } from '#lib/types.ts';
+	import { EntryType, FailReason, type Entry, type KeySummary, type UserOption } from '#lib/types.ts';
 	import Loading from '#lib/loading.svelte';
 	import ActivityRow from '#lib/ui/ActivityRow.svelte';
 	import Avatar from '#lib/ui/Avatar.svelte';
@@ -55,7 +55,13 @@
 		map: toUnidentifiedTag,
 		sort: (a, b) => b.lastSeen.getTime() - a.lastSeen.getTime()
 	});
-	const unattached = $derived((strayTags.items ?? []).filter((tag) => !tag.userId));
+	// A tag whose token never verified and was only ever refused as "Unknown" is a failed
+	// authentication (noise, a foreign tag), not someone's key, so it needs no owner.
+	const unattached = $derived(
+		(strayTags.items ?? []).filter(
+			(tag) => !tag.userId && (tag.claims?.verified || tag.lastReason !== FailReason.UNKNOWN)
+		)
+	);
 	const activity = liveRows({
 		table: 'entries',
 		load: () => listEntries({ limit: 40 }),

@@ -128,7 +128,7 @@
 		<button type="button" class="btn" disabled={busy} onclick={() => attach(null)}>Detach</button>
 	</div>
 {:else}
-	<div class="panel flex flex-col gap-3 border-red-500/60 bg-red-500/5 px-4 py-3 text-sm">
+	<div class="panel flex flex-col gap-3 overflow-visible border-red-500/60 bg-red-500/5 px-4 py-3 text-sm">
 		<p>
 			No key accounts for this tag: its key was deleted, its token did not verify, or it carries
 			none. Attach it to the person it belongs to.
