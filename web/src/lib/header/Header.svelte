@@ -36,6 +36,9 @@
 	{#if user?.isAdmin}
 		<a href={resolve('/os/firmware')} class="label only-md">Firmware</a>
 	{/if}
+	{#if user}
+		<a href={resolve('/os/keys')} class="label only-md">My keys</a>
+	{/if}
 	<div class="grow"></div>
 	{#if user?.isAdmin}
 		<span class="key-cell">

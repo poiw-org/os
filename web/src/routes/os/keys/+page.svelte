@@ -11,6 +11,7 @@
 	import KeyStatusBadge from '#lib/ui/KeyStatusBadge.svelte';
 	import V1Badge from '#lib/ui/V1Badge.svelte';
 	import VirtualBadge from '#lib/ui/VirtualBadge.svelte';
+	import InstallGuide from '#lib/ui/InstallGuide.svelte';
 
 	const userId = page.data.user.id as string;
 
@@ -68,4 +69,6 @@
 			{/each}
 		</div>
 	{/if}
+
+	<InstallGuide />
 </div>

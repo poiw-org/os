@@ -231,12 +231,8 @@
 				<span class="shrink-0 text-gray-400">Settings</span>
 			</button>
 
-			{#if user.canUnlock || user.isAdmin}
-				<div
-					class="grid gap-2 border-t px-4 py-4 {user.canUnlock && user.isAdmin
-						? 'grid-cols-2'
-						: ''}"
-				>
+			{#if user}
+				<div class="grid grid-cols-2 gap-2 border-t px-4 py-4">
 					{#if user.canUnlock}
 						<button type="button" onclick={() => handOff(onunlock)} class="btn py-3 text-sm"
 							>Remote unlock</button
@@ -248,6 +244,9 @@
 							>Firmware</a
 						>
 					{/if}
+					<a href={resolve('/os/keys')} onclick={close} class="btn py-3 text-center text-sm"
+						>My keys</a
+					>
 				</div>
 			{/if}
 
