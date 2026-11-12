@@ -83,9 +83,13 @@ class SupabaseKeyBackend implements KeyBackend {
 
   @override
   Future<List<VirtualKey>> fetchKeys() => _guard(() async {
+    // Row-level security lets admins read every key, so ask for this member's own.
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return const <VirtualKey>[];
     final rows = await _client
         .from('keys')
         .select('id, not_before, expires_at, disabled, device_name')
+        .eq('user_id', userId)
         .filter('serial_number', 'is', null);
     return [for (final row in rows) VirtualKey.fromRow(row)];
   });
