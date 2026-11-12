@@ -1,0 +1,44 @@
+name: doora
+description: "The door lock of the po/iw hackerspace: your virtual keys, and the unlock."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.14.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # The widgets Flutter 3.50 split out of the framework (package:flutter/material.dart is deprecated).
+  material_ui: ^1.1.0
+  # Opens poiw.org, where passkeys and authenticator apps are set up.
+  url_launcher: ^6.3.3
+  # Account, session and the `ble-credential` function.
+  supabase_flutter: ^2.18.3
+  # Finding the door and talking to it.
+  flutter_blue_plus: ^2.3.15
+  # "You're at the door" while the app is in the background.
+  flutter_local_notifications: ^23.0.1
+  # Credentials and the offline key cache, in the Keychain / Keystore.
+  flutter_secure_storage: ^11.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  # Test-only: lets the fake door verify the phone's real ECDSA signature.
+  pointycastle: ^4.0.0
+
+flutter:
+  uses-material-design: false
+  assets:
+    - assets/images/poiw.png
+  fonts:
+    - family: SpaceGrotesk
+      fonts:
+        - asset: assets/fonts/SpaceGrotesk-Variable.ttf
+    - family: SpaceMono
+      fonts:
+        - asset: assets/fonts/SpaceMono-Regular.ttf
+        - asset: assets/fonts/SpaceMono-Bold.ttf
+          weight: 700
