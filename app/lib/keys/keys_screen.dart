@@ -343,6 +343,11 @@ class _DoorState extends StatelessWidget {
       }
     }
 
+    // Not at the door: the server can open it over the internet instead.
+    final remote = keys.hasUsableCredential && coordinator.canUnlockRemotely
+        ? _RemoteUnlockButton(onPressed: coordinator.offerRemoteUnlock)
+        : null;
+
     final type = context.type;
     return Panel(
       children: [
@@ -367,6 +372,10 @@ class _DoorState extends StatelessWidget {
                   Text(detail, style: type.muted),
                 ],
                 if (action != null) ...[const SizedBox(height: 20), action],
+                if (remote != null) ...[
+                  SizedBox(height: action != null ? 10 : 20),
+                  remote,
+                ],
               ],
             ),
           ),
@@ -503,4 +512,17 @@ class WebsiteNote extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Unlock over the internet. Blue, like the remote sheet, so it never reads as being at the door.
+class _RemoteUnlockButton extends StatelessWidget {
+  const _RemoteUnlockButton({required this.onPressed});
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => DooraTextButton(
+    label: 'Unlock remotely',
+    color: LampColors.blue,
+    onPressed: onPressed,
+  );
 }

@@ -152,6 +152,9 @@ class _Keys implements KeyBackend {
     required String devicePubkey,
     required String deviceName,
   }) => throw const KeyBackendException('Preview only.');
+
+  @override
+  Future<Duration> remoteUnlock() async => Duration.zero;
 }
 
 class _Auth implements AuthBackend {

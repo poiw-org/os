@@ -127,15 +127,17 @@ class _DooraAppState extends State<DooraApp> {
     if (request == null || context == null) return;
     final credential = widget.keys!.bestCredential();
     if (credential == null) {
-      coordinator.sheetClosed(request.sighting.deviceId);
+      coordinator.sheetClosed(request.sighting?.deviceId);
       return;
     }
+    final sighting = request.sighting;
     await showUnlockSheet(
       context,
       initialDoorName: widget.keys!.onlyDoorName ?? 'Door',
       doorNameFor: widget.keys!.doorName,
       keyExpiresAt: credential.expiresAt,
       autoStart: request.autoStart,
+      remote: request.remote,
       unlock: (onDoorId) async {
         // Face ID before the radio: a phone in someone else's hand opens nothing.
         if (!await _biometrics.confirmUnlock(
@@ -143,10 +145,12 @@ class _DooraAppState extends State<DooraApp> {
         )) {
           return const Failed(FailureKind.notConfirmed);
         }
-        return coordinator.unlock(request.sighting, onDoorId: onDoorId);
+        return sighting == null
+            ? coordinator.unlockRemotely()
+            : coordinator.unlock(sighting, onDoorId: onDoorId);
       },
     );
-    coordinator.sheetClosed(request.sighting.deviceId);
+    coordinator.sheetClosed(sighting?.deviceId);
   }
 
   Future<void> _confirmSignOut() async {

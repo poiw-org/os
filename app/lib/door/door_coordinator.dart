@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../keys/credential_store.dart';
+import '../keys/key_backend.dart';
 import '../keys/key_controller.dart';
 import '../platform/system.dart';
 import 'ble_protocol.dart';
@@ -11,10 +12,14 @@ import 'door_notifier.dart';
 import 'door_scanner.dart';
 import 'door_unlocker.dart';
 
-/// Asks the screen to present the unlock sheet for [sighting].
+/// Asks the screen to present the unlock sheet for [sighting], or for a remote unlock when it is
+/// null.
 class SheetRequest {
   const SheetRequest(this.sighting, {this.autoStart = false});
-  final DoorSighting sighting;
+  const SheetRequest.remote() : sighting = null, autoStart = false;
+  final DoorSighting? sighting;
+
+  bool get remote => sighting == null;
 
   /// The member already tapped Unlock (the notification's action): start at once.
   final bool autoStart;
@@ -68,6 +73,10 @@ class DoorCoordinator extends ChangeNotifier with WidgetsBindingObserver {
   /// A door is near and there is a key to open it with: the row's Unlock button shows.
   bool get canUnlockNow =>
       scanner.near != null && keys.hasUsableCredential && _foreground;
+
+  /// No door in Bluetooth range, but a key: the server can open it over the internet.
+  bool get canUnlockRemotely =>
+      scanner.near == null && keys.hasUsableCredential && _foreground;
 
   Future<void> start() async {
     if (_started) return;
@@ -170,16 +179,23 @@ class DoorCoordinator extends ChangeNotifier with WidgetsBindingObserver {
     return until != null && _clock().isBefore(until);
   }
 
-  void _present(DoorSighting sighting, {bool autoStart = false}) {
+  void _present(DoorSighting? sighting, {bool autoStart = false}) {
     if (sheet.value != null) return;
     if (autoStart) _autoUnlockUntil = null;
-    sheet.value = SheetRequest(sighting, autoStart: autoStart);
+    sheet.value = sighting == null
+        ? const SheetRequest.remote()
+        : SheetRequest(sighting, autoStart: autoStart);
   }
 
   /// The row's Unlock button: the same sheet, without the cooldown.
   void offerUnlock() {
     final near = scanner.near;
     if (near != null && keys.hasUsableCredential) _present(near);
+  }
+
+  /// The Unlock remotely button.
+  void offerRemoteUnlock() {
+    if (canUnlockRemotely) _present(null);
   }
 
   /// The notification's Unlock action was tapped: unlock as soon as the door is in range.
@@ -194,10 +210,10 @@ class DoorCoordinator extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   /// The sheet closed, however it closed. The door stays silent for [promptCooldown]: the member
-  /// said not now, or just opened it and is still standing there.
-  void sheetClosed(String deviceId) {
+  /// said not now, or just opened it and is still standing there. A remote sheet sets no cooldown.
+  void sheetClosed(String? deviceId) {
     sheet.value = null;
-    _quietUntil[deviceId] = _clock().add(promptCooldown);
+    if (deviceId != null) _quietUntil[deviceId] = _clock().add(promptCooldown);
   }
 
   /// Runs the unlock with the credential that expires last.
@@ -212,6 +228,19 @@ class DoorCoordinator extends ChangeNotifier with WidgetsBindingObserver {
       credential: credential,
       onDoorId: onDoorId,
     );
+  }
+
+  /// Asks the server to open the door over the internet.
+  Future<UnlockOutcome> unlockRemotely() async {
+    try {
+      return Opened(after: await keys.backend.remoteUnlock());
+    } on KeyBackendException catch (e) {
+      return RemoteFailed(e.message);
+    } on OfflineException {
+      return const RemoteFailed(
+        "Couldn't reach the server. Check your connection.",
+      );
+    }
   }
 
   @override

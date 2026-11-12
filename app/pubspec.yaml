@@ -22,6 +22,7 @@ dependencies:
   # Credentials and the offline key cache, in the Keychain / Keystore.
   flutter_secure_storage: ^11.2.0
   local_auth: ^3.0.2
+  audioplayers: ^6.8.1
 
 dev_dependencies:
   flutter_test:
@@ -34,6 +35,7 @@ flutter:
   uses-material-design: false
   assets:
     - assets/images/mark.png
+    - assets/sounds/unlock.mp3
   fonts:
     - family: SpaceGrotesk
       fonts:

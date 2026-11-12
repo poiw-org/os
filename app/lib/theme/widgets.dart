@@ -1,5 +1,7 @@
 // The shared widgets: the web's `.panel`, `.row`, `.btn`, inputs, the readout chip with its lamp and
 // the `VIRTUAL` tag, rebuilt as small widgets with square corners, bevels and no gradients.
+import 'dart:async';
+
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
@@ -892,13 +894,42 @@ class BarStatus extends StatelessWidget {
 }
 
 /// A status cell showing signal strength: a wifi glyph with the lamp's halo glow and the reading in
-/// dBm. Above -60 is full, above -70 medium, anything weaker low.
-class SignalStatus extends StatelessWidget {
-  const SignalStatus({super.key, required this.rssi});
+/// dBm. Above -60 is full, above -70 medium, anything weaker low. Scan results arrive many times a
+/// second, so the reading shown is sampled once per [sampleEvery] and the glyph does not flicker.
+class SignalStatus extends StatefulWidget {
+  const SignalStatus({
+    super.key,
+    required this.rssi,
+    this.sampleEvery = const Duration(seconds: 1),
+  });
   final int rssi;
+  final Duration sampleEvery;
+
+  @override
+  State<SignalStatus> createState() => _SignalStatusState();
+}
+
+class _SignalStatusState extends State<SignalStatus> {
+  late int _shown = widget.rssi;
+  Timer? _sampler;
+
+  @override
+  void initState() {
+    super.initState();
+    _sampler = Timer.periodic(widget.sampleEvery, (_) {
+      if (widget.rssi != _shown) setState(() => _shown = widget.rssi);
+    });
+  }
+
+  @override
+  void dispose() {
+    _sampler?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final rssi = _shown;
     final level = rssi > -60
         ? 3
         : rssi > -70

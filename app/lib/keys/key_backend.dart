@@ -36,6 +36,10 @@ abstract class KeyBackend {
     required String devicePubkey,
     required String deviceName,
   });
+
+  /// `unlock`: the server tells the door to open over the internet and returns once it confirms.
+  /// The door unlocks the returned delay later (a warning tone plays at the door meanwhile).
+  Future<Duration> remoteUnlock();
 }
 
 class SupabaseKeyBackend implements KeyBackend {
@@ -127,5 +131,17 @@ class SupabaseKeyBackend implements KeyBackend {
       notBefore: DateTime.parse(data['not_before'] as String),
       expiresAt: DateTime.parse(data['expires_at'] as String),
     );
+  });
+
+  @override
+  Future<Duration> remoteUnlock() => _guard(() async {
+    // The function waits up to 6 s for the door's confirmation; _guard allows 15.
+    final response = await _client.functions.invoke(
+      'unlock',
+      body: const <String, dynamic>{},
+    );
+    final data = response.data;
+    final ms = data is Map ? data['delay_ms'] : null;
+    return Duration(milliseconds: ms is num && ms > 0 ? ms.round() : 0);
   });
 }

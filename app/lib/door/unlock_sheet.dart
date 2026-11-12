@@ -1,4 +1,7 @@
 import 'dart:async';
+
+import 'package:audioplayers/audioplayers.dart';
+
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -25,6 +28,7 @@ Future<void> showUnlockSheet(
   required Future<UnlockOutcome> Function(void Function(String doorId) onDoorId)
   unlock,
   bool autoStart = false,
+  bool remote = false,
 }) {
   unawaited(HapticFeedback.lightImpact());
   return showGeneralDialog<void>(
@@ -39,6 +43,7 @@ Future<void> showUnlockSheet(
       keyExpiresAt: keyExpiresAt,
       unlock: unlock,
       autoStart: autoStart,
+      remote: remote,
     ),
     transitionBuilder: (context, animation, _, child) {
       if (Motion.reduced(context)) {
@@ -67,7 +72,7 @@ Future<void> showUnlockSheet(
   );
 }
 
-enum _Phase { ready, unlocking, opened, failed }
+enum _Phase { ready, unlocking, counting, opened, failed }
 
 /// The card's colours: the system's grouped surfaces, light or dark with the phone.
 class _Look {
@@ -107,6 +112,7 @@ class _Look {
   final Color buttonInk;
 
   static const Color green = Color(0xFF30D158);
+  static const Color blue = Color(0xFF0A84FF);
 }
 
 /// The system face on each platform rather than the console's.
@@ -121,6 +127,7 @@ class UnlockSheet extends StatefulWidget {
     required this.keyExpiresAt,
     required this.unlock,
     this.autoStart = false,
+    this.remote = false,
     this.closeDelay = const Duration(milliseconds: 1600),
   });
 
@@ -130,6 +137,10 @@ class UnlockSheet extends StatefulWidget {
   final Future<UnlockOutcome> Function(void Function(String doorId) onDoorId)
   unlock;
   final bool autoStart;
+
+  /// Over the internet instead of Bluetooth: the accent turns blue so it never reads as being at
+  /// the door.
+  final bool remote;
 
   /// How long "Open" stays before the card closes.
   final Duration closeDelay;
@@ -145,6 +156,21 @@ class _UnlockSheetState extends State<UnlockSheet>
   late String _doorName = widget.initialDoorName;
   Timer? _closeTimer;
   Timer? _beacon;
+  Timer? _countdown;
+
+  // The latch sound. Ambient: it mixes with other audio and the silent switch mutes it.
+  final AudioPlayer _click = AudioPlayer()
+    ..setAudioContext(
+      AudioContextConfig(
+        respectSilence: true,
+        focus: AudioContextConfigFocus.mixWithOthers,
+      ).build(),
+    )
+    ..setReleaseMode(ReleaseMode.stop)
+    ..setSourceAsset('sounds/unlock.mp3');
+
+  /// Whole seconds left before a confirmed remote open unlocks.
+  int _secondsLeft = 0;
 
   // The door turns slowly while the card is up, and swings on its hinge when it opens.
   late final AnimationController _turn = AnimationController(
@@ -183,6 +209,8 @@ class _UnlockSheetState extends State<UnlockSheet>
   void dispose() {
     _closeTimer?.cancel();
     _beacon?.cancel();
+    _countdown?.cancel();
+    unawaited(_click.dispose());
     _turn.dispose();
     _swing.dispose();
     _settle.dispose();
@@ -190,6 +218,9 @@ class _UnlockSheetState extends State<UnlockSheet>
   }
 
   bool get _locked => _phase == _Phase.unlocking;
+
+  /// Green for an open at the door, blue for one over the internet.
+  Color get _accent => widget.remote ? _Look.blue : _Look.green;
 
   void _close() {
     if (mounted && Navigator.of(context).canPop()) Navigator.of(context).pop();
@@ -215,6 +246,38 @@ class _UnlockSheetState extends State<UnlockSheet>
     });
     _beacon?.cancel();
     if (!mounted) return;
+    if (outcome is Opened && outcome.after > Duration.zero) {
+      _countDown(outcome);
+      return;
+    }
+    _finish(outcome);
+  }
+
+  /// The door confirmed and plays its warning tone: count down to the moment it unlocks.
+  void _countDown(Opened outcome) {
+    final unlockAt = DateTime.now().add(outcome.after);
+    int left() =>
+        (unlockAt.difference(DateTime.now()).inMilliseconds / 1000).ceil();
+    setState(() {
+      _outcome = outcome;
+      _phase = _Phase.counting;
+      _secondsLeft = left();
+    });
+    _countdownTick(_secondsLeft);
+    _countdown = Timer.periodic(const Duration(milliseconds: 100), (timer) {
+      if (!mounted) return timer.cancel();
+      final now = left();
+      if (now <= 0) {
+        timer.cancel();
+        _finish(outcome);
+      } else if (now != _secondsLeft) {
+        setState(() => _secondsLeft = now);
+        _countdownTick(now);
+      }
+    });
+  }
+
+  void _finish(UnlockOutcome outcome) {
     setState(() {
       _outcome = outcome;
       _phase = outcome is Opened ? _Phase.opened : _Phase.failed;
@@ -257,11 +320,36 @@ class _UnlockSheetState extends State<UnlockSheet>
     });
   }
 
-  /// The latch letting go: a hard click, then the lighter knock of the door leaving the frame.
+  /// The latch sound with haptics on its waveform: a sharp click peaking at 20 ms, a slightly
+  /// softer and broader one at 100-115 ms, then a short decay (the asset is trimmed to start at
+  /// the first click).
   Future<void> _latchClick() async {
-    await HapticFeedback.heavyImpact();
-    await Future<void>.delayed(const Duration(milliseconds: 70));
-    await HapticFeedback.lightImpact();
+    unawaited(_click.resume());
+    for (final (ms, tap) in const [
+      (20, HapticFeedback.heavyImpact),
+      (105, HapticFeedback.mediumImpact),
+      (140, HapticFeedback.selectionClick),
+    ]) {
+      Timer(Duration(milliseconds: ms), () => unawaited(tap()));
+    }
+  }
+
+  /// One countdown second: a heartbeat that grows firmer over the last three.
+  void _countdownTick(int secondsLeft) {
+    if (secondsLeft > 3) {
+      unawaited(HapticFeedback.lightImpact());
+      return;
+    }
+    unawaited(HapticFeedback.mediumImpact());
+    Timer(const Duration(milliseconds: 90), () {
+      if (_phase == _Phase.counting) {
+        unawaited(
+          secondsLeft == 1
+              ? HapticFeedback.heavyImpact()
+              : HapticFeedback.lightImpact(),
+        );
+      }
+    });
   }
 
   // ---------------------------------------------------------------- drag
@@ -436,9 +524,9 @@ class _UnlockSheetState extends State<UnlockSheet>
                 dark:
                     MediaQuery.platformBrightnessOf(context) == Brightness.dark,
                 glow: _phase == _Phase.opened
-                    ? _Look.green
-                    : _phase == _Phase.unlocking
-                    ? const Color(0xFF0A84FF)
+                    ? _accent
+                    : _phase == _Phase.unlocking || _phase == _Phase.counting
+                    ? _Look.blue
                     : null,
               ),
             );
@@ -452,12 +540,18 @@ class _UnlockSheetState extends State<UnlockSheet>
     final expires = widget.keyExpiresAt;
     final failed = _outcome;
     final text = switch (_phase) {
-      _Phase.ready => 'Key valid until ${spokenDate(expires)}',
-      _Phase.unlocking => 'Talking to the door…',
-      _Phase.opened => 'Door open',
+      _Phase.ready =>
+        widget.remote
+            ? 'Unlock remotely, over the internet'
+            : 'Key valid until ${spokenDate(expires)}',
+      _Phase.unlocking =>
+        widget.remote ? 'Reaching the door remotely…' : 'Talking to the door…',
+      _Phase.counting => 'Warning tone playing at the door',
+      _Phase.opened => widget.remote ? 'Door open remotely' : 'Door open',
       _Phase.failed => switch (failed) {
         Refused(:final sentence) => sentence,
         Failed(:final sentence) => sentence,
+        RemoteFailed(:final sentence) => sentence,
         _ => '',
       },
     };
@@ -472,7 +566,9 @@ class _UnlockSheetState extends State<UnlockSheet>
           style: TextStyle(
             fontSize: 15,
             height: 1.35,
-            color: _phase == _Phase.opened ? _Look.green : look.secondary,
+            color: _phase == _Phase.opened || widget.remote
+                ? _accent
+                : look.secondary,
             fontWeight: _phase == _Phase.opened
                 ? FontWeight.w600
                 : FontWeight.w400,
@@ -486,12 +582,15 @@ class _UnlockSheetState extends State<UnlockSheet>
     final retry = switch (_outcome) {
       Refused(:final canRetry) => canRetry,
       Failed(:final canRetry) => canRetry,
+      RemoteFailed(:final canRetry) => canRetry,
       _ => false,
     };
     return switch (_phase) {
       _Phase.ready => _PillButton(
-        label: 'Unlock',
+        label: widget.remote ? 'Unlock remotely' : 'Unlock',
         look: look,
+        color: widget.remote ? _accent : null,
+        ink: widget.remote ? const Color(0xFFFFFFFF) : null,
         onPressed: _start,
       ),
       _Phase.unlocking => _PillButton(
@@ -499,10 +598,17 @@ class _UnlockSheetState extends State<UnlockSheet>
         look: look,
         busy: true,
       ),
+      _Phase.counting => _PillButton(
+        label: 'Unlocking in $_secondsLeft s',
+        look: look,
+        color: _accent,
+        ink: const Color(0xFFFFFFFF),
+        busy: true,
+      ),
       _Phase.opened => _PillButton(
         label: 'Open',
         look: look,
-        color: _Look.green,
+        color: _accent,
         ink: const Color(0xFFFFFFFF),
         done: true,
       ),

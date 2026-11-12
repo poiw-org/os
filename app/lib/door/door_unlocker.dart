@@ -34,9 +34,10 @@ sealed class UnlockOutcome {
   const UnlockOutcome();
 }
 
-/// The door answered 0.
+/// The door answered 0. A remote open confirms first and unlocks [after] later.
 class Opened extends UnlockOutcome {
-  const Opened();
+  const Opened({this.after = Duration.zero});
+  final Duration after;
 }
 
 /// The door answered and said no.
@@ -55,6 +56,14 @@ enum FailureKind {
   deviceKey,
   noKey,
   notConfirmed,
+}
+
+/// The server could not open the door remotely; [sentence] is its reason, for the member.
+class RemoteFailed extends UnlockOutcome {
+  const RemoteFailed(this.sentence);
+  final String sentence;
+
+  bool get canRetry => true;
 }
 
 /// The unlock never reached an answer.
