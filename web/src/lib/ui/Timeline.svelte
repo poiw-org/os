@@ -112,7 +112,7 @@
 			tone: ok ? 'good' : 'bad',
 			icon: ok ? 'door' : 'deny',
 			title: ok ? 'Opened the door' : `Denied${e.reason ? ` · ${e.reason}` : ''}`,
-			detail: e.openedBy ? 'from the web UI' : keyLabel(e.keyId, serialByKey.get(e.keyId ?? ''))
+			detail: e.openedBy ? 'from the web UI' : e.viaPhone ? 'with a phone' : keyLabel(e.keyId, serialByKey.get(e.keyId ?? ''))
 		};
 	};
 

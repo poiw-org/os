@@ -44,6 +44,9 @@ export type Key = {
 	disabled: boolean;
 	serialReleased: boolean;
 	jwt: string;
+	/** The phone a virtual key is set up on, and when; null until the app has bound one. */
+	deviceName: string | null;
+	deviceBoundAt: Date | null;
 	v1: boolean;
 	// Signed with RSA (RS256) rather than the legacy shared secret.
 	v2: boolean;
@@ -60,6 +63,8 @@ export type Entry = {
 	tagId: string | null;
 	/** Set when an admin opened the door from the web UI: who gave the command. */
 	openedBy: string | null;
+	/** Opened (or refused) over Bluetooth by a phone, not a tag. */
+	viaPhone: boolean;
 };
 
 export type ActivityKind =

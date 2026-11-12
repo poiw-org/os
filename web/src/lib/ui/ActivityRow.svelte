@@ -32,7 +32,7 @@
 						>WEB</span
 					>Opened the door from the web UI{:else}{ok
 						? 'Opened the door'
-						: (entry.reason ?? 'Denied')}{/if}</span
+						: (entry.reason ?? 'Denied')}{entry.viaPhone ? ' with a phone' : ''}{/if}</span
 			>
 		</span>
 	</span>

@@ -236,7 +236,9 @@
 						notBefore: new Date(row.not_before as string),
 						expiresAt: new Date(row.expires_at as string),
 						disabled: row.disabled as boolean,
-						jwt: (row.jwt as string | null) ?? ''
+						jwt: (row.jwt as string | null) ?? '',
+						deviceName: (row.device_name as string | null) ?? null,
+						deviceBoundAt: row.device_bound_at ? new Date(row.device_bound_at as string) : null
 					};
 				}
 			}
@@ -327,7 +329,7 @@
 		{/if}
 
 		<dl class="panel text-sm">
-			{#each [['User', withName(key.user)], ['Tag S/N', key.serialNumber ? key.serialNumber + (key.serialReleased ? ' (released)' : '') : 'Virtual (no tag)'], ['Valid not before', formatDate(key.notBefore)], ['Expires at', formatDate(key.expiresAt)], ['Issued at', formatDate(key.issuedAt)], ['Issued by', key.issuedBy || '-']] as [label, value] (label)}
+			{#each [['User', withName(key.user)], ['Tag S/N', key.serialNumber ? key.serialNumber + (key.serialReleased ? ' (released)' : '') : 'Virtual (no tag)'], ['Valid not before', formatDate(key.notBefore)], ['Expires at', formatDate(key.expiresAt)], ['Issued at', formatDate(key.issuedAt)], ['Issued by', key.issuedBy || '-'], ...(key.serialNumber ? [] : [['Phone', key.deviceName ? `${key.deviceName}, set up ${formatDate(key.deviceBoundAt!)}` : 'Not set up on a phone yet']])] as [label, value] (label)}
 				<div class="row">
 					<dt class="text-gray-400">{label}</dt>
 					<dd class="min-w-0 text-right break-all {label === 'Tag S/N' ? 'font-mono' : ''}">
@@ -369,7 +371,9 @@
 							<span class="tabular-nums">{formatDateTime(entry.timestamp)}</span></span
 						>
 						<span class="text-xs text-gray-400"
-							>{entry.type == EntryType.SUCCESSFUL ? 'Opened' : (entry.reason ?? 'Denied')}</span
+							>{entry.type == EntryType.SUCCESSFUL ? 'Opened' : (entry.reason ?? 'Denied')}{entry.viaPhone
+								? ' with a phone'
+								: ''}</span
 						>
 					</div>
 					{#if selectedId === entry.id}

@@ -22,7 +22,7 @@ import {
 export const DOOR_ID = 'front';
 
 const KEY_COLUMNS =
-	'id, serial_number, not_before, expires_at, issued_at, disabled, serial_released, jwt, legacy_id, user:profiles!user_id(id, email, first_name, last_name, onboarded_at), issuer:profiles!issued_by(email)';
+	'id, serial_number, not_before, expires_at, issued_at, disabled, serial_released, jwt, legacy_id, device_name, device_bound_at, user:profiles!user_id(id, email, first_name, last_name, onboarded_at), issuer:profiles!issued_by(email)';
 
 // Rows arrive in the same snake_case shape from queries and from realtime events.
 type Raw = Record<string, unknown>;
@@ -53,6 +53,7 @@ export const toEntry = (row: Raw): Entry => {
 	const metadata = (row.metadata ?? {}) as {
 		serialNumberFromTag?: string;
 		claims?: { jti?: string };
+		source?: string;
 	};
 	const serial = row.serial_number as string | null;
 	return {
@@ -65,7 +66,8 @@ export const toEntry = (row: Raw): Entry => {
 		reason: (row.reason as FailReason | null) ?? undefined,
 		timestamp: new Date(row.created_at as string),
 		serialNumberFromTag: metadata.serialNumberFromTag,
-		openedBy: (row.opened_by as string | null) ?? null
+		openedBy: (row.opened_by as string | null) ?? null,
+		viaPhone: metadata.source === 'ble'
 	};
 };
 
@@ -159,6 +161,8 @@ function toKey(row: {
 	serial_released: boolean;
 	jwt: string | null;
 	legacy_id: string | null;
+	device_name: string | null;
+	device_bound_at: string | null;
 	user: {
 		id: string;
 		email: string | null;
@@ -179,6 +183,8 @@ function toKey(row: {
 		disabled: row.disabled,
 		serialReleased: row.serial_released,
 		jwt: row.jwt ?? '',
+		deviceName: row.device_name,
+		deviceBoundAt: row.device_bound_at ? new Date(row.device_bound_at) : null,
 		v1: row.legacy_id != null,
 		v2: jwtAlgorithm(row.jwt) === 'RS256'
 	};

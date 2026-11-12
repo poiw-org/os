@@ -14,8 +14,6 @@
 //
 // Auth: the caller's Supabase access token, which must belong to a row in public.admins.
 // verify_jwt is off at the gateway because that check is done here.
-import { Buffer } from 'node:buffer';
-import { signRs256 } from '../_shared/rsa.ts';
 import {
 	accessToken,
 	askAsCaller,
@@ -25,6 +23,7 @@ import {
 	handlePost,
 	serviceClient
 } from '../_shared/http.ts';
+import { signKey } from '../_shared/keys.ts';
 
 type Db = ReturnType<typeof serviceClient>;
 
@@ -59,30 +58,7 @@ function parseRange(body: Record<string, unknown>) {
 	return { notBefore, expiresAt };
 }
 
-const seconds = (date: Date) => Math.floor(date.getTime() / 1000);
-
-const base64Url = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
-
-// Claims are what the door firmware reads: sub = user, jti = key id, aud = tag serial number.
-// A virtual key has no tag; its audience matches no serial number, so no tag can ever carry it.
-async function signKey(key: {
-	id: string;
-	userId: string;
-	serialNumber: string | null;
-	issuedAt: Date;
-	notBefore: Date;
-	expiresAt: Date;
-}) {
-	const signed = `${base64Url({ alg: 'RS256', typ: 'JWT' })}.${base64Url({
-		sub: key.userId,
-		jti: key.id,
-		aud: key.serialNumber ?? 'virtual',
-		iat: seconds(key.issuedAt),
-		nbf: seconds(key.notBefore),
-		exp: seconds(key.expiresAt)
-	})}`;
-	return `${signed}.${await signRs256(env('RSA_KEY_SEED'), signed)}`;
-}
+const sign = (key: Parameters<typeof signKey>[1]) => signKey(env('RSA_KEY_SEED'), key);
 
 async function issue(db: Db, callerId: string, body: Record<string, unknown>) {
 	const userId = typeof body.user_id === 'string' ? body.user_id : '';
@@ -115,7 +91,7 @@ async function issue(db: Db, callerId: string, body: Record<string, unknown>) {
 
 	const id = crypto.randomUUID();
 	const issuedAt = new Date();
-	const jwt = await signKey({
+	const jwt = await sign({
 		id,
 		userId,
 		serialNumber,
@@ -231,7 +207,7 @@ async function renew(db: Db, callerId: string, body: Record<string, unknown>) {
 
 	const { data: key } = await db
 		.from('keys')
-		.select('id, user_id, serial_number, issued_at, expires_at, disabled')
+		.select('id, user_id, serial_number, issued_at, expires_at, disabled, device_pubkey')
 		.eq('id', id)
 		.maybeSingle();
 	if (!key) throw new HttpError(404, 'Key not found');
@@ -255,13 +231,15 @@ async function renew(db: Db, callerId: string, body: Record<string, unknown>) {
 	if (!profile) throw new HttpError(404, 'User not found');
 	if (profile.blocked) throw new HttpError(422, 'User is blocked');
 
-	const jwt = await signKey({
+	const jwt = await sign({
 		id: key.id,
 		userId: key.user_id,
 		serialNumber: key.serial_number,
 		issuedAt: new Date(key.issued_at),
 		notBefore,
-		expiresAt
+		expiresAt,
+		// A phone's credential keeps naming its phone when the key is renewed.
+		devicePubkey: key.device_pubkey
 	});
 
 	// Conditional on the row being unchanged since it was read, so a concurrent renew or disable
