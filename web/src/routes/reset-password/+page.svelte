@@ -59,9 +59,9 @@
 				<input
 					type="password"
 					required
-					minlength="12"
+					minlength="8"
 					autocomplete="new-password"
-					placeholder="12+ characters"
+					placeholder="8+ characters"
 					bind:value={password}
 					class="px-3.5 py-2.5"
 				/>
