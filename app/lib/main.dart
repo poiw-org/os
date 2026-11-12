@@ -18,6 +18,7 @@ import 'keys/credential_store.dart';
 import 'keys/key_backend.dart';
 import 'keys/key_controller.dart';
 import 'keys/keys_screen.dart';
+import 'platform/biometrics.dart';
 import 'platform/device_key.dart';
 import 'platform/system.dart';
 import 'theme/theme.dart';
@@ -91,6 +92,7 @@ class DooraApp extends StatefulWidget {
 
 class _DooraAppState extends State<DooraApp> {
   final GlobalKey<NavigatorState> _navigator = GlobalKey<NavigatorState>();
+  final Biometrics _biometrics = Biometrics();
   AuthStage? _lastStage;
 
   @override
@@ -134,8 +136,15 @@ class _DooraAppState extends State<DooraApp> {
       doorNameFor: widget.keys!.doorName,
       keyExpiresAt: credential.expiresAt,
       autoStart: request.autoStart,
-      unlock: (onDoorId) =>
-          coordinator.unlock(request.sighting, onDoorId: onDoorId),
+      unlock: (onDoorId) async {
+        // Face ID before the radio: a phone in someone else's hand opens nothing.
+        if (!await _biometrics.confirmUnlock(
+          widget.keys!.onlyDoorName ?? 'the door',
+        )) {
+          return const Failed(FailureKind.notConfirmed);
+        }
+        return coordinator.unlock(request.sighting, onDoorId: onDoorId);
+      },
     );
     coordinator.sheetClosed(request.sighting.deviceId);
   }
@@ -144,7 +153,7 @@ class _DooraAppState extends State<DooraApp> {
     final keys = widget.keys!;
     final choice = await showDialog<_SignOutChoice>(
       context: _navigator.currentContext!,
-      builder: (context) => const _SignOutDialog(),
+      builder: (context) => const SignOutDialog(),
     );
     if (choice == null) return;
     if (choice == _SignOutChoice.deleteKeys) await keys.deletePairs();
@@ -208,8 +217,8 @@ enum _SignOutChoice { keepKeys, deleteKeys }
 
 /// Signing out removes the credentials. Deleting the key pairs as well is permanent, and the
 /// dialog says so before it can be chosen.
-class _SignOutDialog extends StatelessWidget {
-  const _SignOutDialog();
+class SignOutDialog extends StatelessWidget {
+  const SignOutDialog({super.key});
 
   @override
   Widget build(BuildContext context) {

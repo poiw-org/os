@@ -73,14 +73,6 @@ const b64url = (n: bigint) =>
     "base64url",
   );
 
-// JWK integers are big-endian without leading zero bytes.
-const b64urlMinimal = (n: bigint) => {
-  const hex = n.toString(16);
-  return Buffer.from(hex.length % 2 ? "0" + hex : hex, "hex").toString(
-    "base64url",
-  );
-};
-
 // A prime of exactly BITS/2 bits whose product with another such prime has BITS bits: the top two
 // bits are set. It is the first prime at or above a point the seed picks, with p - 1 coprime to e.
 function derivePrime(seed: string, label: string) {
@@ -118,30 +110,31 @@ function derive(seed: string) {
 /** The public modulus as base64url (256 bytes); the exponent is always 65537. */
 export const publicModulus = (seed: string) => b64url(derive(seed).n);
 
-/** RS256 signature of `data`, base64url. The private key is derived for this call and dropped. */
+// DigestInfo prefix for SHA-256 (RFC 8017, section 9.2).
+const SHA256_PREFIX = Buffer.from("3031300d060960864801650304020105000420", "hex");
+
+/**
+ * RS256 (RSASSA-PKCS1-v1_5 with SHA-256) signature of `data`, base64url. The private key is derived
+ * for this call and dropped. Signed with BigInt and the CRT rather than WebCrypto: the edge
+ * runtime's native RSA signing panics on these derived keys.
+ */
 export async function signRs256(seed: string, data: string) {
   const k = derive(seed);
-  const key = await crypto.subtle.importKey(
-    "jwk",
-    {
-      kty: "RSA",
-      n: b64urlMinimal(k.n),
-      e: b64urlMinimal(E),
-      d: b64urlMinimal(k.d),
-      p: b64urlMinimal(k.p),
-      q: b64urlMinimal(k.q),
-      dp: b64urlMinimal(k.dp),
-      dq: b64urlMinimal(k.dq),
-      qi: b64urlMinimal(k.qi),
-    },
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["sign"],
+  const size = BITS / 8;
+  const hash = Buffer.from(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(data)),
   );
-  const signature = await crypto.subtle.sign(
-    "RSASSA-PKCS1-v1_5",
-    key,
-    new TextEncoder().encode(data),
-  );
-  return Buffer.from(signature).toString("base64url");
+  const tail = Buffer.concat([SHA256_PREFIX, hash]);
+  const em = Buffer.concat([
+    Buffer.from([0, 1]),
+    Buffer.alloc(size - tail.length - 3, 0xff),
+    Buffer.from([0]),
+    tail,
+  ]);
+  const m = toBigInt(em);
+  const s1 = modPow(m % k.p, k.dp, k.p);
+  const s2 = modPow(m % k.q, k.dq, k.q);
+  const h = (k.qi * (((s1 - s2) % k.p) + k.p)) % k.p;
+  const sig = s2 + h * k.q;
+  return Buffer.from(sig.toString(16).padStart(size * 2, "0"), "hex").toString("base64url");
 }

@@ -75,9 +75,12 @@
 
 		{#if renewed}
 			{#if key.serialNumber}
-				<p role="status" class="rounded-md border border-yellow-500/50 bg-yellow-500/10 p-3 text-sm">
-					<strong>Reflash the tag.</strong> The tag still carries the old token, with the old dates.
-					The door only honours the new dates once the renewed key is written to the tag again.
+				<p
+					role="status"
+					class="rounded-md border border-yellow-500/50 bg-yellow-500/10 p-3 text-sm"
+				>
+					<strong>Reflash the tag.</strong> The tag still carries the old token, with the old dates. The
+					door only honours the new dates once the renewed key is written to the tag again.
 				</p>
 				<div class="flex flex-wrap justify-end gap-2">
 					<button type="button" onclick={() => dialog?.close()} class="btn">Later</button>
@@ -93,8 +96,7 @@
 					Renewed. This is a virtual key, so there is no tag to reflash.
 				</p>
 				<div class="flex justify-end">
-					<button type="button" onclick={() => dialog?.close()} class="btn btn-primary"
-						>Done</button
+					<button type="button" onclick={() => dialog?.close()} class="btn btn-primary">Done</button
 					>
 				</div>
 			{/if}

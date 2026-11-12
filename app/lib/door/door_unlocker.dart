@@ -48,7 +48,14 @@ class Refused extends UnlockOutcome {
   bool get canRetry => result.canRetry;
 }
 
-enum FailureKind { connection, timeout, protocol, deviceKey, noKey }
+enum FailureKind {
+  connection,
+  timeout,
+  protocol,
+  deviceKey,
+  noKey,
+  notConfirmed,
+}
 
 /// The unlock never reached an answer.
 class Failed extends UnlockOutcome {
@@ -61,6 +68,7 @@ class Failed extends UnlockOutcome {
     FailureKind.protocol => 'The door sent something unexpected. Try again.',
     FailureKind.deviceKey => "This phone couldn't use its key. Try again.",
     FailureKind.noKey => 'This phone has no key that works right now.',
+    FailureKind.notConfirmed => "The unlock wasn't confirmed.",
   };
 
   bool get canRetry => kind != FailureKind.noKey;

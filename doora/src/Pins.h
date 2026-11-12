@@ -39,4 +39,4 @@
 #ifndef BRIDGE_TX
 #define BRIDGE_TX 17  // to the bridge's RX (GPIO 20)
 #endif
-// #define BRIDGE_RESET 27
+// #define BRIDGE_RESET 18  // any free GPIO: not one config.h already uses, such as an LED's

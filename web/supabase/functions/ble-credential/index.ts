@@ -141,6 +141,9 @@ Deno.serve((req) =>
   handlePost(req, async (body) => {
     const db = serviceClient();
     const caller = await callerId(db, accessToken(req));
-    return await credential(db, caller, body);
+    console.log("ble: caller ok");
+    const out = await credential(db, caller, body);
+    console.log("ble: done");
+    return out;
   }),
 );

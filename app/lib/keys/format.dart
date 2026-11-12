@@ -1,14 +1,4 @@
-// Dates as web/src/lib/format.ts shows them: `toLocaleDateString('el-GR')` and
-// `toLocaleTimeString('el-GR')`, which read "3/3/2027 2:05:00 μ.μ.".
-
-String formatDateTime(DateTime date) {
-  final local = date.toLocal();
-  final hour12 = local.hour % 12 == 0 ? 12 : local.hour % 12;
-  final suffix = local.hour < 12 ? 'π.μ.' : 'μ.μ.';
-  final mm = local.minute.toString().padLeft(2, '0');
-  final ss = local.second.toString().padLeft(2, '0');
-  return '${local.day}/${local.month}/${local.year} $hour12:$mm:$ss $suffix';
-}
+// Dates as the console prints them, and as a screen reader says them.
 
 const _months = [
   'January',
@@ -22,6 +12,21 @@ const _months = [
   'September',
   'October', 'November', 'December', //
 ];
+
+String _two(int n) => n.toString().padLeft(2, '0');
+
+/// "03 MAR 2027", the console's reading of a date.
+String formatReadingDate(DateTime date) {
+  final local = date.toLocal();
+  final month = _months[local.month - 1].substring(0, 3).toUpperCase();
+  return '${_two(local.day)} $month ${local.year}';
+}
+
+/// "14:05", 24-hour.
+String formatReadingTime(DateTime date) {
+  final local = date.toLocal();
+  return '${_two(local.hour)}:${_two(local.minute)}';
+}
 
 /// "3 March 2027", for what a screen reader says.
 String spokenDate(DateTime date) {

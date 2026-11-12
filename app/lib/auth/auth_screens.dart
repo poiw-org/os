@@ -49,11 +49,13 @@ class _SignInScreenState extends State<SignInScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      const Eyebrow('po/iw members'),
+                      const SizedBox(height: 10),
                       Semantics(
                         header: true,
-                        child: Text('Sign in', style: type.heading),
+                        child: Text('Sign in', style: type.display),
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 28),
                       DooraTextField(
                         label: 'Email',
                         controller: _email,
@@ -78,6 +80,8 @@ class _SignInScreenState extends State<SignInScreen> {
                       DooraButton(
                         label: auth.busy ? 'Signing in…' : 'Sign in',
                         kind: ButtonKind.primary,
+                        expand: true,
+                        tall: true,
                         onPressed: auth.busy ? null : _submit,
                       ),
                     ],
@@ -131,9 +135,11 @@ class _SecondStepScreenState extends State<SecondStepScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    const Eyebrow('Second step'),
+                    const SizedBox(height: 10),
                     Semantics(
                       header: true,
-                      child: Text('Enter your code', style: type.heading),
+                      child: Text('Enter your code', style: type.display),
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -160,6 +166,8 @@ class _SecondStepScreenState extends State<SecondStepScreen> {
                     DooraButton(
                       label: auth.busy ? 'Verifying…' : 'Verify',
                       kind: ButtonKind.primary,
+                      expand: true,
+                      tall: true,
                       onPressed: auth.busy
                           ? null
                           : () => auth.submitCode(_code.text),
@@ -168,6 +176,7 @@ class _SecondStepScreenState extends State<SecondStepScreen> {
                       const SizedBox(height: 12),
                       DooraButton(
                         label: 'Send a new code',
+                        expand: true,
                         onPressed: auth.busy ? null : auth.sendCode,
                       ),
                     ],
@@ -199,17 +208,43 @@ class NoAccessScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Screen(
       children: [
-        Semantics(
-          liveRegion: true,
-          child: Text(
-            'You need an active virtual key to use the app. Ask an admin.',
-            style: context.type.heading,
-          ),
-        ),
-        const SizedBox(height: 24),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: DooraButton(label: 'Sign out', onPressed: onSignOut),
+        Panel(
+          children: [
+            PanelRow(
+              child: Semantics(
+                liveRegion: true,
+                container: true,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Row(
+                      children: [
+                        Lamp(LampState.redOff),
+                        SizedBox(width: 10),
+                        Eyebrow('No access'),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      'No active key',
+                      style: context.type.display.copyWith(fontSize: 26),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'You need an active virtual key to use the app. Ask an admin.',
+                      style: context.type.muted,
+                    ),
+                    const SizedBox(height: 20),
+                    DooraButton(
+                      label: 'Sign out',
+                      expand: true,
+                      onPressed: onSignOut,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );

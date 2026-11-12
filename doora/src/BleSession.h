@@ -42,6 +42,10 @@ class BleSession {
 		if (!opened) { holding_ = true; holdUntil_ = now + kHoldMs; }
 	}
 
+	// The request was answered "busy" without being judged: the nonce is spent, but the hold is not
+	// restarted, or a phone that retries a little early would keep pushing it out.
+	void turnedAway() { end(); }
+
 	bool live() const { return live_; }
 	uint8_t conn() const { return conn_; }
 	const uint8_t* nonce() const { return nonce_; }

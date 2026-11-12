@@ -30,12 +30,16 @@ void Bridge::send(uint8_t type, uint8_t conn, const uint8_t* payload, size_t len
 void Bridge::handle(const Link::Frame& f, uint32_t ms) {
 	lastHeardMs_ = ms;
 	if (f.type == Link::kHello) {
-		linkVersion_ = f.len ? f.payload[0] : 0;
-		incompatible_ = linkVersion_ != Link::kVersion;
+		uint8_t link = f.len ? f.payload[0] : 0;
 		size_t v = f.len > 1 ? f.len - 1 : 0;
-		if (v > sizeof(version_) - 1) v = sizeof(version_) - 1;
-		memset(version_, 0, sizeof(version_));
-		for (size_t i = 0; i < v; i++) version_[i] = (f.payload[1 + i] >= 0x20 && f.payload[1 + i] < 0x7F) ? (char)f.payload[1 + i] : '?';
+		char version[sizeof(version_)] = "";
+		if (v > sizeof(version) - 1) v = sizeof(version) - 1;
+		for (size_t i = 0; i < v; i++) version[i] = (f.payload[1 + i] >= 0x20 && f.payload[1 + i] < 0x7F) ? (char)f.payload[1 + i] : '?';
+		// The bridge repeats HELLO with every PONG; only a new or changed one is news.
+		if (seen_ && link == linkVersion_ && !strcmp(version, version_)) return;
+		linkVersion_ = link;
+		incompatible_ = linkVersion_ != Link::kVersion;
+		memcpy(version_, version, sizeof(version_));
 		seen_ = true;
 		if (incompatible_) LOG("Bridge speaks link version %u, this door %u; ignoring it.", linkVersion_, Link::kVersion);
 		else LOG("Bridge online, firmware %s.", version_);
@@ -81,7 +85,8 @@ void Bridge::reply(BleResult code, uint32_t ms) {
 	uint8_t msg[2];
 	size_t n = bleEncodeResult(code, msg);
 	send(Link::kResult, slot_.conn, msg, n);
-	session_.answered(code == BleResult::Opened, ms);
+	if (code == BleResult::Busy) session_.turnedAway();
+	else session_.answered(code == BleResult::Opened, ms);
 	pending_ = false;
 }
 

@@ -125,7 +125,9 @@ ServerEvents serverEvents;
 void onDoorFrame(const Link::Frame& f, uint32_t ms) {
 	switch (f.type) {
 		case Link::kPing:
-			if (!doorAlive(ms)) sendHello();  // the first ping after a gap
+			// With every ping: a door that restarted has forgotten the bridge, and a restart is too
+			// short a silence to notice from here.
+			sendHello();
 			lastPingMs = ms;
 			doorSeen = true;
 			sendFrame(Link::kPong, 0);

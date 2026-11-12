@@ -30,6 +30,13 @@ Widget host(
   ),
 );
 
+/// The door keeps turning, so nothing ever settles: pump past the card's entrance instead.
+Future<void> settle(WidgetTester tester) async {
+  for (var i = 0; i < 10; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+}
+
 void main() {
   testWidgets('ready, unlocking, then door open and closes itself', (
     tester,
@@ -42,14 +49,13 @@ void main() {
       }),
     );
     await tester.tap(find.text('open'));
-    await tester.pumpAndSettle();
-    expect(find.text('UNLOCK'), findsOneWidget);
-    expect(find.text('NOT NOW'), findsNothing); // text button, not uppercased
-    expect(find.text('Not now'), findsOneWidget);
+    await settle(tester);
+    expect(find.text('Unlock'), findsOneWidget);
+    expect(find.bySemanticsLabel('Close'), findsOneWidget);
 
-    await tester.tap(find.text('UNLOCK'));
+    await tester.tap(find.text('Unlock'));
     await tester.pump();
-    expect(find.text('UNLOCKING…'), findsOneWidget);
+    expect(find.text('Unlocking…'), findsOneWidget);
     expect(find.text('Main door'), findsOneWidget);
 
     done.complete(const Opened());
@@ -67,9 +73,9 @@ void main() {
       host((_) async => const Refused(DoorResult(8)), auto: true),
     );
     await tester.tap(find.text('open'));
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(find.text('The door is busy. Try again.'), findsOneWidget);
-    expect(find.text('TRY AGAIN'), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
   });
 
   testWidgets('a refusal that cannot be retried offers Close only', (
@@ -79,24 +85,24 @@ void main() {
       host((_) async => const Refused(DoorResult(4)), auto: true),
     );
     await tester.tap(find.text('open'));
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(find.text('This key has been disabled.'), findsOneWidget);
-    expect(find.text('TRY AGAIN'), findsNothing);
-    expect(find.text('CLOSE'), findsOneWidget);
+    expect(find.text('Try again'), findsNothing);
+    expect(find.text('Close'), findsOneWidget);
   });
 
   testWidgets('the sheet cannot be dismissed while unlocking', (tester) async {
     final done = Completer<UnlockOutcome>();
     await tester.pumpWidget(host((_) => done.future));
     await tester.tap(find.text('open'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('UNLOCK'));
+    await settle(tester);
+    await tester.tap(find.text('Unlock'));
     await tester.pump();
     await tester.tapAt(const Offset(200, 40)); // the scrim
     await tester.pump(
       const Duration(milliseconds: 500),
-    ); // the lamp breathes forever: no settle
-    expect(find.text('UNLOCKING…'), findsOneWidget);
+    ); // the door turns forever: no settle
+    expect(find.text('Unlocking…'), findsOneWidget);
     done.complete(const Opened());
     await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();

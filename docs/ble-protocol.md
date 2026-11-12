@@ -93,7 +93,8 @@ returns; the door accepts exactly 64 bytes and parses no DER.
    `kNotBeforeLeeway`), `iat` (with `kIssuedAtLeeway`, when the clock is trusted).
 
 The nonce is destroyed when a request is answered (any outcome), on disconnect, and on timeout.
-After a failed attempt the door answers code 8 to every request for 2 s.
+After a failed attempt the door answers code 8 to every request for 2 s; a code 8 answer does not
+restart those 2 s.
 
 ## 5. Invariants (each has a test in the door's host tests)
 
@@ -136,7 +137,8 @@ for a connection other than the current one.
 | `0x23 RESULT` | door → bridge | a result message, notified verbatim, then the bridge disconnects |
 | `0x24 GONE` | bridge → door | none; the phone disconnected or timed out |
 
-The bridge sends `HELLO` at boot and in reply to the first `PING` after a gap. The door treats the
+The bridge sends `HELLO` at boot and before every `PONG`, so a door that restarted learns of the
+bridge at its first `PING`; the door acts only on a new or changed `HELLO`. The door treats the
 bridge as offline after 3 missed `PONG`s and shows that in `status`. A link version it does not
 know is logged and the bridge ignored.
 

@@ -58,6 +58,21 @@ class DoorScanner extends ChangeNotifier {
     if (_background == value) return;
     _background = value;
     _tracker = ProximityTracker(requiredResults: value ? 1 : 2);
+    // iOS reports each device once per scan in the background, and a door already seen in the
+    // foreground counts as seen: without a fresh scan the lock screen never hears it arrive.
+    if (_scanning) unawaited(_restart());
+  }
+
+  Future<void> _restart() async {
+    _near = null;
+    notifyListeners();
+    _scanning = false;
+    try {
+      await FlutterBluePlus.stopScan();
+    } on Object {
+      // Not scanning.
+    }
+    if (_wanted && _adapter == BluetoothAdapterState.on) await _scan();
   }
 
   /// Starts looking for the door, and keeps looking while Bluetooth allows.
@@ -113,7 +128,7 @@ class DoorScanner extends ChangeNotifier {
     final next = id == null
         ? null
         : DoorSighting(deviceId: id, rssi: _tracker.lastRssi);
-    if (next?.deviceId != _near?.deviceId) {
+    if (next?.deviceId != _near?.deviceId || next?.rssi != _near?.rssi) {
       _near = next;
       notifyListeners();
     }

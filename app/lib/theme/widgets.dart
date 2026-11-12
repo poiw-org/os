@@ -101,14 +101,14 @@ class Panel extends StatelessWidget {
   }
 }
 
-/// `.row`: 10 x 16 padding.
+/// `.row`, with room to breathe on a phone: 16 x 18.
 class PanelRow extends StatelessWidget {
   const PanelRow({super.key, required this.child});
   final Widget child;
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
     child: child,
   );
 }
@@ -123,12 +123,20 @@ class DooraButton extends StatefulWidget {
     required this.onPressed,
     this.kind = ButtonKind.normal,
     this.semanticsLabel,
+    this.expand = false,
+    this.tall = false,
   });
 
   final String label;
   final VoidCallback? onPressed;
   final ButtonKind kind;
   final String? semanticsLabel;
+
+  /// Fills the width it is given.
+  final bool expand;
+
+  /// 52 px instead of 44: the one action a screen exists for.
+  final bool tall;
 
   @override
   State<DooraButton> createState() => _DooraButtonState();
@@ -170,12 +178,16 @@ class _DooraButtonState extends State<DooraButton> {
     Widget button = AnimatedContainer(
       duration: duration,
       curve: Motion.curve,
-      transform: Matrix4.translationValues(
-        0,
-        sunk && !Motion.reduced(context) ? 1 : 0,
-        0,
+      transformAlignment: Alignment.center,
+      // Pressed: sinks 1 px into the panel and gives a little (0.97), on touch-down.
+      transform: sunk && !Motion.reduced(context)
+          ? (Matrix4.translationValues(0, 1, 0)
+              ..scaleByDouble(0.97, 0.97, 1, 1))
+          : Matrix4.identity(),
+      constraints: BoxConstraints(
+        minHeight: widget.tall ? 52 : minTarget,
+        minWidth: widget.expand ? double.infinity : 0,
       ),
-      constraints: const BoxConstraints(minHeight: minTarget),
       decoration: BoxDecoration(
         color: fill,
         border: Border.all(color: border),
@@ -463,7 +475,7 @@ class _DooraTextFieldState extends State<DooraTextField> {
                     ),
                   ),
                 ),
-                if (widget.obscure)
+                if (widget.obscure) ...[
                   DooraTextButton(
                     label: _revealed ? 'Hide' : 'Show',
                     semanticsLabel: _revealed
@@ -472,6 +484,8 @@ class _DooraTextFieldState extends State<DooraTextField> {
                     color: c.gray400,
                     onPressed: () => setState(() => _revealed = !_revealed),
                   ),
+                  const SizedBox(width: 14),
+                ],
               ],
             ),
           ),
@@ -628,24 +642,83 @@ class ReadoutChip extends StatelessWidget {
   }
 }
 
-/// `.tag.tag-signal`: the `VIRTUAL` tag.
-class VirtualTag extends StatelessWidget {
-  const VirtualTag({super.key});
+/// The faint dot grid the web draws on `void`: one 1 px dot every 24 px.
+class _DotGrid extends CustomPainter {
+  const _DotGrid(this.color);
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final dot = Paint()..color = color;
+    for (var y = 12.0; y < size.height; y += 24) {
+      for (var x = 12.0; x < size.width; x += 24) {
+        canvas.drawRect(Rect.fromLTWH(x, y, 1, 1), dot);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DotGrid old) => old.color != color;
+}
+
+/// A labelled value, the way the console prints a reading: the label in tracked mono caps, the value
+/// in mono under it.
+class Readout extends StatelessWidget {
+  const Readout({
+    super.key,
+    required this.label,
+    required this.value,
+    this.detail,
+  });
+  final String label;
+  final String value;
+
+  /// A second, quieter line under the value.
+  final String? detail;
 
   @override
   Widget build(BuildContext context) {
-    final c = Palette.dark;
+    final type = context.type;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Eyebrow(label),
+        const SizedBox(height: 4),
+        Text(value, style: type.reading),
+        if (detail != null)
+          Text(
+            detail!,
+            style: type.reading.copyWith(color: type.palette.gray400),
+          ),
+      ],
+    );
+  }
+}
+
+/// How much of a span has passed: a recessed 4 px track with a lit fill, square ends.
+class SpanMeter extends StatelessWidget {
+  const SpanMeter({super.key, required this.fraction, required this.color});
+  final double fraction;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
     return ExcludeSemantics(
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: c.brand.withValues(alpha: 0.18),
-          border: Border.all(color: c.brand),
+          color: c.backing,
+          border: Border.all(color: c.gray200),
         ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          child: Text(
-            'VIRTUAL',
-            style: context.type.eyebrow.copyWith(color: LampColors.tagText),
+        child: SizedBox(
+          height: 4,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: FractionallySizedBox(
+              widthFactor: fraction.clamp(0.0, 1.0),
+              heightFactor: 1,
+              child: ColoredBox(color: color),
+            ),
           ),
         ),
       ),
@@ -653,20 +726,33 @@ class VirtualTag extends StatelessWidget {
   }
 }
 
-/// The page frame: a slim top bar with the brand, then the content in a single left-aligned column
-/// on `void`. Scrolls, so 200 % text still fits.
+/// The page frame: the console bar with the brand, then the content in a single left-aligned column
+/// on `void` and its dot grid. Scrolls, so 200 % text still fits.
 class Screen extends StatelessWidget {
-  const Screen({super.key, required this.children, this.onRefresh});
+  const Screen({
+    super.key,
+    required this.children,
+    this.onRefresh,
+    this.barStatus,
+  });
 
   final List<Widget> children;
   final Future<void> Function()? onRefresh;
+
+  /// The right-hand cell of the bar, when the screen has something live to report.
+  final Widget? barStatus;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
     final content = ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        28,
+        20,
+        48 + MediaQuery.paddingOf(context).bottom,
+      ),
       children: [
         Align(
           alignment: Alignment.topLeft,
@@ -683,11 +769,12 @@ class Screen extends StatelessWidget {
     // Material supplies the ancestor text fields need and the default text style (no underlines).
     return Material(
       color: c.voidSurface,
-      child: SafeArea(
+      child: CustomPaint(
+        painter: _DotGrid(_white(0.06)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const BrandBar(),
+            BrandBar(status: barStatus),
             Expanded(
               child: onRefresh == null
                   ? content
@@ -705,56 +792,137 @@ class Screen extends StatelessWidget {
   }
 }
 
-/// The brand at the top, in the console bar's style: a cell with the mark and the name in mono caps.
+/// The console bar: under the status bar, a row of cells divided by seams with a lit top edge. The
+/// brand cell on the left; [status] in a cell on the right.
 class BrandBar extends StatelessWidget {
-  const BrandBar({super.key});
+  const BrandBar({super.key, this.status});
+  final Widget? status;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return Semantics(
-      header: true,
-      label: 'Doora',
-      excludeSemantics: true,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: c.paper,
-          border: Border(bottom: BorderSide(color: c.gray200, width: 2)),
+    final top = MediaQuery.paddingOf(context).top;
+    Widget cell(Widget child, {required bool seamRight}) => DecoratedBox(
+      decoration: BoxDecoration(
+        border: seamRight
+            ? Border(right: BorderSide(color: c.gray200))
+            : Border(left: BorderSide(color: c.gray200)),
+      ),
+      child: CustomPaint(
+        foregroundPainter: _BevelPainter(topLeft: _white(0.06)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          child: Center(widthFactor: 1, child: child),
         ),
-        child: Row(
-          children: [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                border: Border(right: BorderSide(color: c.gray200)),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 10,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Image.asset(
-                      'assets/images/poiw.png',
-                      width: 24,
-                      height: 24,
-                      excludeFromSemantics: true,
+      ),
+    );
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: c.paper,
+        border: Border(bottom: BorderSide(color: c.gray200, width: 2)),
+      ),
+      child: Padding(
+        padding: EdgeInsets.only(top: top),
+        child: CustomPaint(
+          foregroundPainter: _BevelPainter(topLeft: _white(0.08)),
+          child: SizedBox(
+            height: 56,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Semantics(
+                  header: true,
+                  label: 'Doora',
+                  excludeSemantics: true,
+                  child: cell(
+                    seamRight: true,
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Image.asset(
+                          'assets/images/mark.png',
+                          height: 26,
+                          excludeFromSemantics: true,
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          'DOORA',
+                          style: context.type.button.copyWith(
+                            color: c.ink,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 2.4,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 10),
-                    Text(
-                      'DOORA',
-                      style: context.type.button.copyWith(
-                        color: c.ink,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
+                const Spacer(),
+                if (status != null) cell(status!, seamRight: false),
+              ],
             ),
-          ],
+          ),
         ),
+      ),
+    );
+  }
+}
+
+/// A status cell's content: a lamp and a word in mono caps.
+class BarStatus extends StatelessWidget {
+  const BarStatus({super.key, required this.lamp, required this.label});
+  final LampState lamp;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: label,
+    excludeSemantics: true,
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Lamp(lamp),
+        const SizedBox(width: 10),
+        Text(label.toUpperCase(), style: context.type.eyebrow),
+      ],
+    ),
+  );
+}
+
+/// A status cell showing signal strength: a wifi icon with the lamp's halo glow and the reading in dBm.
+class SignalStatus extends StatelessWidget {
+  const SignalStatus({super.key, required this.rssi});
+  final int rssi;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = rssi >= -55
+        ? Icons.wifi
+        : rssi >= -65
+        ? Icons.wifi_2_bar
+        : Icons.wifi_1_bar;
+    return Semantics(
+      label: 'Door near, signal $rssi dBm',
+      excludeSemantics: true,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 16,
+            color: LampColors.green,
+            shadows: [
+              Shadow(
+                color: LampColors.green.withValues(alpha: 0.65),
+                blurRadius: 6,
+              ),
+            ],
+          ),
+          const SizedBox(width: 8),
+          Text('$rssi DBM', style: context.type.eyebrow),
+        ],
       ),
     );
   }

@@ -37,8 +37,34 @@ class KeysScreen extends StatelessWidget {
         final type = context.type;
         return Screen(
           onRefresh: keys.refresh,
+          barStatus: _barStatus(),
           children: [
-            Semantics(header: true, child: Text('Keys', style: type.heading)),
+            _DoorState(
+              coordinator: coordinator,
+              onOpenSettings: onOpenSettings,
+            ),
+            const SizedBox(height: 36),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Expanded(
+                  child: Semantics(
+                    header: true,
+                    child: Text('Keys', style: type.display),
+                  ),
+                ),
+                if (keys.loaded && keys.keys.isNotEmpty)
+                  ExcludeSemantics(
+                    child: Text(
+                      keys.keys.length.toString().padLeft(2, '0'),
+                      style: type.reading.copyWith(
+                        color: context.colors.gray400,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             const SizedBox(height: 16),
             if (keys.offline) ...[
               Text('Offline: showing saved keys', style: type.muted),
@@ -67,25 +93,42 @@ class KeysScreen extends StatelessWidget {
                     ),
                 ],
               ),
-            const SizedBox(height: 20),
-            _DoorState(
-              coordinator: coordinator,
-              onOpenSettings: onOpenSettings,
-            ),
-            const SizedBox(height: 24),
-            Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 12,
-              runSpacing: 8,
+            const SizedBox(height: 36),
+            Panel(
               children: [
-                Text(email, style: type.muted),
-                DooraButton(label: 'Sign out', onPressed: onSignOut),
+                PanelRow(
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Readout(label: 'Signed in as', value: email),
+                      ),
+                      DooraTextButton(
+                        label: 'Sign out',
+                        color: context.colors.gray600,
+                        onPressed: onSignOut,
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ],
         );
       },
     );
+  }
+
+  /// What the bar reports: whether the phone is watching for the door, and whether it is here.
+  Widget? _barStatus() {
+    if (!keys.hasUsableCredential || !coordinator.primerSeen) return null;
+    final scanner = coordinator.scanner;
+    if (scanner.problem != null) {
+      return const BarStatus(lamp: LampState.redOff, label: 'Off');
+    }
+    final near = scanner.near;
+    return near != null
+        ? SignalStatus(rssi: near.rssi)
+        : const BarStatus(lamp: LampState.blueWaiting, label: 'Scanning');
   }
 }
 
@@ -118,6 +161,11 @@ class _KeyRow extends StatelessWidget {
 
     final spoken =
         'Key, ${status.label.toLowerCase()}, valid until ${spokenDate(keyData.expiresAt)}';
+    final active = status == KeyStatus.active;
+    final id = keyData.id.replaceAll('-', '');
+    final tail = id.length > 4 ? id.substring(id.length - 4) : id;
+    final span = keyData.expiresAt.difference(keyData.notBefore).inSeconds;
+    final elapsed = DateTime.now().difference(keyData.notBefore).inSeconds;
 
     return PanelRow(
       child: Column(
@@ -127,49 +175,73 @@ class _KeyRow extends StatelessWidget {
             container: true,
             label: spoken,
             excludeSemantics: true,
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                ReadoutChip(lamp: _lamp(status), label: status.label),
-                const VirtualTag(),
+                Row(
+                  children: [
+                    ReadoutChip(lamp: _lamp(status), label: status.label),
+                    const Spacer(),
+                    Text('KEY ··$tail'.toUpperCase(), style: type.eyebrow),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Opacity(
+                  opacity: active ? 1 : 0.6,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Readout(
+                          label: 'From',
+                          value: formatReadingDate(keyData.notBefore),
+                          detail: formatReadingTime(keyData.notBefore),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Readout(
+                          label: 'Until',
+                          value: formatReadingDate(keyData.expiresAt),
+                          detail: formatReadingTime(keyData.expiresAt),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (active && span > 0) ...[
+                  const SizedBox(height: 14),
+                  SpanMeter(
+                    fraction: elapsed / span,
+                    color: LampColors.green.withValues(alpha: 0.85),
+                  ),
+                ],
               ],
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            '${formatDateTime(keyData.notBefore)} → ${formatDateTime(keyData.expiresAt)}',
-            style: type.muted,
-          ),
-          if (row != KeyRow.statusOnly) const SizedBox(height: 10),
+          if (row != KeyRow.statusOnly) const SizedBox(height: 16),
           switch (row) {
-            KeyRow.notSetUp || KeyRow.needsCredential => Align(
-              alignment: Alignment.centerLeft,
-              child: DooraButton(
-                label: settingUp ? 'Setting up…' : 'Set up this phone',
-                kind: ButtonKind.primary,
-                onPressed: settingUp || keys.settingUp != null
-                    ? null
-                    : () => keys.setUp(keyData.id),
-              ),
+            KeyRow.notSetUp || KeyRow.needsCredential => DooraButton(
+              label: settingUp ? 'Setting up…' : 'Set up this phone',
+              kind: ButtonKind.primary,
+              expand: true,
+              onPressed: settingUp || keys.settingUp != null
+                  ? null
+                  : () => keys.setUp(keyData.id),
             ),
-            KeyRow.ready => Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 12,
-              runSpacing: 8,
+            KeyRow.ready => Row(
               children: [
-                Text('Ready', style: type.body),
-                if (coordinator.canUnlockNow)
-                  DooraButton(
-                    label: 'Unlock',
-                    onPressed: coordinator.offerUnlock,
-                  ),
+                const Lamp(LampState.green),
+                const SizedBox(width: 10),
+                Text(
+                  'ON THIS PHONE',
+                  style: type.eyebrow.copyWith(color: context.colors.ink),
+                ),
               ],
             ),
             KeyRow.anotherPhone => Text(
-              'Set up on ${keyData.deviceName}. Bindings are permanent. Ask an admin for a new key to use this phone.',
-              style: type.body,
+              'Set up on ${keyData.deviceName}. Bindings are permanent; ask an admin for a new key to use this phone.',
+              style: type.muted,
             ),
             KeyRow.statusOnly => const SizedBox.shrink(),
           },
@@ -189,8 +261,8 @@ class _KeyRow extends StatelessWidget {
   }
 }
 
-/// What the phone is doing about the door, and what blocks it. Each state has words and, where the
-/// member can fix it, a way to.
+/// The door panel at the top: what the phone is doing about the door, what blocks it, and the
+/// Unlock. Each state has a lamp, a headline and, where the member can act, one button.
 class _DoorState extends StatelessWidget {
   const _DoorState({required this.coordinator, required this.onOpenSettings});
 
@@ -199,106 +271,113 @@ class _DoorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final type = context.type;
     final keys = coordinator.keys;
     final scanner = coordinator.scanner;
+    final name = keys.onlyDoorName ?? 'The door';
+
+    final LampState lamp;
+    final String title;
+    final String? detail;
+    Widget? action;
+    var prompts = false;
 
     if (!keys.hasUsableCredential) {
-      return Text(
-        keys.keys.any((k) => k.status() == KeyStatus.active)
-            ? 'Set up this phone for a key to unlock the door.'
-            : 'No active key on this phone, so Doora is not looking for the door.',
-        style: type.muted,
+      final anyActive = keys.keys.any((k) => k.status() == KeyStatus.active);
+      lamp = LampState.redOff;
+      title = anyActive ? 'Not set up' : 'No active key';
+      detail = anyActive
+          ? 'Set up this phone for one of your keys below to unlock the door.'
+          : 'Doora is not looking for the door. Ask an admin for a key.';
+    } else if (!coordinator.primerSeen) {
+      lamp = LampState.blueWaiting;
+      title = 'One more step';
+      detail = 'Doora uses Bluetooth to find the door and unlock it.';
+      action = DooraButton(
+        label: 'Continue',
+        kind: ButtonKind.primary,
+        expand: true,
+        tall: true,
+        onPressed: coordinator.acceptBluetoothPrimer,
       );
+    } else {
+      prompts = true;
+      switch (scanner.problem) {
+        case BluetoothProblem.off:
+          lamp = LampState.redOff;
+          title = 'Bluetooth is off';
+          detail = 'Turn it on to unlock the door.';
+        case BluetoothProblem.permissionDenied:
+          lamp = LampState.redOff;
+          title = 'No Bluetooth access';
+          detail = "Doora can't find the door or unlock it without Bluetooth.";
+          action = DooraButton(
+            label: 'Open settings',
+            expand: true,
+            onPressed: onOpenSettings,
+          );
+        case BluetoothProblem.unsupported:
+          lamp = LampState.redOff;
+          title = 'No Bluetooth LE';
+          detail =
+              "This phone doesn't support it, so it can't unlock the door.";
+        case null:
+          final near = scanner.near != null;
+          lamp = near ? LampState.green : LampState.blueWaiting;
+          title = near ? 'At the door' : 'Looking for the door';
+          detail = near ? null : 'Walk up to it and Doora offers to unlock.';
+          if (coordinator.canUnlockNow) {
+            action = DooraButton(
+              label: 'Unlock',
+              kind: ButtonKind.primary,
+              expand: true,
+              tall: true,
+              onPressed: coordinator.offerUnlock,
+            );
+          }
+      }
     }
 
-    if (!coordinator.primerSeen) {
-      return Panel(
-        children: [
-          PanelRow(
+    final type = context.type;
+    return Panel(
+      children: [
+        PanelRow(
+          child: Semantics(
+            container: true,
+            liveRegion: true,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Eyebrow('Bluetooth'),
-                const SizedBox(height: 8),
-                Text(
-                  'Doora uses Bluetooth to find the door and unlock it.',
-                  style: type.body,
+                Row(
+                  children: [
+                    Lamp(lamp),
+                    const SizedBox(width: 10),
+                    Expanded(child: Eyebrow(name)),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: DooraButton(
-                    label: 'Continue',
-                    kind: ButtonKind.primary,
-                    onPressed: coordinator.acceptBluetoothPrimer,
-                  ),
-                ),
+                const SizedBox(height: 14),
+                Text(title, style: type.display.copyWith(fontSize: 26)),
+                if (detail != null) ...[
+                  const SizedBox(height: 6),
+                  Text(detail, style: type.muted),
+                ],
+                if (action != null) ...[const SizedBox(height: 20), action],
               ],
             ),
           ),
-        ],
-      );
-    }
-
-    final problem = scanner.problem;
-    final children = <Widget>[];
-    if (problem == BluetoothProblem.off) {
-      children.add(
-        Text(
-          'Bluetooth is off. Turn it on to unlock the door.',
-          style: type.body,
         ),
-      );
-    } else if (problem == BluetoothProblem.permissionDenied) {
-      children
-        ..add(
-          Text(
-            "Doora can't use Bluetooth, so it can't find the door or unlock it.",
-            style: type.body,
-          ),
-        )
-        ..add(const SizedBox(height: 12))
-        ..add(
-          Align(
-            alignment: Alignment.centerLeft,
-            child: DooraButton(
-              label: 'Open settings',
-              onPressed: onOpenSettings,
+        if (prompts)
+          PanelRow(
+            child: _BackgroundPrompts(
+              coordinator: coordinator,
+              onOpenSettings: onOpenSettings,
             ),
           ),
-        );
-    } else if (problem == BluetoothProblem.unsupported) {
-      children.add(
-        Text("This phone doesn't support Bluetooth LE.", style: type.body),
-      );
-    } else {
-      children.add(
-        Text(
-          scanner.near != null
-              ? 'The door is near.'
-              : 'Looking for the door. Walk up to it.',
-          style: type.body,
-        ),
-      );
-    }
-
-    children
-      ..add(const SizedBox(height: 16))
-      ..add(
-        _BackgroundPrompts(
-          coordinator: coordinator,
-          onOpenSettings: onOpenSettings,
-        ),
-      );
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: children,
+      ],
     );
   }
 }
 
+/// The background prompt switch: a line of words and a Turn on / Turn off beside it.
 class _BackgroundPrompts extends StatelessWidget {
   const _BackgroundPrompts({
     required this.coordinator,
@@ -315,22 +394,32 @@ class _BackgroundPrompts extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Eyebrow('Prompts at the door'),
-        const SizedBox(height: 6),
-        Text(
-          on ? "When Doora is closed, a notification says you're at the door." : "Get a notification when you're at the door, even when Doora is closed. Doora then asks to send notifications.",
-          style: type.body,
-        ),
-        const SizedBox(height: 10),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: DooraButton(
-            label: on ? 'Turn off' : 'Turn on',
-            onPressed: () => coordinator.setBackgroundPrompts(!on),
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Eyebrow('Prompts at the door'),
+                  const SizedBox(height: 4),
+                  Text(
+                    on
+                        ? "A notification when you're at the door, even with Doora closed."
+                        : "Off. Turn on for a notification at the door, even with Doora closed.",
+                    style: type.muted,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            DooraButton(
+              label: on ? 'Turn off' : 'Turn on',
+              onPressed: () => coordinator.setBackgroundPrompts(!on),
+            ),
+          ],
         ),
         if (coordinator.notificationsDenied) ...[
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           Text(
             'Notifications are off for Doora, so there is nothing to show at the door.',
             style: type.body,

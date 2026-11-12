@@ -50,6 +50,21 @@ class DooraType {
     color: palette.ink,
   );
 
+  /// The screen's title: larger, tighter tracking as it grows.
+  TextStyle get display => heading.copyWith(
+    fontSize: 30,
+    height: 1.1,
+    letterSpacing: -0.6, // -0.02em
+  );
+
+  /// A value printed by the console: dates, times, ids.
+  TextStyle get reading => TextStyle(
+    fontFamily: mono,
+    fontSize: 13,
+    height: 1.4,
+    color: palette.ink,
+  );
+
   /// `.eyebrow`: mono 11, uppercase (apply [String.toUpperCase]), 0.14em.
   TextStyle get eyebrow => TextStyle(
     fontFamily: mono,

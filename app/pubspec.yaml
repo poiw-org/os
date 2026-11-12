@@ -21,6 +21,7 @@ dependencies:
   flutter_local_notifications: ^23.0.1
   # Credentials and the offline key cache, in the Keychain / Keystore.
   flutter_secure_storage: ^11.2.0
+  local_auth: ^3.0.2
 
 dev_dependencies:
   flutter_test:
@@ -32,7 +33,7 @@ dev_dependencies:
 flutter:
   uses-material-design: false
   assets:
-    - assets/images/poiw.png
+    - assets/images/mark.png
   fonts:
     - family: SpaceGrotesk
       fonts:

@@ -440,6 +440,10 @@ static void testSession() {
 	s.begin(7, n1, 3100);
 	CHECK(s.admit(7, 3100) == BleSession::Admit::Busy);
 	CHECK(s.admit(7, 4999) == BleSession::Admit::Busy);
+	// Being turned away spends the nonce but does not push the hold out.
+	s.turnedAway();
+	CHECK(!s.live() && s.nonce()[0] == 0);
+	s.begin(7, n1, 4999);
 	CHECK(s.admit(7, 5000) == BleSession::Admit::Proceed);
 
 	// A nonce lives 10 s; the clock wraps without trouble.
