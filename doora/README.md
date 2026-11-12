@@ -1,7 +1,7 @@
 # Doora door controller (ESP32)
 
 Firmware for the door lock, for an ESP32 with a PN532 NFC reader, a relay, a passive buzzer and a few
-LEDs. A tap is decided on the device, so the door keeps working through Wi-Fi, internet and power
+LEDs, plus (optionally) a small ESP32-C3 that lets phones unlock it over Bluetooth Low Energy. A tap is decided on the device, so the door keeps working through Wi-Fi, internet and power
 outages. Supabase is only used to keep the door's local state fresh and to report what happened.
 
 ## Source layout
@@ -19,11 +19,16 @@ src/            firmware
   Actuators.*, Chimes.h    relay, LEDs, buzzer tones
   Settings.*, Console.*    EEPROM config and the serial console
   Bt.*, BtGate.h, Term.h   the console over Bluetooth, gated by admin approval
+  Bridge.*, BleSession.h   the UART link to the BLE bridge, the nonce of the live phone connection
+  BridgeLink.*, BleProto.*   COBS framing and the BLE messages (also compiled by the bridge)
+  P256.*                   ECDSA P-256 verification, over vendor/micro-ecc
+  bridge/                  the BLE bridge firmware (ESP32-C3), its own env; see bridge/README.md
   Ota.*, OtaImage.*        firmware updates, approved in the portal
 host_test/      unit tests for the portable parts, run on the computer with `make test`
 tools/          release.py publishes a build for approval
+vendor/micro-ecc  micro-ecc (BSD-2-Clause), unmodified, built for secp256r1 verification only
 config.example.h   pin template; copy it to config.h
-platformio.ini  build environment (esp32dev) and partition table
+platformio.ini  build environments (esp32dev = the door, bridge = the BLE bridge) and partition table
 ```
 
 ## How it works
@@ -35,6 +40,22 @@ tag ──► read token ──► verify signature (v2: RS256 with the public k
                               open / deny ──► event appended to a flash journal ──► uploaded when online
 ```
 
+- **Phones over BLE.** A phone's credential is a virtual key's JWT with `aud: "ble"` and `cnf`, the
+  public half of a P-256 key kept in the phone's Secure Enclave or Keystore. The door is the
+  authority: the bridge only carries bytes. When a phone subscribes, the door makes a nonce, sends it
+  in a challenge and waits for one request: the credential plus the phone's signature over
+  `"doora-ble-1" | door id | nonce`. The door checks the credential's RS256 signature, then the
+  proof, then the blacklist and dates, with the same code as a tap (`Access.cpp`). A nonce answers
+  one request and lives 10 s; after a failure every request gets "busy" for 2 s. The whole contract
+  is `docs/ble-protocol.md`; test vectors are in `docs/ble-test-vectors.json`.
+
+  ```
+  phone ──BLE──► bridge (ESP32-C3) ──UART──► door ──► relay
+                 radio only                  verifies, decides, journals
+  ```
+
+  A tag token never opens the door over BLE and a BLE credential never opens it from a tag. One
+  P-256 verification has not been timed on a board yet: measure it on the bench and record it here.
 - **Key tokens.** The `keys` edge function signs a JWT (`sub` user, `jti` key id, `aud` tag serial,
   `iat`/`nbf`/`exp`) that is written to the tag. The door verifies it offline with the shared secret.
 - **Blacklist.** Disabled keys. Fetched in full from `public.door_sync()` at start-up, after every
@@ -82,6 +103,9 @@ tag ──► read token ──► verify signature (v2: RS256 with the public k
 | Door account misconfigured       | Logged on the serial console; retries every 5 minutes. The door itself keeps working.                |
 | Memory pressure / fragmentation  | TLS is skipped when memory is too low; the device restarts itself when idle if that persists.         |
 | NFC reader stops answering       | Re-initialised; restarted if it keeps failing.                                                       |
+| Bridge unplugged or dead         | Taps are unaffected. After 3 missed pongs (15 s) `status` shows it offline; with `BRIDGE_RESET` wired the door resets it after 30 s of silence (at most once a minute). Phones just do not see the door. |
+| Bridge floods the link           | Frames are CRC-checked and bounded; bad ones are dropped and counted (`status`). Requests are handled one at a time, and a failed attempt makes the door answer "busy" for 2 s. |
+| Power cut mid-unlock             | The relay is a short pulse driven only by `Actuators`; nothing about a half-done unlock is stored. The phone gets no answer and tries again; the nonce died with the connection. |
 
 Known limits, by design of the hardware or the protocol:
 
@@ -132,6 +156,18 @@ web UI sounds an attention tone for 3 seconds before the relay fires.
 because guessing a relay pin could fire the lock. The PN532 reader (in I2C mode) is wired to SDA 21
 and SCL 22; `NFC_SDA` and `NFC_SCL` in `config.h` change that. The firmware drives the chip with its
 own small driver (`Pn532.cpp`, over a bit-banged I2C bus), so there are no NFC libraries to install.
+
+### 2b. BLE bridge wiring (optional)
+
+| Signal | Door (ESP32) | Bridge (C3 Super Mini) |
+| --- | --- | --- |
+| Door TX → bridge RX | GPIO 17 (`BRIDGE_TX`) | GPIO 20 (UART RX) |
+| Bridge TX → door RX | GPIO 16 (`BRIDGE_RX`) | GPIO 21 (UART TX) |
+| Ground | GND | GND |
+| Power | 5V / VIN | 5V |
+| Optional reset | `BRIDGE_RESET` (e.g. GPIO 27) | the board's EN/RST pad |
+
+Keep the bridge's antenna clear of metal. Flashing the bridge: `bridge/README.md`.
 
 ### 3. Build and flash
 
@@ -208,6 +244,12 @@ TLS to Supabase is always verified against the roots in `src/Certs.h`. If Supaba
 certificate authority, add the new root there and reflash; until then the door runs offline.
 
 ## Tests
+
+`make test` also covers the BLE path (`host_test/ble_test.cpp`): the UART framing against fixed vectors
+(empty, all-zero, truncated and garbage frames), the messages, chunk reassembly limits, the nonce
+lifecycle, every invariant in `docs/ble-protocol.md` section 5 and Project Wycheproof's ECDSA P-256
+vectors. micro-ecc refuses two valid Wycheproof edge cases (ids 60 and 210); that fails closed and is
+pinned in the test.
 
 The access decision, token verification, blacklist, sync parser, journal format and time helpers, the
 websocket framing, the retry backoff, the PN532 driver (against a simulated chip) and the flash

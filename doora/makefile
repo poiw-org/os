@@ -1,15 +1,17 @@
 # Thin wrappers; PlatformIO (`pio`) does the real work. See platformio.ini.
 .PHONY: build upload monitor test release
 
-# The PlatformIO environment to build, flash or publish: `make release ENV=ble_spike`.
+# The PlatformIO environment to build, flash or publish: `make upload ENV=bridge` flashes the BLE
+# bridge (ESP32-C3) instead of the door.
 ENV ?= esp32dev
 
 # Publishes the build for approval in the portal (see tools/release.py for the settings it needs).
+# The bridge has no OTA and no portal: it is flashed over USB.
 release: build
 	~/.platformio/penv/bin/python tools/release.py .pio/build/$(ENV)/firmware.bin
 
 build:
-	@test -f config.h || (echo "config.h is missing: copy config.example.h and set your wiring" && exit 1)
+	@test "$(ENV)" = bridge || test -f config.h || (echo "config.h is missing: copy config.example.h and set your wiring" && exit 1)
 	pio run -e $(ENV)
 
 upload: build

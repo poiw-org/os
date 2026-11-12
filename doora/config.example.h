@@ -20,3 +20,9 @@
 #define ERROR_LED 33
 #define SUCCESS_LED 23
 
+
+// BLE bridge (ESP32-C3 Super Mini) on UART2. Defaults shown; BRIDGE_RESET is optional and wired to the
+// bridge's EN/RST pad. The bridge's own pins (GPIO 20 RX, 21 TX) are fixed in its firmware.
+// #define BRIDGE_RX 16
+// #define BRIDGE_TX 17
+// #define BRIDGE_RESET 27

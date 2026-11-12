@@ -8,7 +8,9 @@
 #include <Arduino.h>
 #include "Access.h"
 #include "Actuators.h"
+#include "BleProto.h"
 #include "BlacklistSet.h"
+#include "Bridge.h"
 #include "Bt.h"
 #include "Clock.h"
 #include "Chimes.h"
@@ -31,6 +33,7 @@ BlacklistSet blacklist;
 SigningKey signingKey;
 Actuators actuators;
 Reader reader;
+Bridge bridge;
 Cloud cloud;
 
 uint32_t lastTapMs = 0;
@@ -61,6 +64,13 @@ void record(const JournalRecord& r) {
 JwtResult verifyToken(const char* token, size_t len, KeyClaims& key) {
 	RsaPublicKey rsa;
 	VerifyKeys keys{(const uint8_t*)settings.jwtSecret, strlen(settings.jwtSecret), signingKey.copyTo(rsa) ? &rsa : nullptr};
+	return jwtVerify(token, len, keys, key);
+}
+
+// BLE credentials are RS256 only: the v1 shared secret never vouches for a phone.
+JwtResult verifyBleToken(const char* token, size_t len, KeyClaims& key) {
+	RsaPublicKey rsa;
+	VerifyKeys keys{nullptr, 0, signingKey.copyTo(rsa) ? &rsa : nullptr};
 	return jwtVerify(token, len, keys, key);
 }
 
@@ -163,6 +173,63 @@ void handleTag(const TagRead& tag) {
 	}
 }
 
+// A phone's request, relayed by the bridge. Judged here, never by the bridge (docs/ble-protocol.md,
+// section 4): the credential's signature, then the phone's proof over this door's id and the nonce
+// the door made, then the rules every key shares. Every request gets exactly one answer.
+void handleBle(const BleRequestSlot& req) {
+	lastTapMs = millis();
+	JournalRecord r = newRecord();
+	r.flags |= kBle;
+
+	BleRequest parsed;
+	KeyClaims key;
+	BleResult result = BleResult::Malformed;
+	JwtResult jwt = JwtResult::Malformed;
+	if (bleParseRequest(req.body, req.len, parsed)) {
+		jwt = verifyBleToken(parsed.jwt, parsed.jwtLen, key);
+		switch (jwt) {
+			case JwtResult::Ok:
+				result = decideBle(key, settings.doorId, bridge.nonce(), parsed.sig, r.ts, clock_.synced(),
+				                   blacklist.contains(key.jti));
+				break;
+			case JwtResult::NoPublicKey: result = BleResult::NoDoorKey; break;
+			case JwtResult::Malformed: result = BleResult::Malformed; break;
+			default: result = BleResult::BadCredential; break;
+		}
+	}
+
+	if (jwt == JwtResult::Ok) {
+		journalSetClaims(r, key, true);
+	} else if (jwt == JwtResult::BadSignature || jwt == JwtResult::BadClaims) {
+		KeyClaims claimed;
+		if (jwtPeek(parsed.jwt, parsed.jwtLen, claimed) == JwtResult::Ok) journalSetClaims(r, claimed, false);
+	}
+
+	if (result == BleResult::Opened) {
+		actuators.grant();
+		actuators.service();  // energize the relay now, before the UART answer and the flash write
+		bridge.reply(result, millis());
+		bridge.countOpened();
+		r.allowed = 1;
+		LOG("Door opened for key %s over Bluetooth.", key.jti);
+		record(r);
+		return;
+	}
+	actuators.deny();
+	actuators.service();
+	bridge.reply(result, millis());
+	bridge.countDenied();
+	r.verdict = journalVerdict(result);
+	if (r.verdict == 255) r.flags |= kInvalidToken;
+	static const char* const kWhy[] = {"opened", "malformed request", "bad credential", "the phone's proof failed",
+	                                   "key disabled", "key expired", "key not yet valid", "no public key yet", "busy"};
+	LOG("Bluetooth request denied: %s.", kWhy[(int)result]);
+	if (millis() - lastFailureLogMs >= kFailureLogGapMs || !lastFailureLogMs) {
+		lastFailureLogMs = millis();
+		record(r);
+	}
+}
+
 void printStatus() {
 	LOG("--- status ---");
 	LOG("uptime    : %lu s, free heap %u (lowest %u), largest block %u", (unsigned long)(millis() / 1000),
@@ -172,8 +239,19 @@ void printStatus() {
 	LOG("journal   : %u events waiting, %lu dropped, %lu denied taps not recorded", (unsigned)Persist::journalCount(),
 	    (unsigned long)Persist::journalDropped(), (unsigned long)Persist::journalSuppressed());
 	reader.printStatus();
+	bridge.printStatus();
 	cloud.printStatus();
 	Bt::printStatus();
+}
+
+void serviceBle() {
+	bridge.service(millis());
+	if (const BleRequestSlot* req = bridge.take()) {
+		actuators.reading(true);
+		handleBle(*req);
+		actuators.reading(false);
+		bridge.release();
+	}
 }
 
 void serviceTag() {
@@ -190,6 +268,7 @@ void serviceTag() {
 // Bluetooth deadlines keep running.
 void serviceDoor() {
 	serviceTag();
+	serviceBle();
 	Bt::service(cloud);
 	if (cloud.takeForceOpen()) actuators.forceOpen();
 	actuators.service();
@@ -249,6 +328,7 @@ void setup() {
 	LOG("%u events waiting to be uploaded.", (unsigned)Persist::journalCount());
 
 	reader.begin(NFC_SDA, NFC_SCL);
+	bridge.begin(settings.doorId);
 	cloud.begin(settings, clock_, blacklist, signingKey);
 	char host[48];
 	snprintf(host, sizeof(host), "doora-%s", settings.doorId);  // the Wi-Fi hostname too
@@ -261,6 +341,7 @@ void loop() {
 	uint32_t ms = millis();
 
 	serviceTag();
+	serviceBle();
 	Bt::service(cloud);
 	serviceWriter();
 	if (cloud.takeForceOpen()) actuators.forceOpen();

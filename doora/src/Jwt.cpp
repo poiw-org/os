@@ -28,7 +28,7 @@ int base64UrlDecode(const char* in, size_t len, uint8_t* out, size_t cap) {
 // Finds `"key":` in a flat JSON object and returns a pointer at its value. The text has already
 // been authenticated, so a tolerant scan is enough; it never reads past the terminator.
 static const char* findValue(const char* json, const char* key) {
-	char pattern[16];
+	char pattern[16];  // long enough for every claim name read below
 	size_t k = strlen(key);
 	if (k + 3 > sizeof(pattern)) return nullptr;
 	pattern[0] = '"';
@@ -88,6 +88,17 @@ static JwtResult readClaims(const char* encoded, size_t len, KeyClaims& out) {
 	readString(payload, "sub", out.sub, sizeof(out.sub));
 	readUint(payload, "iat", out.iat);
 
+	if (strcmp(aud, "ble") == 0) {
+		// 65 bytes in exactly 87 base64url characters, a flat string so the scan above can read it.
+		char cnf[96];
+		uint8_t point[kCnfLen + 1];
+		if (!readString(payload, "cnf", cnf, sizeof(cnf)) || strlen(cnf) != 87 ||
+		    base64UrlDecode(cnf, 87, point, sizeof(point)) != (int)kCnfLen || point[0] != 0x04)
+			return JwtResult::BadClaims;
+		out.audience = Audience::Ble;
+		memcpy(out.cnf, point, kCnfLen);
+		return JwtResult::Ok;
+	}
 	int uid = parseUid(aud, out.aud, sizeof(out.aud));
 	if (uid <= 0) return JwtResult::BadClaims;
 	out.audLen = (uint8_t)uid;

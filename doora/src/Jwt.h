@@ -1,16 +1,26 @@
 // Offline verification of the key tokens written to NFC tags. v2 tokens are RS256, signed by the
 // `keys` edge function and checked here with the public key; v1 tokens are HS256 with a shared secret.
-// Claims: sub = user id, jti = key id, aud = tag serial number, iat/nbf/exp = seconds.
+// Claims: sub = user id, jti = key id, aud = tag serial number or "ble", iat/nbf/exp = seconds.
+// A phone credential (aud "ble") also carries cnf, the phone's P-256 public key.
 #pragma once
 #include <stddef.h>
 #include <stdint.h>
 #include "Rsa.h"
 
+// Who a token is for. A tag token names a serial number; a BLE credential is for a phone and is
+// never valid on a tag, and a tag token is never valid over BLE (see Access.h).
+enum class Audience : uint8_t { Tag, Ble };
+
+constexpr size_t kCnfLen = 65;  // uncompressed P-256 point: 04 || X || Y
+
 struct KeyClaims {
 	char sub[40];
 	char jti[40];
 	uint8_t aud[10];
-	uint8_t audLen;
+	uint8_t audLen;       // 0 for a BLE credential
+	Audience audience;
+	uint8_t cnf[kCnfLen];  // only meaningful when audience is Ble; the format is checked here, the
+	                       // point on the curve by p256Verify
 	uint32_t iat, nbf, exp;
 };
 

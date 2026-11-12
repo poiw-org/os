@@ -71,10 +71,11 @@ size_t journalToJson(const JournalRecord& r, const char* doorId, char* out, size
 
 	int n = snprintf(out, cap,
 	                 "{\"door_id\":\"%s\",\"type\":\"%s\",\"reason\":%s,\"key_id\":%s,\"serial_number\":%s,"
-	                 "\"created_at\":\"%s\",\"metadata\":{\"clock\":\"%s\",\"offline\":%s%s%s%s}}",
+	                 "\"created_at\":\"%s\",\"metadata\":{\"clock\":\"%s\",\"offline\":%s%s%s%s%s}}",
 	                 doorEsc, r.allowed ? "successful" : "failed", reasonJson, keyJson, uidJson, iso,
 	                 (r.flags & kClockEstimated) ? "estimated" : "synced", (r.flags & kOffline) ? "true" : "false",
 	                 (r.flags & kForced) ? ",\"forced\":true" : "",
+	                 (r.flags & kBle) ? ",\"source\":\"ble\"" : "",
 	                 (r.flags & kInvalidToken) ? ",\"cause\":\"invalid_token\"" : "", claims);
 	return (n > 0 && (size_t)n < cap) ? (size_t)n : 0;
 }

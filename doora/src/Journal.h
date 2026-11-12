@@ -11,7 +11,8 @@ enum JournalFlags : uint8_t {
 	kInvalidToken = 4,    // the tag did not carry a valid key token
 	kOffline = 8,         // the door had no cloud connection at the time
 	kClaims = 16,         // sub/iat/nbf/exp/aud below were read from the tag's token
-	kUnverified = 32      // ...but its signature did not verify, so they only help identify the tag
+	kUnverified = 32,     // ...but its signature did not verify, so they only help identify the tag
+	kBle = 64             // opened (or refused) over Bluetooth by a phone, not a tag; uid is empty
 };
 
 struct __attribute__((packed)) JournalRecord {

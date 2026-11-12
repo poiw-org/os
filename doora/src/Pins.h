@@ -29,3 +29,14 @@
 #ifndef SUCCESS_LED
 #define SUCCESS_LED 23
 #endif
+
+// UART to the BLE bridge (an ESP32-C3, see src/bridge/). Free GPIOs on a WROOM module, and not
+// strapping pins. BRIDGE_RESET is optional: when wired, the door pulses it (open-drain, low) if the
+// bridge stays silent.
+#ifndef BRIDGE_RX
+#define BRIDGE_RX 16  // from the bridge's TX (GPIO 21)
+#endif
+#ifndef BRIDGE_TX
+#define BRIDGE_TX 17  // to the bridge's RX (GPIO 20)
+#endif
+// #define BRIDGE_RESET 27
