@@ -36,7 +36,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: '17' }
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+          cache-dependency-path: |
+            app/android/**/*.gradle*
+            app/android/gradle/wrapper/gradle-wrapper.properties
+      - name: Cache Android SDK components
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/platforms
+            /usr/local/lib/android/sdk/build-tools
+            /usr/local/lib/android/sdk/ndk
+            /usr/local/lib/android/sdk/cmake
+          key: android-sdk-${{ runner.os }}-${{ hashFiles('app/android/**/*.gradle*') }}
+          restore-keys: android-sdk-${{ runner.os }}-
       - uses: subosito/flutter-action@v2
         with: { flutter-version: '${{ env.FLUTTER_VERSION }}', channel: stable, cache: true }
       - run: flutter pub get
@@ -130,6 +146,10 @@ jobs:
             git -C pages rm -rf -q .
           fi
           touch pages/.nojekyll
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-fdroidserver-${{ runner.os }}
       - run: pip install fdroidserver
       - name: Update the repo
         env:
