@@ -891,34 +891,28 @@ class BarStatus extends StatelessWidget {
   );
 }
 
-/// A status cell showing signal strength: a wifi icon with the lamp's halo glow and the reading in dBm.
+/// A status cell showing signal strength: a wifi glyph with the lamp's halo glow and the reading in
+/// dBm. Above -60 is full, above -70 medium, anything weaker low.
 class SignalStatus extends StatelessWidget {
   const SignalStatus({super.key, required this.rssi});
   final int rssi;
 
   @override
   Widget build(BuildContext context) {
-    final icon = rssi >= -55
-        ? Icons.wifi
-        : rssi >= -65
-        ? Icons.wifi_2_bar
-        : Icons.wifi_1_bar;
+    final level = rssi > -60
+        ? 3
+        : rssi > -70
+        ? 2
+        : 1;
     return Semantics(
       label: 'Door near, signal $rssi dBm',
       excludeSemantics: true,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            size: 16,
-            color: LampColors.green,
-            shadows: [
-              Shadow(
-                color: LampColors.green.withValues(alpha: 0.65),
-                blurRadius: 6,
-              ),
-            ],
+          CustomPaint(
+            size: const Size(18, 14),
+            painter: _WifiPainter(level, LampColors.green),
           ),
           const SizedBox(width: 8),
           Text('$rssi DBM', style: context.type.eyebrow),
@@ -926,4 +920,53 @@ class SignalStatus extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A dot and three arcs; `level` arcs are lit and glow, the rest are dark.
+class _WifiPainter extends CustomPainter {
+  _WifiPainter(this.level, this.color);
+  final int level;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final origin = Offset(size.width / 2, size.height - 1.5);
+    const sweep = 1.2; // radians, centred straight up
+    const start = -1.5707963 - sweep / 2;
+
+    void draw(Paint paint, int lit) {
+      for (var i = 0; i <= 3; i++) {
+        final on = i <= lit;
+        if (paint.maskFilter != null && !on) continue;
+        final p = Paint()
+          ..style = paint.style
+          ..strokeCap = StrokeCap.round
+          ..strokeWidth = 2
+          ..maskFilter = paint.maskFilter
+          ..color = on ? color : color.withValues(alpha: 0.25);
+        if (i == 0) {
+          canvas.drawCircle(origin, 1.25, p..style = PaintingStyle.fill);
+        } else {
+          final r = i * 4.2 + 1.5;
+          canvas.drawArc(
+            Rect.fromCircle(center: origin, radius: r),
+            start,
+            sweep,
+            false,
+            p..style = PaintingStyle.stroke,
+          );
+        }
+      }
+    }
+
+    draw(
+      Paint()..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+      level,
+    );
+    draw(Paint(), level);
+  }
+
+  @override
+  bool shouldRepaint(_WifiPainter old) =>
+      old.level != level || old.color != color;
 }
