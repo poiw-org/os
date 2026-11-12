@@ -13,6 +13,7 @@ constexpr uint8_t kCmdSam = 0x14;
 constexpr uint8_t kCmdListTarget = 0x4A;
 constexpr uint8_t kCmdExchange = 0x40;
 constexpr uint8_t kCmdThrough = 0x42;
+constexpr uint8_t kCmdWriteReg = 0x08;
 constexpr uint8_t kCmdTgInit = 0x8C;
 constexpr uint8_t kCmdTgGetData = 0x86;
 constexpr uint8_t kCmdTgSetData = 0x8E;
@@ -32,6 +33,11 @@ static_assert(kMaxPayload >= 1 + kT4tMaxRead + 2, "frame too small for a Type 4 
 // While emulating a tag: how long the phone may take to send its next command, and how many it
 // may send in one session (a full read is about six).
 constexpr uint32_t kTargetMs = 250;
+// Apple's Enhanced Contactless Polling frame (ECP 1, "VAS only"), sent before every poll. Without
+// it an iPhone takes the door for a payment terminal and brings up Apple Pay; with it the iPhone
+// stays quiet and still reads the door's link tag. Nothing answers it, so it is not waited for.
+constexpr uint8_t kEcp[] = {0x6A, 0x01, 0x00, 0x00, 0x02};
+constexpr uint32_t kEcpMs = 5;
 constexpr int kMaxApdus = 16;
 // abort() reads out at most this many leftover frames; a command leaves two (ACK and response).
 constexpr int kMaxQueuedFrames = 4;
@@ -177,7 +183,19 @@ bool Pn532::configure() {
 	       command(retries, sizeof(retries), r, sizeof(r), kConfigMs) >= 0;
 }
 
+void Pn532::sendEcp() {
+	// 106 kbps type A with CRC on both ways (InListPassiveTarget and target mode change these), and
+	// whole bytes: the frame goes out as a normal type A frame with its CRC_A.
+	const uint8_t regs[] = {kCmdWriteReg, 0x63, 0x02, 0x80, 0x63, 0x03, 0x80, 0x63, 0x3D, 0x00};
+	uint8_t r[4];
+	if (command(regs, sizeof(regs), r, sizeof(r), kConfigMs) < 0) return;
+	uint8_t cmd[1 + sizeof(kEcp)] = {kCmdThrough};
+	memcpy(cmd + 1, kEcp, sizeof(kEcp));
+	command(cmd, sizeof(cmd), r, sizeof(r), kEcpMs);  // no answer comes: the chip is aborted after kEcpMs
+}
+
 Pn532::Detect Pn532::detect(Target& out) {
+	sendEcp();
 	const uint8_t cmd[] = {kCmdListTarget, 0x01, 0x00};  // one target, 106 kbps type A
 	// ISO-DEP tags (phones, DESFire, emulators) append their ATS after the UID, up to a full normal
 	// frame: an answer that does not fit would read as a bus error and keep resetting the chip.

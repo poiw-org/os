@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -93,6 +94,11 @@ class KeysScreen extends StatelessWidget {
                     ),
                 ],
               ),
+            if (defaultTargetPlatform == TargetPlatform.iOS &&
+                keys.keys.isNotEmpty) ...[
+              const SizedBox(height: 36),
+              const Panel(children: [PanelRow(child: _TapToUnlock())]),
+            ],
             const SizedBox(height: 36),
             Panel(
               children: [
@@ -433,6 +439,41 @@ class _BackgroundPrompts extends StatelessWidget {
             ),
           ),
         ],
+      ],
+    );
+  }
+}
+
+/// iOS only: how to make a tap on the door's reader run the Unlock Door shortcut. Apps cannot create
+/// automations, so this explains the few steps in the Shortcuts app and opens it.
+class _TapToUnlock extends StatelessWidget {
+  const _TapToUnlock();
+
+  @override
+  Widget build(BuildContext context) {
+    final type = context.type;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Eyebrow('Tap the reader to unlock'),
+        const SizedBox(height: 4),
+        Text(
+          'In Shortcuts: Automation, then New Automation, then NFC. Tap Scan and hold '
+          "your iPhone to the door's reader. Choose Run Immediately, then add the "
+          'Doora action Unlock Door.',
+          style: type.muted,
+        ),
+        const SizedBox(height: 10),
+        DooraButton(
+          label: 'Open Shortcuts',
+          onPressed: () async {
+            HapticFeedback.selectionClick();
+            await launchUrl(
+              Uri.parse('shortcuts://'),
+              mode: LaunchMode.externalApplication,
+            );
+          },
+        ),
       ],
     );
   }

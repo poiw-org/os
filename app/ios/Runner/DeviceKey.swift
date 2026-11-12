@@ -140,13 +140,16 @@ enum DeviceKeyError: Error {
   case badArguments, noKey, noPublicKey
 }
 
-/// Set when the Live Activity's Unlock link (`doora://unlock`) opens the app; read once by Dart.
+/// Set when the Live Activity's Unlock link (`doora://unlock`) or the Unlock Door shortcut opens the
+/// app; read once by Dart.
 enum DoorLaunch {
   private static var unlockPending = false
 
   static func noteURL(_ url: URL) {
     if url.scheme == "doora" && url.host == "unlock" { unlockPending = true }
   }
+
+  static func requestUnlock() { unlockPending = true }
 
   static func takeUnlock() -> Bool {
     defer { unlockPending = false }

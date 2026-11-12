@@ -101,8 +101,11 @@ void process() {
 				enqueue(0x4B, d);
 			}
 			break;
-		case 0x40:    // InDataExchange: arg = {tg, tag command...}
-		case 0x42: {  // InCommunicateThru: arg = {tag command...}
+		case 0x08: enqueue(0x09, {}); break;  // WriteRegister
+		case 0x42:
+			if (!arg.empty() && arg[0] == 0x6A) { enqueue(0x43, {0x01}); break; }  // Apple ECP: nothing answers
+			[[fallthrough]];
+		case 0x40: {  // InDataExchange: arg = {tg, tag command...}; InCommunicateThru: {tag command...}  // InCommunicateThru: arg = {tag command...}
 			chip.exchanges++;
 			std::vector<uint8_t> t(arg.begin() + (cmd == 0x40 ? 1 : 0), arg.end());
 			uint8_t status = chip.failExchangeAfter >= 0 && chip.exchanges > chip.failExchangeAfter ? 0x01 : 0x00;
