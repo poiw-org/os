@@ -1,0 +1,9 @@
+Categories: [Security]
+License: Unknown
+SourceCode: https://github.com/poiw-org/os
+AuthorName: po/iw
+WebSite: https://poiw.org
+Name: Doora
+Summary: The door lock of the po/iw hackerspace
+Description: |-
+  Your virtual keys, and the unlock. Walk up to the door and open it from your phone over Bluetooth.
