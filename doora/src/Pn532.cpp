@@ -23,6 +23,9 @@ constexpr uint32_t kSpinUs = 1500;
 // Activation attempts per detect(): 0xFF would mean "forever".
 constexpr uint8_t kDetectRetries = 2;
 constexpr size_t kMaxPayload = 40;
+// abort() reads out at most this many leftover frames; a command leaves two (ACK and response).
+constexpr int kMaxQueuedFrames = 4;
+constexpr int kBeginAttempts = 3;
 }  // namespace
 
 // Polls the status byte until the chip has something to say. On success the read transaction is
@@ -100,18 +103,20 @@ int Pn532::readResponse(uint8_t cmd, uint8_t* resp, size_t cap) {
 }
 
 // Cancels the command the chip is running (an ACK frame from the host does that) and discards
-// anything it had already queued, so the next command starts from a quiet chip.
+// every frame it had already queued, so the next command starts from a quiet chip.
 void Pn532::abort() {
 	if (i2c_.start(kAddr, false)) {
 		for (uint8_t b : pn532::kAckFrame) i2c_.write(b);
 		i2c_.stop();
 	}
-	delay(2);
-	if (i2c_.start(kAddr, true)) {
+	for (int frame = 0; frame < kMaxQueuedFrames; frame++) {
+		delay(2);
+		if (!i2c_.start(kAddr, true)) return;
 		bool ready = i2c_.read(true) & 1;
 		for (int i = 0; ready && i < 31; i++) i2c_.read(true);
 		i2c_.read(false);
 		i2c_.stop();
+		if (!ready) return;
 	}
 }
 
@@ -140,12 +145,19 @@ uint32_t Pn532::firmware() {
 bool Pn532::ping() { return firmware() != 0; }
 
 bool Pn532::begin(uint8_t sda, uint8_t scl) {
-	i2c_.begin(sda, scl);
-	version_ = 0;
-	for (int attempt = 0; attempt < 3 && !version_; attempt++) {
+	for (int attempt = 0; attempt < kBeginAttempts; attempt++) {
 		if (attempt) delay(40);  // the chip needs a moment after power-up
-		version_ = firmware();
+		i2c_.begin(sda, scl);
+		// A soft reboot does not reset the chip, which still holds whatever the previous run left
+		// unread. Read as answers, those frames shift every later response by one command.
+		abort();
+		if (configure()) return true;
 	}
+	return false;
+}
+
+bool Pn532::configure() {
+	version_ = firmware();
 	if (!version_) return false;
 	uint8_t r[4];
 	const uint8_t sam[] = {kCmdSam, 0x01, 0x14, 0x00};  // normal mode, IRQ pin unused

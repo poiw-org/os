@@ -20,13 +20,14 @@ std::atomic<uint32_t> gRefused{0};
 
 namespace Net {
 
+bool roomForSession() { return ESP.getFreeHeap() >= kMinFreeHeap && ESP.getMaxAllocHeap() >= kMinBlock; }
+
 bool connect(WiFiClientSecure& tls, const char* host, uint32_t timeoutMs) {
 	tls.stop();
 	std::lock_guard<std::mutex> oneAtATime(gHandshake);
-	uint32_t freeHeap = ESP.getFreeHeap(), block = ESP.getMaxAllocHeap();
-	if (freeHeap < kMinFreeHeap || block < kMinBlock) {
-		LOG("Not enough memory for TLS (%lu bytes free, largest block %lu, %lu refusals).", (unsigned long)freeHeap,
-		    (unsigned long)block, (unsigned long)++gRefused);
+	if (!roomForSession()) {
+		LOG("Not enough memory for TLS (%lu bytes free, largest block %lu, %lu refusals).",
+		    (unsigned long)ESP.getFreeHeap(), (unsigned long)ESP.getMaxAllocHeap(), (unsigned long)++gRefused);
 		return false;
 	}
 	tls.setCACert(kRootCerts);  // certificate validity is checked against the system time, which Clock keeps set

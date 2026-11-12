@@ -4,7 +4,8 @@
 // A task of its own owns the websocket and does nothing else, so a command never waits behind a
 // REST call or a flash write: the task sleeps in select() until a frame arrives, handles it in
 // well under a millisecond and tells the rest of the firmware through RealtimeEvents. The door's
-// access token is renewed on the open connection, so the channel is never torn down for upkeep.
+// access token is renewed on the open connection, so the channel is not torn down for upkeep
+// unless memory is too short for the REST task's own session (RealtimeEvents::yield).
 #pragma once
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -28,6 +29,10 @@ struct RealtimeEvents {
 	std::atomic<bool> resync{true};             // the blacklist may be stale; the REST task refetches it
 	std::atomic<bool> blacklistChanged{false};  // the in-memory blacklist should be written to flash
 	std::atomic<bool> firmwareCheck{true};      // an update may be approved; the REST task asks
+	// Memory is too short for two TLS sessions: the REST task asks for the websocket's, and the
+	// realtime task closes it until the flag clears. Never set while there is room for both.
+	std::atomic<bool> yield{false};
+	std::atomic<uint32_t> yields{0};
 
 	// Writer mode. The realtime task fills `write` and sets writePending; loop() consumes it and then
 	// clears the flag. loop() publishes the session's state, which the realtime task reports.
@@ -97,6 +102,7 @@ class Realtime {
 	TaskHandle_t task_ = nullptr;
 
 	bool joined_ = false;  // the task's own view of events_->joined
+	bool yielded_ = false;  // the last session ended to lend its memory; the REST task resynced meanwhile
 	bool heartbeatOutstanding_ = false;
 	uint32_t ref_ = 0, heartbeatRef_ = 0;
 	uint32_t lastHeartbeatMs_ = 0, joinedAtMs_ = 0;

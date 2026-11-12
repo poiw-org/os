@@ -27,6 +27,7 @@ struct Chip {
 	bool present = true;      // answers its I2C address
 	bool silent = false;      // takes commands but never answers them
 	bool corruptDcs = false;  // damages the data checksum of responses
+	int dropSam = 0;          // this many SAMConfiguration commands go unanswered
 	std::deque<Frame> out;    // frames waiting to be read, in order
 	std::vector<uint8_t> in;  // bytes of the write transfer in progress
 	bool writing = false, reading = false, firstReadDone = false;
@@ -71,7 +72,8 @@ void enqueue(uint8_t code, const std::vector<uint8_t>& data) {
 void process() {
 	const std::vector<uint8_t>& f = chip.in;
 	if (f.size() == 6 && !memcmp(f.data(), pn532::kAckFrame, 6)) {  // host aborts the running command
-		chip.out.clear();
+		// Only unfinished work is cancelled: a frame that is already ready stays queued until read.
+		while (!chip.out.empty() && chip.out.back().readyAt > g_nowUs) chip.out.pop_back();
 		chip.aborts++;
 		return;
 	}
@@ -84,7 +86,10 @@ void process() {
 	std::vector<uint8_t> arg(f.begin() + 7, f.end() - 2);
 	switch (cmd) {
 		case 0x02: enqueue(0x03, {0x32, 0x01, 0x06, 0x07}); break;
-		case 0x14: enqueue(0x15, {}); break;
+		case 0x14:
+			if (chip.dropSam > 0) { chip.dropSam--; break; }
+			enqueue(0x15, {});
+			break;
 		case 0x32: enqueue(0x33, {}); break;
 		case 0x4A:
 			if (!chip.tagPresent) { enqueue(0x4B, {0}); break; }
@@ -670,6 +675,24 @@ int main() {
 	CHECK(!pn.begin(21, 22));
 	CHECK(pn.detect(t) == Pn532::Detect::Error);
 	CHECK(g_nowUs - before < 500000);
+
+	// Soft reboot: the chip kept power and still holds what the previous run never read, here a
+	// whole ACK + response pair and the bare response of esphome/issues#3823 (00 00 FF 02 FE D5 15).
+	const std::vector<uint8_t> ack(pn532::kAckFrame, pn532::kAckFrame + 6);
+	resetChip();
+	chip.out.push_back({ack, 0});
+	chip.out.push_back({makeFrame(0x4B, {0}, false), 0});
+	CHECK(pn.begin(21, 22) && pn.version() == 0x32010607u);
+	CHECK(chip.out.empty() && pn.detect(t) == Pn532::Detect::None);
+
+	resetChip();
+	chip.out.push_back({makeFrame(0x15, {}, false), 0});
+	CHECK(pn.begin(21, 22) && chip.out.empty());
+
+	// A configuration step that fails retries the whole sequence.
+	resetChip();
+	chip.dropSam = 1;
+	CHECK(pn.begin(21, 22) && pn.detect(t) == Pn532::Detect::None);
 
 	testReader();
 	printf("%d chip checks, %d failures\n", checks, failures);

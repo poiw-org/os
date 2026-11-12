@@ -91,8 +91,10 @@ Known limits, by design of the hardware or the protocol:
 - **Estimated clock.** After a long blackout without network the clock lags: an expired key can
   still work and a freshly activated one can be refused until the first sync.
 - Two TLS sessions are open while the door uploads or renews something (about 80 KB of heap). That is
-  what lets the websocket stay up during upkeep. If memory ever falls too low for a second session the
-  upload waits and `status` counts the refusal; the websocket is served first.
+  what lets the websocket stay up during upkeep. If memory is too low for a second session, the
+  websocket closes for the seconds the upload takes and reconnects afterwards; `status` counts how
+  often. A force open sent in that gap is not received, and a key disabled in it is picked up by the
+  sync that ends the gap or, at worst, by the next periodic one (5 minutes).
 
 The firmware runs as four tasks: `loop()` (taps, relay, console), the NFC reader, the realtime
 websocket and the REST work (sign-in, event upload, blacklist sync). They share only a few atomic flags

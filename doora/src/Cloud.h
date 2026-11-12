@@ -11,7 +11,8 @@
 // and a retry, and the door keeps working from its local state.
 //
 // Two TLS sessions are open at the same time while both tasks work. That costs about 80 KB of
-// heap, which an ESP32 has; Net.cpp refuses a connection that memory would not allow.
+// heap. When memory does not allow the second one, the REST task borrows the websocket's: the
+// realtime task closes it for that pass (RealtimeEvents::yield) and reconnects afterwards.
 #pragma once
 #include <WiFi.h>
 #include <WiFiClientSecure.h>

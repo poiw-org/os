@@ -16,6 +16,9 @@ bool connect(WiFiClientSecure& tls, const char* host, uint32_t timeoutMs);
 // connection also returns, so check tls.connected() afterwards.
 bool waitReadable(WiFiClientSecure& tls, uint32_t ms);
 
+// True when memory allows one more TLS session; connect() refuses without it.
+bool roomForSession();
+
 // Connection attempts refused for lack of memory since boot.
 uint32_t lowMemoryRefusals();
 

@@ -179,10 +179,20 @@ void onClosed(Cloud& cloud) {
 }
 }  // namespace
 
+#ifdef BLE_SPIKE
+void bleSpikeBegin(const char* name);  // BleSpike.cpp
+void bleSpikeService(bool online);
+void bleSpikePrintStatus();
+#endif
+
 namespace Bt {
 
 void begin(const char* name) {
 	if (!kEnabled) {
+#ifdef BLE_SPIKE
+		bleSpikeBegin(name);
+		return;
+#endif
 		esp_bt_controller_mem_release(ESP_BT_MODE_BTDM);  // Arduino keeps it reserved once this file links its btInUse()
 		LOG("Bluetooth: off in this build.");
 		return;
@@ -223,6 +233,9 @@ void begin(const char* name) {
 }
 
 void service(Cloud& cloud) {
+#ifdef BLE_SPIKE
+	bleSpikeService(cloud.online());
+#endif
 	if (!gEvents) return;
 	uint32_t ms = millis();
 	Event e;
@@ -268,6 +281,9 @@ void write(const uint8_t* data, size_t len) {
 }
 
 void printStatus() {
+#ifdef BLE_SPIKE
+	bleSpikePrintStatus();
+#endif
 	static const char* const kLink[] = {"no device", "waiting for approval", "open"};
 	LOG("bluetooth : \"%s\", %s", gName, gEvents ? kLink[(int)gGate.link()] : "off");
 }

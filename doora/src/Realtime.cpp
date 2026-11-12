@@ -89,13 +89,16 @@ void Realtime::loop() {
 			wifiWasDown = false;
 			backoff_.succeed();  // Wi-Fi is back: connect at once instead of waiting out an old delay
 		}
-		if (!token_->present() || !backoff_.due(millis())) {
+		if (!token_->present() || !backoff_.due(millis()) || events_->yield.load(std::memory_order_acquire)) {
 			vTaskDelay(pdMS_TO_TICKS(100));
 			continue;
 		}
 		switch (connect()) {
 			case Outcome::Joined: session(); break;  // returns once drop() has scheduled the retry
-			case Outcome::Failed: retryLater(); break;
+			case Outcome::Failed:
+				yielded_ = false;  // away for longer than the REST task covered
+				retryLater();
+				break;
 			case Outcome::Refused:
 				backoff_.hold(millis(), kRefusedHoldMs);
 				LOG("Realtime unavailable; retrying in %lu s.", (unsigned long)(kRefusedHoldMs / 1000));
@@ -157,8 +160,13 @@ Realtime::Outcome Realtime::connect() {
 		if (!strcmp(doc["payload"]["status"] | "", "ok")) {
 			joined_ = true;
 			events_->joined.store(true, std::memory_order_release);
-			events_->resync.store(true, std::memory_order_release);  // whatever happened while we were away
-			events_->firmwareCheck.store(true, std::memory_order_release);
+			// Whatever happened while we were away. After lending memory the REST task has just
+			// synced, and asking again would take the websocket down for it once more.
+			if (!yielded_) {
+				events_->resync.store(true, std::memory_order_release);
+				events_->firmwareCheck.store(true, std::memory_order_release);
+			}
+			yielded_ = false;
 			heartbeatOutstanding_ = false;
 			lastHeartbeatMs_ = joinedAtMs_ = millis();
 			LOG("Realtime connected (channel door:%s).", cfg_->doorId);
@@ -199,6 +207,12 @@ void Realtime::session() {
 	while (joined_) {
 		if (WiFi.status() != WL_CONNECTED) {
 			drop("Wi-Fi lost", false);
+			return;
+		}
+		if (events_->yield.load(std::memory_order_acquire)) {
+			events_->yields.fetch_add(1, std::memory_order_acq_rel);
+			yielded_ = true;
+			drop("lending its memory to an upload", false);
 			return;
 		}
 		uint32_t deadline = lastHeartbeatMs_ + (heartbeatOutstanding_ ? kHeartbeatTimeoutMs : kHeartbeatMs);
@@ -532,7 +546,8 @@ void Realtime::onMessage(const char* text, size_t len) {
 }
 
 void Realtime::printStatus() const {
-	LOG("realtime  : %s, %lu force opens received, task stack headroom %u of %u bytes",
+	LOG("realtime  : %s, %lu force opens received, closed %lu times to lend memory, task stack headroom %u of %u bytes",
 	    events_ && events_->joined.load() ? "connected" : "offline", (unsigned long)commands_,
-	    (unsigned)uxTaskGetStackHighWaterMark(task_), (unsigned)kTaskStack);
+	    (unsigned long)(events_ ? events_->yields.load() : 0), (unsigned)uxTaskGetStackHighWaterMark(task_),
+	    (unsigned)kTaskStack);
 }

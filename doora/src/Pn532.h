@@ -44,6 +44,7 @@ class Pn532 {
  private:
 	int transceive(uint8_t code, bool withTarget, const uint8_t* data, size_t n, uint8_t* out, size_t cap);
 	uint32_t firmware();
+	bool configure();
 	int command(const uint8_t* payload, size_t n, uint8_t* resp, size_t cap, uint32_t timeoutMs);
 	bool writeFrame(const uint8_t* payload, size_t n);
 	bool waitReady(uint32_t timeoutMs);

@@ -13,6 +13,7 @@
 namespace {
 constexpr uint32_t kHttpTimeoutMs = 8000;
 constexpr uint32_t kRestPollMs = 250;
+constexpr uint32_t kYieldWaitMs = 2000;       // the realtime task notices a request within 500 ms
 constexpr uint32_t kSyncEveryMs = 300000;     // safety net for missed realtime events
 constexpr uint8_t kMaxSupersededRuns = 3;      // overtaken syncs in a row before one is applied anyway
 constexpr uint32_t kMinSyncGapMs = 30000;     // a sync asked for by a reconnect never follows another this closely
@@ -129,6 +130,12 @@ void Cloud::manageWifi(uint32_t ms) {
 
 int Cloud::request(const char* method, const char* path, const char* body, size_t bodyLen, const char* prefer,
                    bool authed) {
+	// No room for a second session beside the websocket: borrow the websocket's memory. restLoop()
+	// gives it back at the end of the pass.
+	if (!Net::roomForSession() && online()) {
+		events_.yield.store(true, std::memory_order_release);
+		for (uint32_t since = millis(); online() && millis() - since < kYieldWaitMs;) vTaskDelay(pdMS_TO_TICKS(20));
+	}
 	if (!Net::connect(tls_, cfg_->supabaseHost, kHttpTimeoutMs)) return -1;
 
 	// The whole header goes out in one write, the body in a second.
@@ -447,9 +454,11 @@ void Cloud::restLoop() {
 		uint32_t ms = millis();
 
 		refreshSession(ms);
+		bool synced = false;
 		if (token_.present()) {
 			if (Persist::journalCount() && journalBackoff_.due(millis())) flushJournal();
 			if (syncDue(millis())) {
+				synced = true;
 				syncBlacklist();
 				events_.firmwareCheck.store(true, std::memory_order_release);  // in case the wake-up was missed
 			}
@@ -457,6 +466,12 @@ void Cloud::restLoop() {
 			if (events_.firmwareCheck.exchange(false, std::memory_order_acq_rel)) updateFirmware();
 			uint32_t now = millis();
 			if (keyBackoff_.due(now) && (!keyFetched_ || now - keyFetchedMs_ >= kKeyRefreshMs)) fetchSigningKey();
+		}
+		if (events_.yield.load(std::memory_order_acquire)) {
+			// The websocket was down for this pass. Fetch what it missed, then let it reconnect; only
+			// the seconds that takes stay uncovered until the next periodic sync.
+			if (token_.present() && !synced) syncBlacklist();
+			events_.yield.store(false, std::memory_order_release);
 		}
 		persistBlacklistIfDirty(millis());
 	}
