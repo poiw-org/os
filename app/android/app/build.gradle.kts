@@ -29,11 +29,23 @@ android {
         versionName = flutter.versionName
     }
 
+    // CI passes the release key through the environment; without it the build is debug-signed,
+    // so `flutter run --release` works locally.
+    val releaseKeystore = System.getenv("DOORA_KEYSTORE")
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword = System.getenv("DOORA_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("DOORA_KEY_ALIAS")
+                keyPassword = System.getenv("DOORA_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (releaseKeystore != null) "release" else "debug")
         }
     }
 }

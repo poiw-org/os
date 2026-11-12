@@ -1,0 +1,106 @@
+# Every push to main that touches the phone app builds it and publishes a GitHub release:
+#   - Android: a signed APK (ubuntu runner)
+#   - iOS: an unsigned IPA (macOS runner). AltStore signs it on the member's device.
+#   - altstore.json: the AltStore source, served at https://poiw.org/altstore.json
+#     (web/static/_redirects points it at the latest release's copy).
+#
+# Secrets for a stable Android signing key (without them the APK is debug-signed and can't be
+# updated over a previous build): ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
+# ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD.
+name: App release
+
+on:
+  push:
+    branches: [main]
+    paths: ['app/**', '.github/workflows/app-release.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: app-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: '3.50.0'
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: app } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: subosito/flutter-action@v2
+        with: { flutter-version: '${{ env.FLUTTER_VERSION }}', channel: stable, cache: true }
+      - run: flutter pub get
+      - run: flutter analyze && flutter test
+      - name: Signing key
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE" ]; then
+            echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "DOORA_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          fi
+      - name: Build APK
+        env:
+          DOORA_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          DOORA_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          DOORA_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: flutter build apk --release --build-number "$GITHUB_RUN_NUMBER"
+      - run: cp build/app/outputs/flutter-apk/app-release.apk doora.apk
+      - uses: actions/upload-artifact@v4
+        with: { name: android, path: app/doora.apk, if-no-files-found: error }
+
+  ios:
+    runs-on: macos-latest
+    defaults: { run: { working-directory: app } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { flutter-version: '${{ env.FLUTTER_VERSION }}', channel: stable, cache: true }
+      - run: flutter pub get
+      - name: Build unsigned app
+        run: flutter build ios --release --no-codesign --build-number "$GITHUB_RUN_NUMBER"
+      - name: Package IPA
+        run: |
+          rm -rf Payload && mkdir Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/
+          zip -qry doora.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with: { name: ios, path: app/doora.ipa, if-no-files-found: error }
+
+  release:
+    needs: [android, ios]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - uses: actions/download-artifact@v4
+        with: { path: dist, merge-multiple: true }
+      - name: Version
+        id: v
+        run: |
+          name=$(sed -n 's/^version: \([0-9.]*\)+.*/\1/p' app/pubspec.yaml)
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "tag=v$name-build.$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+      - name: AltStore source
+        run: |
+          node app/tool/altstore_source.mjs \
+            --repo "$GITHUB_REPOSITORY" --tag "${{ steps.v.outputs.tag }}" \
+            --version "${{ steps.v.outputs.name }}" --build "$GITHUB_RUN_NUMBER" \
+            --ipa dist/doora.ipa --out dist/altstore.json
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.v.outputs.tag }}" dist/doora.apk dist/doora.ipa dist/altstore.json \
+            --target "$GITHUB_SHA" --latest \
+            --title "Doora ${{ steps.v.outputs.name }} (build $GITHUB_RUN_NUMBER)" \
+            --generate-notes
