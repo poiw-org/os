@@ -327,7 +327,10 @@ void setup() {
 	}
 	LOG("%u events waiting to be uploaded.", (unsigned)Persist::journalCount());
 
-	reader.begin(NFC_SDA, NFC_SCL);
+	// A phone that taps the reader opens this: the app unlocks, or the website offers the app.
+	char link[48];
+	snprintf(link, sizeof(link), "poiw.org/d/%s", settings.doorId);
+	reader.begin(NFC_SDA, NFC_SCL, settings.doorId[0] ? link : "");
 	bridge.begin(settings.doorId);
 	cloud.begin(settings, clock_, blacklist, signingKey);
 	char host[48];

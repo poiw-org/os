@@ -16,3 +16,8 @@ bool ndefFindToken(const uint8_t* area, NdefFill fill, void* ctx, const uint8_t*
 // inside an NDEF TLV, then the terminator. Returns the byte count (not padded), or 0 when `cap` is
 // too small. The result reads back through ndefFindToken().
 size_t ndefEncodeToken(const char* token, size_t len, uint8_t* out, size_t cap);
+
+// Encodes the NDEF file of a Type 4 tag that holds one URI record: the 2-byte NLEN, then the
+// message. `uri` is given without its "https://" prefix (abbreviated as code 0x04). Returns the
+// byte count, or 0 when `cap` is too small.
+size_t ndefEncodeUri(const char* uri, size_t len, uint8_t* out, size_t cap);

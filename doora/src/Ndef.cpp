@@ -98,3 +98,20 @@ size_t ndefEncodeToken(const char* token, size_t len, uint8_t* out, size_t cap) 
 	out[i++] = 0xFE;
 	return i;
 }
+
+size_t ndefEncodeUri(const char* uri, size_t len, uint8_t* out, size_t cap) {
+	size_t payload = len + 1;  // URI identifier code, then the rest of the URI
+	if (payload > 0xFF) return 0;
+	size_t message = 4 + payload;  // flags, type length, payload length, type "U"
+	if (2 + message > cap) return 0;
+	size_t i = 0;
+	out[i++] = (uint8_t)(message >> 8);
+	out[i++] = (uint8_t)message;
+	out[i++] = 0xD1;  // MB | ME | SR | well-known type
+	out[i++] = 0x01;
+	out[i++] = (uint8_t)payload;
+	out[i++] = 'U';
+	out[i++] = 0x04;  // "https://"
+	for (size_t k = 0; k < len; k++) out[i++] = (uint8_t)uri[k];
+	return i;
+}

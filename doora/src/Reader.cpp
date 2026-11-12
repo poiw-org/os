@@ -18,6 +18,11 @@ constexpr uint8_t kMaxErrors = 5;
 // A read that fails on the radio link (tag at the edge of the field, slid away) is retried this
 // many times before the tap is handed out without a token.
 constexpr uint8_t kMaxReadRetries = 2;
+// How long each poll lets a phone find the link tag. Tag reads wait at most this much longer.
+constexpr uint32_t kLinkWindowMs = 150;
+// After a phone read the link, it is not offered again for this long: a phone held to the reader
+// would otherwise open the link over and over.
+constexpr uint32_t kLinkQuietMs = 4000;
 // While the chip is down, how often the reader task wakes to check a write session's deadline.
 constexpr uint32_t kDownTickMs = 250;
 
@@ -152,7 +157,9 @@ bool Reader::probe() {
 	return true;
 }
 
-void Reader::begin(uint8_t sda, uint8_t scl) {
+void Reader::begin(uint8_t sda, uint8_t scl, const char* link) {
+	link_.ndefLen = *link ? ndefEncodeUri(link, strlen(link), link_.ndef, sizeof(link_.ndef)) : 0;
+	if (*link && !link_.ndefLen) LOG("Door link too long for the tag; phones will not see it.");
 	sda_ = sda;
 	scl_ = scl;
 	lastCheckMs_ = millis();
@@ -239,6 +246,7 @@ void Reader::poll() {
 				present_ = false;
 				retries_ = 0;
 			}
+			offerLink(ms);
 			return;
 		case Pn532::Detect::Found:
 			break;
@@ -254,9 +262,24 @@ void Reader::poll() {
 		write(target);
 		return;
 	}
+	// An ISO-DEP target is a phone (its wallet answering) or a smart card: neither carries a key the
+	// door can read. A phone is answered with the link instead, and nothing is denied.
+	if (target.sak & 0x20) {
+		offerLink(ms);
+		return;
+	}
 	if (present_ || full_.load(std::memory_order_acquire)) return;  // already handled, or loop() is busy
 	present_ = true;
 	read(target);
+}
+
+void Reader::offerLink(uint32_t ms) {
+	if (!link_.ndefLen || writeActive(writeState_.load(std::memory_order_acquire))) return;
+	if ((int32_t)(ms - linkQuietUntilMs_) < 0) return;
+	if (pn_.emulate(link_, kLinkWindowMs)) {
+		linkQuietUntilMs_ = millis() + kLinkQuietMs;
+		LOG("A phone read the door link.");
+	}
 }
 
 void Reader::read(const Pn532::Target& target) {

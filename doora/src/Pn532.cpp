@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <string.h>
 #include "Pn532Frame.h"
+#include "T4t.h"
 
 namespace {
 constexpr uint8_t kAddr = 0x24;  // 7-bit; the datasheet's 0x48 / 0x49 include the R/W bit
@@ -12,6 +13,9 @@ constexpr uint8_t kCmdSam = 0x14;
 constexpr uint8_t kCmdListTarget = 0x4A;
 constexpr uint8_t kCmdExchange = 0x40;
 constexpr uint8_t kCmdThrough = 0x42;
+constexpr uint8_t kCmdTgInit = 0x8C;
+constexpr uint8_t kCmdTgGetData = 0x86;
+constexpr uint8_t kCmdTgSetData = 0x8E;
 
 constexpr uint32_t kAckMs = 50;
 constexpr uint32_t kConfigMs = 50;
@@ -22,7 +26,13 @@ constexpr uint32_t kExchangeMs = 100;
 constexpr uint32_t kSpinUs = 1500;
 // Activation attempts per detect(): 0xFF would mean "forever".
 constexpr uint8_t kDetectRetries = 2;
-constexpr size_t kMaxPayload = 40;
+// Large enough for TgSetData with a full READ BINARY answer (command code, data, status word).
+constexpr size_t kMaxPayload = 64;
+static_assert(kMaxPayload >= 1 + kT4tMaxRead + 2, "frame too small for a Type 4 read");
+// While emulating a tag: how long the phone may take to send its next command, and how many it
+// may send in one session (a full read is about six).
+constexpr uint32_t kTargetMs = 250;
+constexpr int kMaxApdus = 16;
 // abort() reads out at most this many leftover frames; a command leaves two (ACK and response).
 constexpr int kMaxQueuedFrames = 4;
 constexpr int kBeginAttempts = 3;
@@ -205,4 +215,24 @@ int Pn532::transceive(uint8_t code, bool withTarget, const uint8_t* data, size_t
 	if (out[0] & 0x3F) return kErrTag;  // status byte: low 6 bits are the error code
 	memmove(out, out + 1, (size_t)got - 1);
 	return got - 1;
+}
+
+bool Pn532::emulate(T4tTag& tag, uint32_t windowMs) {
+	// PICC only, passive only: SENS_RES 04 00, NFCID1 (the chip fixes its first byte), SEL_RES 0x20
+	// (ISO-DEP, so the chip answers RATS itself); FeliCa parameters, NFCID3, Gt and Tk left empty.
+	uint8_t init[38] = {kCmdTgInit, 0x05, 0x04, 0x00, 0xD0, 0x02, 0x0A, 0x20};
+	uint8_t r[kMaxThroughData + 1];
+	// Times out (and is aborted) when no phone activates the tag within the window: not an error.
+	if (command(init, sizeof(init), r, sizeof(r), windowMs) < 0) return false;
+	tag.begin();
+	uint8_t resp[kMaxPayload];
+	resp[0] = kCmdTgSetData;
+	for (int i = 0; i < kMaxApdus; i++) {
+		const uint8_t get[] = {kCmdTgGetData};
+		int n = command(get, sizeof(get), r, sizeof(r), kTargetMs);
+		if (n < 1 || (r[0] & 0x3F)) break;  // the phone released the tag or left the field
+		size_t m = t4tRespond(tag, r + 1, (size_t)n - 1, resp + 1, sizeof(resp) - 1);
+		if (command(resp, m + 1, r, sizeof(r), kTargetMs) < 1 || (r[0] & 0x3F)) break;
+	}
+	return tag.served;
 }

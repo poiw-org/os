@@ -13,6 +13,7 @@
 #include "../src/Journal.h"
 #include "../src/Jwt.h"
 #include "../src/Ndef.h"
+#include "../src/T4t.h"
 #include "../src/Pn532Frame.h"
 #include "../src/Sha256.h"
 #include "../src/SigningKey.h"
@@ -849,6 +850,52 @@ static void testChimes() {
 }
 
 
+// A phone's NDEF read of the door's link tag, the way Android and iOS do it.
+static void testT4t() {
+	const char* link = "poiw.org/d/0b6f3c2e-8d1a-4b7e-9c55-2f6e1d0a9b44";
+	T4tTag tag;
+	tag.ndefLen = ndefEncodeUri(link, strlen(link), tag.ndef, sizeof(tag.ndef));
+	CHECK(tag.ndefLen == 2 + 5 + strlen(link));
+	CHECK(tag.ndef[6] == 0x04 && !memcmp(tag.ndef + 7, link, strlen(link)));
+	CHECK(ndefEncodeUri(link, strlen(link), tag.ndef, 20) == 0);
+	tag.begin();
+	uint8_t out[kT4tMaxRead + 2];
+	auto sw = [&](size_t n) { return n >= 2 ? (out[n - 2] << 8 | out[n - 1]) : -1; };
+
+	const uint8_t readFirst[] = {0x00, 0xB0, 0x00, 0x00, 0x0F};
+	CHECK(sw(t4tRespond(tag, readFirst, sizeof(readFirst), out, sizeof(out))) == 0x6986);  // nothing selected
+	const uint8_t badCc[] = {0x00, 0xA4, 0x00, 0x0C, 0x02, 0xE1, 0x03};
+	CHECK(sw(t4tRespond(tag, badCc, sizeof(badCc), out, sizeof(out))) == 0x6A82);  // app not selected yet
+	const uint8_t app[] = {0x00, 0xA4, 0x04, 0x00, 0x07, 0xD2, 0x76, 0x00, 0x00, 0x85, 0x01, 0x01, 0x00};
+	CHECK(sw(t4tRespond(tag, app, sizeof(app), out, sizeof(out))) == 0x9000);
+	CHECK(sw(t4tRespond(tag, badCc, sizeof(badCc), out, sizeof(out))) == 0x9000);
+	size_t n = t4tRespond(tag, readFirst, sizeof(readFirst), out, sizeof(out));
+	CHECK(n == 17 && sw(n) == 0x9000 && out[1] == 0x0F && out[2] == 0x20 && out[4] == kT4tMaxRead);
+	CHECK(out[9] == 0xE1 && out[10] == 0x04 && out[13] == 0x00 && out[14] == 0xFF);  // read-only
+	const uint8_t ndefFile[] = {0x00, 0xA4, 0x00, 0x0C, 0x02, 0xE1, 0x04};
+	CHECK(sw(t4tRespond(tag, ndefFile, sizeof(ndefFile), out, sizeof(out))) == 0x9000);
+	const uint8_t nlen[] = {0x00, 0xB0, 0x00, 0x00, 0x02};
+	n = t4tRespond(tag, nlen, sizeof(nlen), out, sizeof(out));
+	CHECK(n == 4 && (size_t)(out[0] << 8 | out[1]) == tag.ndefLen - 2 && !tag.served);
+	uint8_t got[64];
+	size_t at = 2;
+	while (at < tag.ndefLen) {
+		const uint8_t rb[] = {0x00, 0xB0, (uint8_t)(at >> 8), (uint8_t)at, 0xFF};
+		n = t4tRespond(tag, rb, sizeof(rb), out, sizeof(out));
+		CHECK(sw(n) == 0x9000 && n - 2 <= kT4tMaxRead && n > 2);
+		if (n <= 2) break;
+		memcpy(got + at, out, n - 2);
+		at += n - 2;
+	}
+	CHECK(at == tag.ndefLen && !memcmp(got + 2, tag.ndef + 2, tag.ndefLen - 2) && tag.served);
+	const uint8_t update[] = {0x00, 0xD6, 0x00, 0x00, 0x01, 0x00};
+	CHECK(sw(t4tRespond(tag, update, sizeof(update), out, sizeof(out))) == 0x6982);
+	const uint8_t past[] = {0x00, 0xB0, 0x01, 0x00, 0x10};
+	CHECK(sw(t4tRespond(tag, past, sizeof(past), out, sizeof(out))) == 0x6B00);
+	tag.begin();
+	CHECK(!tag.served && tag.file == T4tTag::File::None);
+}
+
 int main() {
 	testChimes();
 	testWsBuild();
@@ -857,6 +904,7 @@ int main() {
 	testAccessToken();
 	testBlacklistReplace();
 	testNdef();
+	testT4t();
 	testPn532Frame();
 	testHash();
 	testBtGate();

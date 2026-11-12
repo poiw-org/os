@@ -580,7 +580,8 @@ static void testReader() {
 	CHECK(reader.writeState() == WriteState::Done && !reader.take() && reader.scannedUid(scanned) == 4 &&
 	      !memcmp(scanned, chip.uid.data(), 4));
 
-	// Unsupported tag types (ISO-DEP only) are handed out without a token, not read.
+	// ISO-DEP targets (phones, smart cards) carry no readable key: not read, not handed out, so
+	// nothing is denied. With no link set, the chip is not asked to act as a tag either.
 	chip.tagPresent = false;
 	reader.poll();
 	g_nowUs += 700000;
@@ -593,8 +594,7 @@ static void testReader() {
 	chip.sak = 0x20;
 	chip.tagPresent = true;
 	reader.poll();
-	CHECK(reader.take() && !reader.take()->token && chip.exchanges == 0);
-	reader.release();
+	CHECK(!reader.take() && chip.exchanges == 0);
 }
 
 static void resetChip() {

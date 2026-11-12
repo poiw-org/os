@@ -19,8 +19,9 @@ abstract class SystemBridge {
 
   Future<void> stopBackgroundScan();
 
-  /// True once if the app was opened by an Unlock action: the Android notification's, or the iOS
-  /// Live Activity's `doora://unlock` link.
+  /// True once if the app was opened by an Unlock action: the Android notification's, a tap on the
+  /// door's reader (Android opens the app on its tag; elsewhere the website hands over with
+  /// `doora://unlock`), or the iOS Live Activity's `doora://unlock` link.
   Future<bool> takeUnlockLaunch();
 
   /// iOS only. Shows the "door at hand" Live Activity, or updates it.

@@ -21,7 +21,9 @@ export const load: LayoutLoad = async ({ url }) => {
 	// instead of /reset-password; send the user to the new-password form either way.
 	if (openedRecoveryLink && url.pathname !== '/reset-password') redirect(307, '/reset-password');
 
-	if (!user && !publicRoutes.includes(url.pathname)) redirect(307, '/login');
+	// /d/<door id> is what a phone opens when it taps a door's reader.
+	const isPublic = publicRoutes.includes(url.pathname) || url.pathname.startsWith('/d/');
+	if (!user && !isPublic) redirect(307, '/login');
 	if (user && url.pathname === '/login') redirect(307, '/os');
 	const inApp = url.pathname.startsWith('/os') || url.pathname === '/security';
 	// A password sign-in is not finished until the code is in.
