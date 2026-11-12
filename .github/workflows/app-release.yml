@@ -4,6 +4,10 @@
 #   - altstore.json: the AltStore source, served at https://poiw.org/altstore.json
 #     (web/static/_redirects points it at the latest release's copy).
 #
+# The Android build also goes into an F-Droid repo on GitHub Pages (the gh-pages branch):
+#   https://poiw-org.github.io/os/fdroid/repo
+# Secrets: FDROID_KEYSTORE_BASE64, FDROID_KEYSTORE_PASSWORD (the repo's index-signing key).
+#
 # Secrets for a stable Android signing key (without them the APK is debug-signed and can't be
 # updated over a previous build): ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
 # ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD.
@@ -104,3 +108,44 @@ jobs:
             --target "$GITHUB_SHA" --latest \
             --title "Doora ${{ steps.v.outputs.name }} (build $GITHUB_RUN_NUMBER)" \
             --generate-notes
+
+  fdroid:
+    needs: [android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: android, path: dist }
+      - name: Check out the repo's branch
+        run: |
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null; then
+            git fetch -q origin gh-pages
+            git worktree add pages FETCH_HEAD
+            git -C pages checkout -q -B gh-pages
+          else
+            git worktree add --detach pages
+            git -C pages checkout -q --orphan gh-pages
+            git -C pages rm -rf -q .
+          fi
+          touch pages/.nojekyll
+      - run: pip install fdroidserver
+      - name: Update the repo
+        env:
+          KEYSTORE: ${{ secrets.FDROID_KEYSTORE_BASE64 }}
+          FDROID_KEYSTORE_PASSWORD: ${{ secrets.FDROID_KEYSTORE_PASSWORD }}
+        run: |
+          echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/fdroid.p12"
+          export FDROID_KEYSTORE="$RUNNER_TEMP/fdroid.p12"
+          export ANDROID_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          app/tool/fdroid_repo.sh pages dist/doora.apk "$GITHUB_RUN_NUMBER" \
+            "https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/fdroid/repo"
+      - name: Publish
+        working-directory: pages
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -A
+          git commit -q -m "F-Droid repo: build $GITHUB_RUN_NUMBER"
+          git push origin HEAD:gh-pages
