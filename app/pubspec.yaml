@@ -1,7 +1,7 @@
 name: doora
 description: "The door lock of the po/iw hackerspace: your virtual keys, and the unlock."
 publish_to: 'none'
-version: 0.1.0+1
+version: 0.1.1+1
 
 environment:
   sdk: ^3.14.0
