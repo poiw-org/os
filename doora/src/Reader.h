@@ -38,6 +38,8 @@ class Reader {
 	const TagRead* take() const { return full_.load(std::memory_order_acquire) ? &slot_ : nullptr; }
 	void release() { full_.store(false, std::memory_order_release); }
 	bool available() const { return ready_; }
+	// How long the chip has been unanswering (0 while it works). Counts from boot if it never did.
+	uint32_t downForMs() const { return ready_ ? 0 : millis() - lastReadyMs_; }
 
 	// Writer mode: the next tag with this UID gets `token` written to it (NDEF text record, as the
 	// backoffice writes it with a phone), then is read back and compared. While armed no tag opens the
@@ -88,6 +90,7 @@ class Reader {
 	TagRead slot_;
 	std::atomic<bool> full_{false};
 	volatile bool ready_ = false;
+	volatile uint32_t lastReadyMs_ = 0;  // last time the reader task saw the chip working
 	uint8_t sda_ = 0, scl_ = 0;
 	uint8_t errors_ = 0;
 	bool present_ = false;  // a tag that was already handed out is still on the reader (reader task only)

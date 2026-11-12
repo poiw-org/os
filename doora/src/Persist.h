@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include "BlacklistSet.h"
 #include "Journal.h"
+#include "ResetGuard.h"
 #include "Rsa.h"
 
 namespace Persist {
@@ -26,6 +27,11 @@ bool saveSigningKey(const uint8_t n[kRsaBytes]);
 // Last time the door knew for sure (0 if never saved).
 uint32_t loadClock();
 bool saveClock(uint32_t epoch);
+
+// Times of the latest restarts the door triggered itself (see ResetGuard.h). A missing or corrupt
+// file loads as an empty log.
+bool loadResets(ResetLog& out);
+bool saveResets(const ResetLog& log);
 
 // Journal of door events. Capped; the oldest records are dropped first and counted (the count is
 // persisted). Denied taps take at most a fixed share of it: beyond that they are only counted, so

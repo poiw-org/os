@@ -40,3 +40,7 @@
 #define BRIDGE_TX 17  // to the bridge's RX (GPIO 20)
 #endif
 // #define BRIDGE_RESET 18  // any free GPIO: not one config.h already uses, such as an LED's
+
+// Optional: a free GPIO wired to this board's own EN/RST pad. hardRestart() pulses it low for a full
+// chip reset. Not an input-only pin (34-39) and not one config.h already uses.
+// #define RESET_PIN 27

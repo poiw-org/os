@@ -26,3 +26,7 @@
 // #define BRIDGE_RX 16
 // #define BRIDGE_TX 17
 // #define BRIDGE_RESET 27
+
+// This board's own EN/RST pad, wired to a free output-capable GPIO, for a full chip reset on recovery
+// restarts and the portal's reboot command.
+// #define RESET_PIN 27

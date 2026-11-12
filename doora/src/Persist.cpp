@@ -9,12 +9,14 @@
 namespace {
 const char* kBlacklist = "/blacklist.bin";
 const char* kClock = "/clock.bin";
+const char* kResets = "/resets.bin";
 const char* kSigningKey = "/signing.bin";
 const char* kJournal = "/journal2.bin";
 const char* kJournalV1 = "/journal.bin";  // 64-byte records of firmware before the token claims
 const char* kDropped = "/dropped.bin";
 const char* kTmp = "/tmp.bin";
 constexpr uint32_t kClockMagic = 0x314B4C43;    // "CLK1"
+constexpr uint32_t kResetsMagic = 0x31545352;   // "RST1"
 constexpr uint32_t kDroppedMagic = 0x31504F44;  // "DOP1"
 constexpr size_t kShed = 32;                    // records dropped at once when the journal is full
 // Denied taps are capped in the journal, so a stream of them (anyone can tap a blank tag every few
@@ -245,6 +247,27 @@ bool saveClock(uint32_t epoch) {
 	v[2] = crc32((const uint8_t*)v, 8);
 	std::lock_guard<std::mutex> hold(gLock);
 	return replaceFile(kClock, (const uint8_t*)v, sizeof(v));
+}
+
+bool loadResets(ResetLog& out) {
+	out = ResetLog();
+	uint32_t v[kMaxSelfResets + 2];
+	std::lock_guard<std::mutex> hold(gLock);
+	File f = LittleFS.open(kResets, "r");
+	if (!f || f.size() != sizeof(v)) return false;
+	bool ok = f.read((uint8_t*)v, sizeof(v)) == (int)sizeof(v);
+	f.close();
+	if (!ok || v[0] != kResetsMagic || v[kMaxSelfResets + 1] != crc32((const uint8_t*)v, sizeof(v) - 4)) return false;
+	for (uint8_t i = 0; i < kMaxSelfResets; i++) out.at[i] = v[1 + i];
+	return true;
+}
+
+bool saveResets(const ResetLog& log) {
+	uint32_t v[kMaxSelfResets + 2] = {kResetsMagic};
+	for (uint8_t i = 0; i < kMaxSelfResets; i++) v[1 + i] = log.at[i];
+	v[kMaxSelfResets + 1] = crc32((const uint8_t*)v, sizeof(v) - 4);
+	std::lock_guard<std::mutex> hold(gLock);
+	return replaceFile(kResets, (const uint8_t*)v, sizeof(v));
 }
 
 bool journalDrop(size_t count, uint32_t seq) {

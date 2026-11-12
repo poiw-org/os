@@ -22,7 +22,9 @@
 #include "Ota.h"
 #include "Persist.h"
 #include "Pins.h"
+#include "HardRestart.h"
 #include "Reader.h"
+#include "ResetGuard.h"
 #include "Settings.h"
 #include "SigningKey.h"
 
@@ -44,6 +46,8 @@ uint8_t lowHeapStrikes = 0;
 constexpr uint32_t kFailureLogGapMs = 3000;     // rate limit for logging denied taps
 constexpr uint32_t kMaxUptimeMs = 7UL * 24 * 3600 * 1000;
 constexpr uint32_t kLowHeapBytes = 7000;
+// The PN532 has not answered for this long, including its own reset and retries in the reader task.
+constexpr uint32_t kNfcDownResetMs = 10UL * 60 * 1000;
 
 // A new journal record for "now".
 JournalRecord newRecord() {
@@ -275,6 +279,30 @@ void serviceDoor() {
 	if (actuators.takeForcedOpen()) onForcedOpened();
 }
 
+// Restarts the door to recover from `why`, unless it already did so kMaxSelfResets times in the
+// last 24 hours: a fault a restart does not fix must not become a reboot loop. The restart is
+// recorded in flash first, and skipped if that fails, so the cap cannot be bypassed.
+void restartToRecover(const char* why) {
+	static bool capLogged = false;
+	ResetLog log;
+	Persist::loadResets(log);
+	uint32_t now = clock_.now();
+	if (!resetAllowed(log, now)) {
+		if (!capLogged) LOG("%s, but %u recovery restarts already happened in 24 h; not restarting.", why, (unsigned)kMaxSelfResets);
+		capLogged = true;
+		return;
+	}
+	resetRecord(log, now);
+	if (!Persist::saveResets(log)) {
+		if (!capLogged) LOG("%s, but the restart could not be recorded; not restarting.", why);
+		capLogged = true;
+		return;
+	}
+	LOG("%s; restarting to recover.", why);
+	delay(100);
+	hardRestart();
+}
+
 // Periodic upkeep that never matters to a tap.
 void housekeeping(uint32_t ms) {
 	if (ms - lastHousekeepingMs < 60000) return;
@@ -292,6 +320,7 @@ void housekeeping(uint32_t ms) {
 		delay(100);
 		ESP.restart();
 	}
+	if (idle && reader.downForMs() > kNfcDownResetMs) restartToRecover("PN532 not answering");
 }
 }  // namespace
 

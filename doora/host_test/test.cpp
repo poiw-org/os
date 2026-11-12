@@ -15,6 +15,7 @@
 #include "../src/Ndef.h"
 #include "../src/T4t.h"
 #include "../src/Pn532Frame.h"
+#include "../src/ResetGuard.h"
 #include "../src/Sha256.h"
 #include "../src/SigningKey.h"
 #include "../src/SyncParser.h"
@@ -896,7 +897,27 @@ static void testT4t() {
 	CHECK(!tag.served && tag.file == T4tTag::File::None);
 }
 
+static void testResetGuard() {
+	const uint32_t t0 = 1800000000, h = 3600;
+	ResetLog log;
+	CHECK(resetAllowed(log, t0));
+	resetRecord(log, t0);
+	resetRecord(log, t0 + h);
+	CHECK(resetAllowed(log, t0 + 2 * h));
+	resetRecord(log, t0 + 2 * h);
+	CHECK(!resetAllowed(log, t0 + 3 * h));              // three within 24 h: capped
+	CHECK(!resetAllowed(log, t0 + kResetWindowS - 1));  // the first is still inside the window
+	CHECK(resetAllowed(log, t0 + kResetWindowS));       // the first has aged out
+	resetRecord(log, t0 + kResetWindowS);               // replaces the expired slot, not a live one
+	CHECK(!resetAllowed(log, t0 + kResetWindowS + 1) && log.at[0] == t0 + kResetWindowS && log.at[1] == t0 + h);
+	// Stamps from a clock that was far ahead do not block restarts forever.
+	ResetLog ahead;
+	for (uint32_t& t : ahead.at) t = t0 + 10 * kResetWindowS;
+	CHECK(resetAllowed(ahead, t0));
+}
+
 int main() {
+	testResetGuard();
 	testChimes();
 	testWsBuild();
 	testWsParse();

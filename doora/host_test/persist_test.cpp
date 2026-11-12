@@ -241,7 +241,21 @@ static void testClockFile() {
 	CHECK(Persist::loadClock() == 0);
 }
 
+static void testResetsFile() {
+	freshFlash();
+	ResetLog log;
+	CHECK(!Persist::loadResets(log) && log.at[0] == 0);
+	log.at[0] = 1800000000u;
+	log.at[2] = 1800003600u;
+	CHECK(Persist::saveResets(log));
+	ResetLog back;
+	CHECK(Persist::loadResets(back) && back.at[0] == log.at[0] && back.at[1] == 0 && back.at[2] == log.at[2]);
+	g_fs.files["/resets.bin"][5] ^= 1;
+	CHECK(!Persist::loadResets(back) && back.at[0] == 0);
+}
+
 int main() {
+	testResetsFile();
 	testJournalBasics();
 	testShedDuringUpload();
 	testDenialsNeverShedOpenings();

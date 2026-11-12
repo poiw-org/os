@@ -162,7 +162,7 @@ void Reader::begin(uint8_t sda, uint8_t scl, const char* link) {
 	if (*link && !link_.ndefLen) LOG("Door link too long for the tag; phones will not see it.");
 	sda_ = sda;
 	scl_ = scl;
-	lastCheckMs_ = millis();
+	lastCheckMs_ = lastReadyMs_ = millis();
 	nextProbeMs_ = lastCheckMs_ + kRetryEveryMs;
 	ready_ = probe();
 	if (!ready_) LOG("PN532 not found; the door runs without NFC and keeps retrying.");
@@ -175,6 +175,7 @@ void Reader::loop() {
 	for (;;) {
 		checkDeadline();
 		if (ready_) {
+			lastReadyMs_ = millis();
 			poll();
 			vTaskDelay(pdMS_TO_TICKS(kIdlePollMs));
 			if (!ready_) nextProbeMs_ = millis() + kRetryEveryMs;

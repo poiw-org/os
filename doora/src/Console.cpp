@@ -1,4 +1,5 @@
 #include "Console.h"
+#include "HardRestart.h"
 #include <Arduino.h>
 #include <string.h>
 #include "Log.h"
@@ -225,7 +226,7 @@ void remote(const char* command, const Settings& s, void (*printStatus)()) {
 	Term.printf("> %s\n", command);
 	if (!strcmp(command, "status")) printStatus();
 	else if (!strcmp(command, "show")) showSettings(s);
-	else if (!strcmp(command, "reboot")) { Term.println(F("Restarting.")); delay(300); ESP.restart(); }
+	else if (!strcmp(command, "reboot")) { Term.println(F("Restarting.")); delay(300); hardRestart(); }  // not counted by the recovery cap
 	else if (!strcmp(command, "help")) Term.println(F("Commands: status, show, reboot, help"));
 	else Term.println(F("That command is not available from the portal."));
 }
