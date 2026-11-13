@@ -222,12 +222,13 @@ bool eraseSettings(Settings& s, const char* arg) {
 
 namespace Console {
 
-void remote(const char* command, const Settings& s, void (*printStatus)()) {
+void remote(const char* command, const Settings& s, void (*printStatus)(), bool (*extra)(const char*)) {
 	Term.printf("> %s\n", command);
+	if (extra(command)) return;
 	if (!strcmp(command, "status")) printStatus();
 	else if (!strcmp(command, "show")) showSettings(s);
 	else if (!strcmp(command, "reboot")) { Term.println(F("Restarting.")); delay(300); hardRestart(); }  // not counted by the recovery cap
-	else if (!strcmp(command, "help")) Term.println(F("Commands: status, show, reboot, help"));
+	else if (!strcmp(command, "help")) Term.println(F("Commands: status, show, reboot, pitch [x], play [chime], help"));
 	else Term.println(F("That command is not available from the portal."));
 }
 
@@ -242,7 +243,7 @@ void firstRunSetup(Settings& s) {
 	}
 }
 
-bool poll(Settings& s, void (*printStatus)(), void (*idle)()) {
+bool poll(Settings& s, void (*printStatus)(), void (*idle)(), bool (*extra)(const char*)) {
 	gIdle = idle;
 	static char line[24];
 	static size_t n = 0;
@@ -267,12 +268,13 @@ bool poll(Settings& s, void (*printStatus)(), void (*idle)()) {
 		if (cmd != line) memmove(line, cmd, strlen(cmd) + 1);
 		if (!line[0]) continue;
 		if (!strcmp(line, "config") || !strcmp(line, "setup")) return wizard(s);
+		if (extra(line)) continue;
 		if (!strcmp(line, "status")) printStatus();
 		else if (!strcmp(line, "show")) showSettings(s);
 		else if (!strcmp(line, "reboot")) { Term.println(F("Restarting.")); delay(100); ESP.restart(); }
 		else if (!strncmp(line, "erase", 5)) return eraseSettings(s, line + 5);
 		else
-			Term.println(F("Commands:\n  status  network, clock, blacklist and journal state\n  show    current settings (secrets hidden)\n  config  run the setup wizard again\n  erase   wipe settings: erase [wifi|supabase|door|ntp|all]\n  reboot  restart the door"));
+			Term.println(F("Commands:\n  status  network, clock, blacklist and journal state\n  show    current settings (secrets hidden)\n  config  run the setup wizard again\n  erase   wipe settings: erase [wifi|supabase|door|ntp|all]\n  reboot  restart the door\n  pitch   speaker pitch multiplier: pitch [0.25-4]\n  play    play a chime: play [unlock|deny|alert|write]"));
 	}
 	return false;
 }

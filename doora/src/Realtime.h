@@ -51,7 +51,7 @@ struct RealtimeEvents {
 	char btId[17] = {0};
 	char btAddress[18] = {0};
 	char btDoneId[17] = {0};
-	char consoleCommand[12] = {0};  // a portal command; loop() runs it, then clears consolePending
+	char consoleCommand[16] = {0};  // a portal command; loop() runs it, then clears consolePending
 	std::atomic<bool> consolePending{false};
 	std::atomic<uint32_t> btDeadlineMs{0};
 	std::atomic<bool> btAsking{false};

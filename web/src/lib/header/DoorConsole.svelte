@@ -37,18 +37,25 @@
 		if (screen) screen.scrollTop = screen.scrollHeight;
 	});
 
-	const submit = async (event: SubmitEvent) => {
-		event.preventDefault();
-		const text = command.trim().toLowerCase();
-		if (!text) return;
+	const CHIMES = ['unlock', 'deny', 'alert', 'write'] as const;
+
+	const send = async (text: string) => {
 		sending = true;
 		try {
 			await sendDoorCommand(text);
-			command = '';
+			return true;
 		} catch (e) {
 			toast.error(e instanceof Error ? e.message : 'The command was not sent.');
+			return false;
+		} finally {
+			sending = false;
 		}
-		sending = false;
+	};
+
+	const submit = async (event: SubmitEvent) => {
+		event.preventDefault();
+		const text = command.trim().toLowerCase();
+		if (text && (await send(text))) command = '';
 	};
 </script>
 
@@ -75,6 +82,17 @@
 		aria-label="Door output"
 		class="h-[60vh] overflow-auto bg-black p-4 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap text-gray-100">{output ||
 			'Waiting for output from the door…'}</pre>
+	<div class="flex flex-wrap items-center gap-2 border-t px-3 pt-3 text-sm">
+		<span class="text-gray-400">Play</span>
+		{#each CHIMES as chime (chime)}
+			<button
+				type="button"
+				class="btn px-3 py-1 text-sm"
+				disabled={sending}
+				onclick={() => send(`play ${chime}`)}>{chime}</button
+			>
+		{/each}
+	</div>
 	<form onsubmit={submit} class="flex items-center gap-2 border-t p-3">
 		<span aria-hidden="true" class="font-mono text-sm text-gray-400">&gt;</span>
 		<input
@@ -82,7 +100,7 @@
 			aria-label="Command"
 			autocomplete="off"
 			spellcheck="false"
-			placeholder="status, show, reboot, help"
+			placeholder="status, show, reboot, pitch 1.2, play unlock, help"
 			class="min-w-0 grow rounded-md border bg-paper px-2 py-1.5 font-mono text-sm text-ink"
 		/>
 		<button type="submit" class="btn px-4 py-1.5 text-sm" disabled={sending || !command.trim()}

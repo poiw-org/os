@@ -324,6 +324,45 @@ void housekeeping(uint32_t ms) {
 }
 }  // namespace
 
+// `pitch [x]` and `play [chime]`, from serial or the portal.
+bool soundCommand(const char* line) {
+	static const struct { const char* name; Actuators::Chime chime; } kChimes[] = {
+	    {"unlock", Actuators::Chime::Unlock},
+	    {"deny", Actuators::Chime::Deny},
+	    {"alert", Actuators::Chime::Alert},
+	    {"write", Actuators::Chime::Write},
+	};
+	if (!strcmp(line, "pitch") || !strncmp(line, "pitch ", 6)) {
+		if (line[5]) {
+			char* end;
+			float x = strtof(line + 6, &end);
+			if (end == line + 6 || *end || !(x >= 0.25f && x <= 4.0f)) {
+				Term.println(F("Usage: pitch <multiplier>, 0.25 to 4 (1 = as written)."));
+				return true;
+			}
+			uint16_t permille = (uint16_t)(x * 1000 + 0.5f);
+			if (!Persist::savePitch(permille)) {
+				Term.println(F("Could not save the pitch to flash. Nothing was changed."));
+				return true;
+			}
+			actuators.setPitch(permille);
+		}
+		Term.printf("Pitch multiplier: %u.%03u\n", actuators.pitch() / 1000, actuators.pitch() % 1000);
+		return true;
+	}
+	if (!strcmp(line, "play") || !strncmp(line, "play ", 5)) {
+		for (const auto& c : kChimes)
+			if (line[4] && !strcmp(line + 5, c.name)) {
+				actuators.play(c.chime);
+				Term.printf("Playing %s.\n", c.name);
+				return true;
+			}
+		Term.println(F("Usage: play <unlock|deny|alert|write>"));
+		return true;
+	}
+	return false;
+}
+
 void setup() {
 	actuators.begin();  // outputs low before anything else
 	// Four tasks log. With a buffer a log line returns at once instead of waiting for the UART to
@@ -334,6 +373,7 @@ void setup() {
 	LOG("\nDoora | po/iw hackerspace | https://github.com/poiw-org/doora");
 
 	Persist::begin();
+	actuators.setPitch(Persist::loadPitch());
 	if (!SettingsStore::load(settings)) {
 		Console::firstRunSetup(settings);
 		LOG("Restarting with the new settings.");
@@ -384,11 +424,11 @@ void loop() {
 	clock_.service();
 	housekeeping(ms);
 	if (const char* command = cloud.remoteCommand()) {
-		Console::remote(command, settings, printStatus);
+		Console::remote(command, settings, printStatus, soundCommand);
 		cloud.releaseRemoteCommand();
 	}
 	Ota::service(!actuators.busy() && !writeActive(reader.writeState()) && ms - lastTapMs > 10000);
-	if (Console::poll(settings, printStatus, serviceDoor)) {
+	if (Console::poll(settings, printStatus, serviceDoor, soundCommand)) {
 		LOG("Settings changed; restarting.");
 		delay(200);
 		ESP.restart();

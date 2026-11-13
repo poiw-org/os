@@ -4,10 +4,10 @@
 #include "Pins.h"
 
 namespace {
-// Relay on time (the strike buzzes and the speaker plays the unlock tone meanwhile), the same for a
-// tap and a force open. Fixed, so a bug can never keep the relay energised.
-constexpr uint32_t kOpenMs = 3000;
-constexpr uint32_t kSuccessMs = 1300;
+// Relay on time (the strike buzzes and the speaker loops the unlock phrase the whole time), the same
+// for every way of opening. Fixed, so a bug can never keep the relay energised.
+constexpr uint32_t kOpenMs = 5000;
+constexpr uint32_t kSuccessMs = Chimes::kUnlockPhraseMs;
 constexpr uint32_t kDenyLedMs = 3300;
 constexpr uint8_t kToneChannel = 0;
 // PWM for the LEDs. Channels 0 and 1 share the speaker's timer, whose frequency the tones retune.
@@ -19,6 +19,8 @@ constexpr int32_t kDreamMax = 100;  // of 255, squared into duty: about 15% at t
 void Actuators::write(uint8_t pin, bool on) { digitalWrite(pin, on ? HIGH : LOW); }
 
 void Actuators::tone(uint16_t hz) {
+	uint32_t scaled = (uint32_t)hz * pitch_ / 1000;
+	hz = scaled > 20000 ? 20000 : (hz && !scaled ? 1 : scaled);
 	if (hz == toneHz_) return;
 	toneHz_ = hz;
 	ledcWriteTone(kToneChannel, hz);  // 0 stops the tone and leaves the pin low
@@ -81,6 +83,12 @@ void Actuators::writer(WriteState s) {
 	}
 }
 
+void Actuators::play(Chime c) {
+	preview_ = c;
+	previewing_ = true;
+	previewStart_ = millis();
+}
+
 void Actuators::reading(bool on) { reading_ = on; }
 
 void Actuators::service() {
@@ -88,6 +96,16 @@ void Actuators::service() {
 	uint16_t hz = 0;
 	bool success = false, error = false, warning = false;
 
+	if (previewing_) {
+		uint32_t t = ms - previewStart_;
+		switch (preview_) {
+			case Chime::Unlock: previewing_ = t < Chimes::kUnlockPhraseMs; hz = Chimes::unlocked(t); break;
+			case Chime::Deny: previewing_ = t < Chimes::kDeniedMs; hz = Chimes::denied(t); break;
+			case Chime::Alert: previewing_ = t < 1200; hz = Chimes::attention(t); break;
+			case Chime::Write: previewing_ = t < 1000; hz = Chimes::writing(t); break;
+		}
+		if (!previewing_) hz = 0;
+	}
 	if (writer_ != Writer::Off) {
 		uint32_t t = ms - writerStart_;
 		if (writer_ == Writer::Waiting) hz = Chimes::attention(t);

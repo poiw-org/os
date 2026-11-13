@@ -28,6 +28,11 @@ bool saveSigningKey(const uint8_t n[kRsaBytes]);
 uint32_t loadClock();
 bool saveClock(uint32_t epoch);
 
+// Speaker pitch multiplier in thousandths (1000 = as written in Chimes.h). 1000 when never saved
+// or unreadable.
+uint16_t loadPitch();
+bool savePitch(uint16_t permille);
+
 // Times of the latest restarts the door triggered itself (see ResetGuard.h). A missing or corrupt
 // file loads as an empty log.
 bool loadResets(ResetLog& out);
