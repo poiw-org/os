@@ -23,7 +23,10 @@ void Actuators::tone(uint16_t hz) {
 	hz = scaled > 20000 ? 20000 : (hz && !scaled ? 1 : scaled);
 	if (hz == toneHz_) return;
 	toneHz_ = hz;
-	ledcWriteTone(kToneChannel, hz);  // 0 stops the tone and leaves the pin low
+	if (!hz || !volume_) { ledcWriteTone(kToneChannel, 0); return; }  // stops the tone, pin low
+	ledcWriteTone(kToneChannel, hz);  // square wave at 50 % duty (512 of 10 bits): the loudest
+	// Narrower pulses drive the buzzer less. Squared, so the steps sound roughly even.
+	ledcWrite(kToneChannel, (uint32_t)512 * volume_ * volume_ / 10000);
 }
 
 void Actuators::begin() {

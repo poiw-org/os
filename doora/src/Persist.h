@@ -32,6 +32,9 @@ bool saveClock(uint32_t epoch);
 // or unreadable.
 uint16_t loadPitch();
 bool savePitch(uint16_t permille);
+// Speaker volume, 0-100 %. 100 when never saved or unreadable.
+uint8_t loadVolume();
+bool saveVolume(uint8_t percent);
 
 // Times of the latest restarts the door triggered itself (see ResetGuard.h). A missing or corrupt
 // file loads as an empty log.

@@ -11,6 +11,7 @@ const char* kBlacklist = "/blacklist.bin";
 const char* kClock = "/clock.bin";
 const char* kResets = "/resets.bin";
 const char* kPitch = "/pitch.bin";
+const char* kVolume = "/volume.bin";
 const char* kSigningKey = "/signing.bin";
 const char* kJournal = "/journal2.bin";
 const char* kJournalV1 = "/journal.bin";  // 64-byte records of firmware before the token claims
@@ -18,6 +19,7 @@ const char* kDropped = "/dropped.bin";
 const char* kTmp = "/tmp.bin";
 constexpr uint32_t kClockMagic = 0x314B4C43;    // "CLK1"
 constexpr uint32_t kPitchMagic = 0x31485450;    // "PTH1"
+constexpr uint32_t kVolumeMagic = 0x314C4F56;   // "VOL1"
 constexpr uint32_t kResetsMagic = 0x31545352;   // "RST1"
 constexpr uint32_t kDroppedMagic = 0x31504F44;  // "DOP1"
 constexpr size_t kShed = 32;                    // records dropped at once when the journal is full
@@ -251,22 +253,31 @@ bool saveClock(uint32_t epoch) {
 	return replaceFile(kClock, (const uint8_t*)v, sizeof(v));
 }
 
-uint16_t loadPitch() {
+// A single number in a magic + value + CRC file; `fallback` when missing, damaged or above `max`.
+uint32_t loadValue(const char* path, uint32_t magic, uint32_t max, uint32_t fallback) {
 	std::lock_guard<std::mutex> hold(gLock);
-	File f = LittleFS.open(kPitch, "r");
-	if (!f || f.size() != 12) return 1000;
+	File f = LittleFS.open(path, "r");
+	if (!f || f.size() != 12) return fallback;
 	uint32_t v[3];
 	bool ok = f.read((uint8_t*)v, 12) == 12;
 	f.close();
-	return (ok && v[0] == kPitchMagic && v[2] == crc32((const uint8_t*)v, 8) && v[1] && v[1] <= 0xFFFF) ? v[1] : 1000;
+	return (ok && v[0] == magic && v[2] == crc32((const uint8_t*)v, 8) && v[1] <= max) ? v[1] : fallback;
 }
 
-bool savePitch(uint16_t permille) {
-	uint32_t v[3] = {kPitchMagic, permille, 0};
+bool saveValue(const char* path, uint32_t magic, uint32_t value) {
+	uint32_t v[3] = {magic, value, 0};
 	v[2] = crc32((const uint8_t*)v, 8);
 	std::lock_guard<std::mutex> hold(gLock);
-	return replaceFile(kPitch, (const uint8_t*)v, sizeof(v));
+	return replaceFile(path, (const uint8_t*)v, sizeof(v));
 }
+
+uint16_t loadPitch() {
+	uint32_t v = loadValue(kPitch, kPitchMagic, 0xFFFF, 1000);
+	return v ? v : 1000;
+}
+bool savePitch(uint16_t permille) { return saveValue(kPitch, kPitchMagic, permille); }
+uint8_t loadVolume() { return loadValue(kVolume, kVolumeMagic, 100, 100); }
+bool saveVolume(uint8_t percent) { return saveValue(kVolume, kVolumeMagic, percent); }
 
 bool loadResets(ResetLog& out) {
 	out = ResetLog();

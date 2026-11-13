@@ -30,6 +30,9 @@ class Actuators {
 	// speaker fitted. The caller persists it.
 	void setPitch(uint16_t permille) { pitch_ = permille; toneHz_ = 0xFFFF; }
 	uint16_t pitch() const { return pitch_; }
+	// 0-100 %; 0 silences every chime. Same: the caller persists it.
+	void setVolume(uint8_t percent) { volume_ = percent > 100 ? 100 : percent; toneHz_ = 0xFFFF; }
+	uint8_t volume() const { return volume_; }
 	// Plays one chime once, for trying them out. No relay or LEDs; any real event takes over.
 	enum class Chime : uint8_t { Unlock, Deny, Alert, Write };
 	void play(Chime c);
@@ -48,6 +51,7 @@ class Actuators {
 	WriteState writerSeen_ = WriteState::Idle;
 	uint32_t writerStart_ = 0;
 	uint16_t toneHz_ = 0, pitch_ = 1000;
+	uint8_t volume_ = 100;
 	bool previewing_ = false;
 	Chime preview_ = Chime::Unlock;
 	uint32_t previewStart_ = 0;

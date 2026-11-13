@@ -100,7 +100,7 @@
 			aria-label="Command"
 			autocomplete="off"
 			spellcheck="false"
-			placeholder="status, show, reboot, pitch 1.2, play unlock, help"
+			placeholder="status, pitch 1.2, volume 60, play unlock, help"
 			class="min-w-0 grow rounded-md border bg-paper px-2 py-1.5 font-mono text-sm text-ink"
 		/>
 		<button type="submit" class="btn px-4 py-1.5 text-sm" disabled={sending || !command.trim()}

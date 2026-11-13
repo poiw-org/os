@@ -324,7 +324,7 @@ void housekeeping(uint32_t ms) {
 }
 }  // namespace
 
-// `pitch [x]` and `play [chime]`, from serial or the portal.
+// `pitch [x]`, `volume [%]` and `play [chime]`, from serial or the portal.
 bool soundCommand(const char* line) {
 	static const struct { const char* name; Actuators::Chime chime; } kChimes[] = {
 	    {"unlock", Actuators::Chime::Unlock},
@@ -348,6 +348,23 @@ bool soundCommand(const char* line) {
 			actuators.setPitch(permille);
 		}
 		Term.printf("Pitch multiplier: %u.%03u\n", actuators.pitch() / 1000, actuators.pitch() % 1000);
+		return true;
+	}
+	if (!strcmp(line, "volume") || !strncmp(line, "volume ", 7)) {
+		if (line[6]) {
+			char* end;
+			long v = strtol(line + 7, &end, 10);
+			if (end == line + 7 || *end || v < 0 || v > 100) {
+				Term.println(F("Usage: volume <0-100> (percent; 0 = silent)."));
+				return true;
+			}
+			if (!Persist::saveVolume((uint8_t)v)) {
+				Term.println(F("Could not save the volume to flash. Nothing was changed."));
+				return true;
+			}
+			actuators.setVolume((uint8_t)v);
+		}
+		Term.printf("Volume: %u%%\n", actuators.volume());
 		return true;
 	}
 	if (!strcmp(line, "play") || !strncmp(line, "play ", 5)) {
@@ -374,6 +391,7 @@ void setup() {
 
 	Persist::begin();
 	actuators.setPitch(Persist::loadPitch());
+	actuators.setVolume(Persist::loadVolume());
 	if (!SettingsStore::load(settings)) {
 		Console::firstRunSetup(settings);
 		LOG("Restarting with the new settings.");
