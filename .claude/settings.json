@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "deny": [
+      "mcp__d173b87c-4c09-4e44-a768-998b46e67e03__query_logs",
+      "mcp__d173b87c-4c09-4e44-a768-998b46e67e03__get_logs",
+      "mcp__claude_ai_Supabase__query_logs",
+      "mcp__claude_ai_Supabase__get_logs"
+    ]
+  }
+}
