@@ -3,7 +3,7 @@
 	import { page } from '$app/state';
 	import type { OAuthAuthorizationDetails } from '@supabase/supabase-js';
 	import AuthShell from '#lib/auth/AuthShell.svelte';
-	import { signOut } from '#lib/auth.ts';
+	import { labAccessMessage, labAccessRefused, signOut } from '#lib/auth.ts';
 	import { supabase } from '#lib/supabase.ts';
 
 	// Supabase's OAuth server sends people here (the Site URL plus the Authorization Path) when an app
@@ -47,15 +47,7 @@
 		// Already allowed earlier for these permissions: Supabase answers with where to go straight away.
 		else if (!('authorization_id' in data)) go(data.redirect_url);
 		else {
-			const [app, role] = await Promise.all([
-				supabase.from('lab_access_apps').select('client_id').eq('client_id', data.client.id),
-				supabase
-					.from('user_roles')
-					.select('role')
-					.eq('user_id', data.user.id)
-					.eq('role', 'lab-access')
-			]);
-			turnedAway = !!app.data?.length && !role.data?.length;
+			turnedAway = await labAccessRefused(data.client.id, data.user.id);
 			details = data;
 		}
 	});
@@ -97,8 +89,7 @@
 		<div class="flex flex-col gap-4">
 			{#if turnedAway}
 				<p class="text-red-400" role="alert">
-					<strong>{details.client.name}</strong> is only for people with an active key, and you have none
-					right now. Ask an admin if you think that is wrong.
+					{labAccessMessage(details.client.name)}
 				</p>
 			{:else}
 				<p>

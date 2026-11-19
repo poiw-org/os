@@ -2,15 +2,20 @@
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import {
+		labAccessMessage,
+		labAccessRefused,
 		passkeysSupported,
 		pendingReturn,
 		sendPasswordReset,
 		signIn,
-		signInWithPasskey
+		signInWithPasskey,
+		signOut,
+		takeReturn
 	} from '#lib/auth.ts';
 	import AuthShell from '#lib/auth/AuthShell.svelte';
 	import QuickUnlock from '#lib/auth/QuickUnlock.svelte';
 	import { arrive, reveal as unfold } from '#lib/motion.ts';
+	import { supabase } from '#lib/supabase.ts';
 
 	type Mode = 'signin' | 'reset';
 	const copy: Record<Mode, { title: string; subtitle: string; action: string }> = {
@@ -57,7 +62,21 @@
 		failed = error;
 	};
 
-	const enter = () => {
+	// An app that is for lab-access only turns away someone without it here, not after the code,
+	// onboarding and consent steps. If the request can't be read, the consent screen still checks.
+	const refuseForApp = async () => {
+		const id = new URLSearchParams((pendingReturn() ?? '').split('?')[1]).get('authorization_id');
+		if (!id) return;
+		const { data } = await supabase.auth.oauth.getAuthorizationDetails(id);
+		if (!data || !('authorization_id' in data)) return;
+		if (!(await labAccessRefused(data.client.id, data.user.id))) return;
+		takeReturn();
+		await signOut();
+		throw new Error(labAccessMessage(data.client.name));
+	};
+
+	const enter = async () => {
+		await refuseForApp();
 		window.location.href = '/os';
 	};
 
@@ -75,7 +94,7 @@
 	const passkey = () =>
 		run(async () => {
 			await signInWithPasskey();
-			enter();
+			await enter();
 		});
 
 	const submit = (event: SubmitEvent) => {
@@ -83,7 +102,7 @@
 		return run(async () => {
 			if (mode === 'signin') {
 				await signIn(email, password);
-				enter();
+				await enter();
 			} else {
 				await sendPasswordReset(email);
 				report('If an account exists for this email, a reset link is on its way.', false);
