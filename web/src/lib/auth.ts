@@ -133,10 +133,6 @@ export function takeReturn(): string | undefined {
 	return path;
 }
 
-/** What someone without lab-access is told when the app they asked for is lab-access only. */
-export const labAccessMessage = (app: string) =>
-	`${app} is only for people with an active key, and you have none right now. Ask an admin if you think that is wrong.`;
-
 /** True when the app is lab-access only and this user lacks the role (the `oidc` function enforces it too). */
 export async function labAccessRefused(clientId: string, userId: string) {
 	const [app, role] = await Promise.all([

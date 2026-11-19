@@ -3,7 +3,8 @@
 	import { page } from '$app/state';
 	import type { OAuthAuthorizationDetails } from '@supabase/supabase-js';
 	import AuthShell from '#lib/auth/AuthShell.svelte';
-	import { labAccessMessage, labAccessRefused, signOut } from '#lib/auth.ts';
+	import LabRefusal from '#lib/auth/LabRefusal.svelte';
+	import { labAccessRefused, signOut } from '#lib/auth.ts';
 	import { supabase } from '#lib/supabase.ts';
 
 	// Supabase's OAuth server sends people here (the Site URL plus the Authorization Path) when an app
@@ -88,9 +89,7 @@
 	{:else}
 		<div class="flex flex-col gap-4">
 			{#if turnedAway}
-				<p class="text-red-400" role="alert">
-					{labAccessMessage(details.client.name)}
-				</p>
+				<LabRefusal app={details.client.name} />
 			{:else}
 				<p>
 					<strong>{details.client.name}</strong> wants to use your po/iw account to sign you in. It will
