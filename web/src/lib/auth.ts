@@ -1,3 +1,4 @@
+import { t } from '#lib/i18n.svelte.ts';
 import { supabase } from '#lib/supabase.ts';
 import type { CurrentUser } from '#lib/types.ts';
 
@@ -166,7 +167,7 @@ export async function confirmEmailCode(code: string) {
 	const { error } = await supabase.functions.invoke('confirm-email-code', { body: { code } });
 	if (!error) return;
 	const reason = await (error as { context?: Response }).context?.json().catch(() => null);
-	throw new Error(reason?.error ?? 'Could not verify the code.');
+	throw new Error(reason?.error ?? t('Could not verify the code.'));
 }
 
 export const passkeysSupported = () =>
@@ -220,7 +221,7 @@ export async function removeTotp(factorId: string) {
 /** The second step of a password sign-in. */
 export async function verifyTotp(code: string) {
 	const [factor] = await listTotpFactors();
-	if (!factor) throw new Error('No authenticator is registered.');
+	if (!factor) throw new Error(t('No authenticator is registered.'));
 	const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId: factor.id, code });
 	if (error) throw error;
 }
@@ -241,11 +242,7 @@ export async function deletePasskey(passkeyId: string) {
  * Returns true when Supabase signed it in right away, false when it first waits for the email
  * confirmation.
  */
-export async function signUp(
-	email: string,
-	password: string,
-	a: OnboardingAnswers
-) {
+export async function signUp(email: string, password: string, a: OnboardingAnswers) {
 	const { data, error } = await supabase.auth.signUp({
 		email,
 		password,
@@ -266,7 +263,7 @@ export async function signUp(
 	if (error) throw error;
 	// With email confirmation on, Supabase hides a taken address behind a user with no identities.
 	if (data.user?.identities?.length === 0)
-		throw new Error('Υπάρχει ήδη λογαριασμός με αυτό το email.');
+		throw new Error(t('An account with this email already exists.'));
 	return Boolean(data.session);
 }
 

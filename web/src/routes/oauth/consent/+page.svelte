@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import type { OAuthAuthorizationDetails } from '@supabase/supabase-js';
+	import { t } from '#lib/i18n.svelte.ts';
 	import AuthShell from '#lib/auth/AuthShell.svelte';
 	import LabRefusal from '#lib/auth/LabRefusal.svelte';
 	import { labAccessRefused, signOut } from '#lib/auth.ts';
@@ -39,12 +40,12 @@
 
 	onMount(async () => {
 		if (!authorizationId) {
-			error = 'This link is missing its sign-in request. Start again from the app.';
+			error = t('This link is missing its sign-in request. Start again from the app.');
 			return;
 		}
 		const { data, error: failure } =
 			await supabase.auth.oauth.getAuthorizationDetails(authorizationId);
-		if (failure) error = `${failure.message}. Start again from the app.`;
+		if (failure) error = t('{message}. Start again from the app.', { message: failure.message });
 		// Already allowed earlier for these permissions: Supabase answers with where to go straight away.
 		else if (!('authorization_id' in data)) go(data.redirect_url);
 		else {
@@ -61,7 +62,7 @@
 			? await oauth.approveAuthorization(authorizationId, options)
 			: await oauth.denyAuthorization(authorizationId, options);
 		if (failure) {
-			error = `${failure.message}. Start again from the app.`;
+			error = t('{message}. Start again from the app.', { message: failure.message });
 			busy = false;
 		} else go(data.redirect_url);
 	};
@@ -74,47 +75,54 @@
 	};
 </script>
 
-<svelte:head><title>Sign in to {details?.client.name ?? 'an app'}</title></svelte:head>
+<svelte:head
+	><title
+		>{details ? t('Sign in to {app}', { app: details.client.name }) : t('Sign in to an app')}</title
+	></svelte:head
+>
 
 <AuthShell
-	title={details ? `Sign in to ${details.client.name}` : 'Sign in to an app'}
-	subtitle={details ? `as ${details.user.email}` : undefined}
+	title={details ? t('Sign in to {app}', { app: details.client.name }) : t('Sign in to an app')}
+	subtitle={details ? t('as {email}', { email: details.user.email }) : undefined}
 >
 	{#if error}
 		<p class="text-red-400" role="alert">{error}</p>
 	{:else if leaving}
-		<p role="status" class="text-gray-400">Taking you back to the app…</p>
+		<p role="status" class="text-gray-400">{t('Taking you back to the app…')}</p>
 	{:else if !details}
-		<p role="status" class="text-gray-400">Checking the request…</p>
+		<p role="status" class="text-gray-400">{t('Checking the request…')}</p>
 	{:else}
 		<div class="flex flex-col gap-4">
 			{#if turnedAway}
 				<LabRefusal app={details.client.name} />
 			{:else}
 				<p>
-					<strong>{details.client.name}</strong> wants to use your po/iw account to sign you in. It will
-					be able to:
+					{t('{app} wants to use your po/iw account to sign you in. It will be able to:', {
+						app: details.client.name
+					})}
 				</p>
 				<ul class="panel">
 					{#each scopes as scope (scope)}
-						<li class="row">{SCOPES[scope] ?? scope}</li>
+						<li class="row">{SCOPES[scope] ? t(SCOPES[scope]) : scope}</li>
 					{/each}
 				</ul>
 				<p class="text-sm text-gray-400">
-					It cannot open the door, see your keys or use the OS. Afterwards you go to
-					<span class="font-mono">{destination}</span>. You can disconnect it any time in Settings.
+					{t(
+						'It cannot open the door, see your keys or use the OS. Afterwards you go to {destination}. You can disconnect it any time in Settings.',
+						{ destination }
+					)}
 				</p>
 			{/if}
 			<div class="flex gap-2">
 				<button type="button" class="key flex-1" disabled={busy} onclick={() => decide(false)}
-					>{turnedAway ? 'Back to the app' : 'Deny'}</button
+					>{turnedAway ? t('Back to the app') : t('Deny')}</button
 				>
 				{#if !turnedAway}
 					<button
 						type="button"
 						class="key key-signal flex-1"
 						disabled={busy}
-						onclick={() => decide(true)}>Allow</button
+						onclick={() => decide(true)}>{t('Allow')}</button
 					>
 				{/if}
 			</div>
@@ -122,7 +130,7 @@
 				type="button"
 				class="self-start text-sm text-gray-400 underline"
 				disabled={busy}
-				onclick={switchAccount}>Not you? Use another account</button
+				onclick={switchAccount}>{t('Not you? Use another account')}</button
 			>
 		</div>
 	{/if}

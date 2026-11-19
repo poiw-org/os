@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { t } from '#lib/i18n.svelte.ts';
 
 	// The lab's 3D printer, drag to turn it. It prints Manousos Mikrotsipakis, the mascot, on its
 	// bed; click the bed to look at him from above. Everything three.js is imported on demand so the
@@ -290,12 +291,12 @@
 		bind:this={host}
 		class="stage"
 		role="img"
-		aria-label="Τρισδιάστατο μοντέλο του 3D printer του εργαστηρίου, που τυπώνει τον Μανούσο Μικροτσιπάκη"
+		aria-label={t('3D model of the lab’s 3D printer printing Manousos Mikrotsipakis')}
 	></div>
 	{#if focused}
-		<div class="caption plate" role="group" aria-label="Μανούσος Μικροτσιπάκης">
-			<p>Μανούσος Μικροτσιπάκης, Mascot του po/iw</p>
-			<button type="button" class="key" onclick={() => back?.()}>← Πίσω (Esc)</button>
+		<div class="caption plate" role="group" aria-label={t('Manousos Mikrotsipakis')}>
+			<p>{t('Manousos Mikrotsipakis, the po/iw mascot')}</p>
+			<button type="button" class="key" onclick={() => back?.()}>← {t('Back')} (Esc)</button>
 		</div>
 	{/if}
 </div>

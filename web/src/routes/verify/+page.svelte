@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { confirmEmailCode, sendEmailCode, signOut, verifyTotp } from '#lib/auth.ts';
+	import { t } from '#lib/i18n.svelte.ts';
 	import AuthShell from '#lib/auth/AuthShell.svelte';
 
 	let { data } = $props();
@@ -17,7 +18,7 @@
 		try {
 			await sendEmailCode(email);
 		} catch (e) {
-			message = e instanceof Error ? e.message : 'Could not send the code.';
+			message = e instanceof Error ? e.message : t('Could not send the code.');
 		}
 		busy = false;
 	};
@@ -37,7 +38,7 @@
 			await (email ? confirmEmailCode(code.trim()) : verifyTotp(code.trim()));
 			window.location.href = '/os';
 		} catch (e) {
-			message = e instanceof Error ? e.message : 'Could not verify the code.';
+			message = e instanceof Error ? e.message : t('Could not verify the code.');
 			code = '';
 			busy = false;
 		}
@@ -50,12 +51,12 @@
 </script>
 
 <svelte:head>
-	<title>Verify · doora</title>
+	<title>{t('Verify')} · doora</title>
 </svelte:head>
 
 <AuthShell
-	title="Enter your code"
-	subtitle={email ? `We emailed it to ${email}.` : 'From your authenticator app.'}
+	title={t('Enter your code')}
+	subtitle={email ? t('We emailed it to {email}.', { email }) : t('From your authenticator app.')}
 >
 	<form onsubmit={submit} class="flex flex-col gap-4">
 		<input
@@ -64,18 +65,20 @@
 			autocomplete="one-time-code"
 			minlength="6"
 			maxlength="10"
-			aria-label="Verification code"
+			aria-label={t('Verification code')}
 			placeholder="123456"
 			bind:value={code}
 			class="px-3.5 py-2.5 font-mono"
 		/>
 		{#if message}<p role="alert" class="text-red-400">{message}</p>{/if}
 		<button type="submit" disabled={busy} class="btn btn-primary py-2.5">
-			{busy ? 'One moment…' : 'Verify'}
+			{busy ? t('One moment…') : t('Verify')}
 		</button>
 	</form>
 	{#if email}
-		<button type="button" onclick={send} disabled={busy} class="btn py-2.5">Send a new code</button>
+		<button type="button" onclick={send} disabled={busy} class="btn py-2.5"
+			>{t('Send a new code')}</button
+		>
 	{/if}
-	<button type="button" onclick={leave} class="text-brand-text underline">Sign out</button>
+	<button type="button" onclick={leave} class="text-brand-text underline">{t('Sign out')}</button>
 </AuthShell>

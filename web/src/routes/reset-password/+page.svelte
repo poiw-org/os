@@ -4,6 +4,7 @@
 	import { hasSession, setPassword } from '#lib/auth.ts';
 	import AuthShell from '#lib/auth/AuthShell.svelte';
 	import Loading from '#lib/loading.svelte';
+	import { t } from '#lib/i18n.svelte.ts';
 	import { PASSWORD_HINT, passwordIsStrong } from '#lib/password.ts';
 
 	// The email link signs the user in; the form then sets the new password for that session.
@@ -22,11 +23,11 @@
 	const submit = async (event: SubmitEvent) => {
 		event.preventDefault();
 		if (password !== confirm) {
-			message = 'The passwords do not match.';
+			message = t('The passwords do not match.');
 			return;
 		}
 		if (!passwordIsStrong(password)) {
-			message = PASSWORD_HINT;
+			message = t(PASSWORD_HINT);
 			return;
 		}
 		busy = true;
@@ -35,39 +36,42 @@
 			await setPassword(password);
 			window.location.href = '/os';
 		} catch (e) {
-			message = e instanceof Error ? e.message : 'Could not set the password.';
+			message = e instanceof Error ? e.message : t('Could not set the password.');
 			busy = false;
 		}
 	};
 </script>
 
 <svelte:head>
-	<title>Reset password · doora</title>
+	<title>{t('Reset password')} · doora</title>
 </svelte:head>
 
 {#if !ready}
 	<span class="flex min-h-screen items-center justify-center"><Loading /></span>
 {:else if !signedIn}
-	<AuthShell title="Link expired" subtitle="This reset link is invalid or has already been used.">
-		<a href={resolve('/login')} class="btn btn-primary py-2.5">Request a new link</a>
+	<AuthShell
+		title={t('Link expired')}
+		subtitle={t('This reset link is invalid or has already been used.')}
+	>
+		<a href={resolve('/login')} class="btn btn-primary py-2.5">{t('Request a new link')}</a>
 	</AuthShell>
 {:else}
-	<AuthShell title="New password">
+	<AuthShell title={t('New password')}>
 		<form onsubmit={submit} class="flex flex-col gap-4">
 			<label class="flex flex-col gap-1.5">
-				<span class="eyebrow">New password</span>
+				<span class="eyebrow">{t('New password')}</span>
 				<input
 					type="password"
 					required
 					minlength="8"
 					autocomplete="new-password"
-					placeholder="8+ characters"
+					placeholder={t('8+ characters')}
 					bind:value={password}
 					class="px-3.5 py-2.5"
 				/>
 			</label>
 			<label class="flex flex-col gap-1.5">
-				<span class="eyebrow">Confirm password</span>
+				<span class="eyebrow">{t('Confirm password')}</span>
 				<input
 					type="password"
 					required
@@ -80,7 +84,7 @@
 				<p role="status" class="text-red-400">{message}</p>
 			{/if}
 			<button type="submit" disabled={busy} class="btn btn-primary mt-1 py-2.5"
-				>{busy ? 'Saving…' : 'Save password'}</button
+				>{busy ? t('Saving…') : t('Save password')}</button
 			>
 		</form>
 	</AuthShell>

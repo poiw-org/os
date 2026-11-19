@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { t } from '#lib/i18n.svelte.ts';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 
@@ -17,4 +18,4 @@
 
 <svelte:head><title>Doora</title></svelte:head>
 
-<p>Opening Doora…</p>
+<p>{t('Opening Doora…')}</p>

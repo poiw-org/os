@@ -9,18 +9,20 @@
 		type OnboardingAnswers
 	} from '#lib/auth.ts';
 	import OnboardingStage from '#lib/auth/OnboardingStage.svelte';
+	import { t } from '#lib/i18n.svelte.ts';
 	import { easeOut, reduced } from '#lib/motion.ts';
 	import { PASSWORD_RULES, passwordIsStrong } from '#lib/password.ts';
 	import Brand from '#lib/ui/Brand.svelte';
+	import LocaleSwitch from '#lib/ui/LocaleSwitch.svelte';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
 
 	const sources: [OnboardingAnswers['referralSource'], string][] = [
-		['friend', 'Μέσω φίλου'],
-		['welcome_day', 'Ημέρα υποδοχής πρωτοετών'],
+		['friend', 'Through a friend'],
+		['welcome_day', 'First-year welcome day'],
 		['newsletter', 'Newsletter'],
-		['campaign', 'Διαφημιστική καμπάνια']
+		['campaign', 'Advertising campaign']
 	];
 
 	type Step = 'name' | 'studies' | 'source' | 'diy' | 'account';
@@ -95,8 +97,8 @@
 		error = '';
 		if (!last) return move(1);
 		if (!existing && !passwordIsStrong(password))
-			return fail('Ο κωδικός δεν καλύπτει όλες τις απαιτήσεις.');
-		if (!existing && password !== confirm) return fail('Οι κωδικοί δεν ταιριάζουν.');
+			return fail(t('Your password doesn’t meet all the requirements.'));
+		if (!existing && password !== confirm) return fail(t('The passwords don’t match.'));
 		busy = true;
 		try {
 			if (data.user) {
@@ -110,7 +112,7 @@
 				busy = false;
 			}
 		} catch (e) {
-			fail(e instanceof Error ? e.message : 'Κάτι πήγε στραβά.');
+			fail(e instanceof Error ? e.message : t('Something went wrong.'));
 		}
 	};
 
@@ -121,20 +123,21 @@
 </script>
 
 <svelte:head>
-	<title>Καλώς ήρθες · po/iw</title>
+	<title>{t('Welcome · po/iw')}</title>
 </svelte:head>
 
-<div lang="el" class="console">
+<div class="console">
 	<header class="bar">
 		<a href={resolve('/')} class="label" aria-label="po/iw">
 			<Brand size={24} />
 			po/iw
 		</a>
 		<div class="grow"></div>
+		<LocaleSwitch />
 		{#if existing}
-			<button type="button" class="label" onclick={leave}>Αποσύνδεση</button>
+			<button type="button" class="label" onclick={leave}>{t('Sign out')}</button>
 		{:else}
-			<a href={resolve('/login')} class="label">Σύνδεση</a>
+			<a href={resolve('/login')} class="label">{t('Sign in')}</a>
 		{/if}
 	</header>
 
@@ -144,15 +147,17 @@
 
 			{#if waitingForEmail}
 				<div in:fly={{ y: reduced() ? 0 : 12, duration: reduced() ? 0 : 320, easing: easeOut }}>
-					<h1 class="text-3xl md:text-4xl">Έλεγξε το email σου.</h1>
+					<h1 class="text-3xl md:text-4xl">{t('Check your email.')}</h1>
 					<p class="mute mt-3 max-w-prose">
-						Στείλαμε έναν σύνδεσμο στο {email}. Άνοιξέ τον για να ολοκληρώσεις την εγγραφή σου.
+						{t('We sent a link to {email}. Open it to finish signing up.', { email })}
 					</p>
 				</div>
 			{:else}
 				<form onsubmit={submit} class="flex flex-col gap-6">
 					<div class="flex items-center gap-3">
-						<span class="label">Βήμα {index + 1} από {steps.length}</span>
+						<span class="label"
+							>{t('Step {n} of {total}', { n: index + 1, total: steps.length })}</span
+						>
 						<span class="track" aria-hidden="true">
 							<span class="fill" style:transform="scaleX({(index + 1) / steps.length})"></span>
 						</span>
@@ -162,10 +167,10 @@
 						{#key step}
 							<div in:stepIn out:stepOut class="flex flex-col gap-6">
 								{#if step === 'name'}
-									<h1 class="text-3xl md:text-4xl">Καλώς ήρθες. Πώς σε λένε;</h1>
+									<h1 class="text-3xl md:text-4xl">{t('Welcome. What should we call you?')}</h1>
 									<div class="grid gap-5 sm:grid-cols-2">
 										<label class="flex flex-col gap-1.5">
-											<span class="label">Όνομα</span>
+											<span class="label">{t('First name')}</span>
 											<input
 												required
 												autocomplete="given-name"
@@ -174,7 +179,7 @@
 											/>
 										</label>
 										<label class="flex flex-col gap-1.5">
-											<span class="label">Επώνυμο</span>
+											<span class="label">{t('Last name')}</span>
 											<input
 												required
 												autocomplete="family-name"
@@ -185,7 +190,7 @@
 									</div>
 								{:else if step === 'studies'}
 									<fieldset class="flex flex-col gap-3">
-										<legend class="mb-5 text-3xl md:text-4xl">Σπουδάζεις;</legend>
+										<legend class="mb-5 text-3xl md:text-4xl">{t('Are you studying?')}</legend>
 										<div class="choices">
 											<label class="choice">
 												<input
@@ -195,23 +200,23 @@
 													value={true}
 													bind:group={studies}
 												/>
-												<span>Ναι</span>
+												<span>{t('Yes')}</span>
 											</label>
 											<label class="choice">
 												<input type="radio" name="studies" value={false} bind:group={studies} />
-												<span>Όχι</span>
+												<span>{t('No')}</span>
 											</label>
 										</div>
 										{#if studies}
 											<label class="mt-2 flex flex-col gap-1.5">
-												<span class="label">Τμήμα σπουδών</span>
+												<span class="label">{t('Field of study')}</span>
 												<input required bind:value={department} class="slot" />
 											</label>
 										{/if}
 									</fieldset>
 								{:else if step === 'source'}
 									<fieldset>
-										<legend class="mb-5 text-3xl md:text-4xl">Πώς μας βρήκες;</legend>
+										<legend class="mb-5 text-3xl md:text-4xl">{t('How did you find us?')}</legend>
 										<div class="choices">
 											{#each sources as [value, text] (value)}
 												<label class="choice">
@@ -222,7 +227,7 @@
 														{value}
 														bind:group={referralSource}
 													/>
-													<span>{text}</span>
+													<span>{t(text)}</span>
 												</label>
 											{/each}
 										</div>
@@ -230,7 +235,7 @@
 								{:else if step === 'diy'}
 									<fieldset>
 										<legend class="mb-5 text-3xl md:text-4xl">
-											Είσαι εξοικειωμένος/η με DIY εξοπλισμό;
+											{t('Are you familiar with DIY hardware?')}
 										</legend>
 										<div class="choices">
 											<label class="choice">
@@ -241,18 +246,18 @@
 													value={true}
 													bind:group={diyFamiliar}
 												/>
-												<span>Ναι</span>
+												<span>{t('Yes')}</span>
 											</label>
 											<label class="choice">
 												<input type="radio" name="diy" value={false} bind:group={diyFamiliar} />
-												<span>Όχι</span>
+												<span>{t('No')}</span>
 											</label>
 										</div>
 									</fieldset>
 								{:else}
-									<h1 class="text-3xl md:text-4xl">Φτιάξε τον λογαριασμό σου.</h1>
+									<h1 class="text-3xl md:text-4xl">{t('Create your account.')}</h1>
 									<label class="flex flex-col gap-1.5">
-										<span class="label">Email</span>
+										<span class="label">{t('Email')}</span>
 										<input
 											type="email"
 											required
@@ -262,7 +267,7 @@
 										/>
 									</label>
 									<label class="flex flex-col gap-1.5">
-										<span class="label">Κωδικός</span>
+										<span class="label">{t('Password')}</span>
 										<input
 											type="password"
 											required
@@ -272,12 +277,12 @@
 										/>
 									</label>
 									<ul class="rules">
-										{#each PASSWORD_RULES as rule (rule.el)}
-											<li class:met={rule.test(password)}>{rule.el}</li>
+										{#each PASSWORD_RULES as rule (rule.text)}
+											<li class:met={rule.test(password)}>{t(rule.text)}</li>
 										{/each}
 									</ul>
 									<label class="flex flex-col gap-1.5">
-										<span class="label">Επιβεβαίωση κωδικού</span>
+										<span class="label">{t('Confirm password')}</span>
 										<input
 											type="password"
 											required
@@ -298,11 +303,11 @@
 					<div class="flex gap-3">
 						{#if index > 0}
 							<button type="button" class="key" disabled={busy} onclick={() => move(-1)}
-								>Πίσω</button
+								>{t('Back')}</button
 							>
 						{/if}
 						<button type="submit" class="key key-signal" disabled={busy}>
-							{busy ? 'Αποθήκευση…' : step === 'account' ? 'Δημιουργία λογαριασμού' : 'Συνέχεια'}
+							{busy ? t('Saving…') : step === 'account' ? t('Create account') : t('Continue')}
 						</button>
 					</div>
 				</form>

@@ -1,5 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { t } from '#lib/i18n.svelte.ts';
+	import LocaleSwitch from '#lib/ui/LocaleSwitch.svelte';
 	import OsLabel from '#lib/ui/OsLabel.svelte';
 	import { swapIn, swapOut } from '#lib/motion.ts';
 	import Dither from './Dither.svelte';
@@ -23,12 +25,13 @@
 			brightness={-0.12}
 			mouseRadius={0.35}
 			art={mascot}
-			artLabel="Μανούσος Μικροτσιπάκης, Mascot του po/iw"
+			artLabel={t('Manousos Mikrotsipakis, the po/iw mascot')}
 		/>
 	</div>
 	<header class="bar full fixed inset-x-0 top-0 z-10">
 		<a href="/" class="label"><OsLabel /></a>
 		<div class="grow"></div>
+		<LocaleSwitch />
 	</header>
 	<div class="relative flex min-h-screen flex-col px-6 pt-20 pb-8 sm:px-12 lg:w-1/2">
 		<main class="flex flex-1 items-center justify-center py-10 lg:justify-start lg:pl-[4vw]">
@@ -48,7 +51,7 @@
 		</main>
 
 		<p class="self-start bg-backing px-3 py-2 text-xs text-gray-400">
-			Open source by po/iw ·
+			{t('Open source by po/iw ·')}
 			<a href="https://github.com/poiw-org" target="_blank" rel="noreferrer" class="hover:text-ink"
 				>GitHub</a
 			>

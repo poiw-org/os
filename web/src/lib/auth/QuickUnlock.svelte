@@ -1,17 +1,21 @@
 <script lang="ts">
 	import { unlockDoor, type ForceOpenEvent } from '#lib/api.ts';
 	import { signInWithPasskey, signOut } from '#lib/auth.ts';
+	import { t } from '#lib/i18n.svelte.ts';
 
 	type Phase = 'idle' | 'passkey' | 'door' | 'unlocking' | 'done' | 'failed';
 
-	const COPY: Record<Phase, [string, string]> = {
-		idle: ['Quick unlock', 'Open the door with a passkey'],
-		passkey: ['Waiting for your passkey', 'Follow the prompt on your device'],
-		door: ['Contacting the door', 'This takes a moment'],
-		unlocking: ['Unlocking', ''],
-		done: ['Door unlocked', 'You can come in'],
-		failed: ['Could not unlock', '']
-	};
+	const copy = (phase: Phase) =>
+		(
+			({
+				idle: [t('Quick unlock'), t('Open the door with a passkey')],
+				passkey: [t('Waiting for your passkey'), t('Follow the prompt on your device')],
+				door: [t('Contacting the door'), t('This takes a moment')],
+				unlocking: [t('Unlocking'), ''],
+				done: [t('Door unlocked'), t('You can come in')],
+				failed: [t('Could not unlock'), '']
+			}) satisfies Record<Phase, [string, string]>
+		)[phase];
 
 	let phase = $state<Phase>('idle');
 	let error = $state('');
@@ -61,21 +65,21 @@
 			settle('done', 3500);
 		} catch (e) {
 			// A closed prompt and a failed passkey are both NotAllowedError, so show the browser's reason.
-			error = e instanceof Error ? e.message : 'Something went wrong.';
+			error = e instanceof Error ? e.message : t('Something went wrong.');
 			settle('failed', 5000);
 		}
 		await signOut();
 	};
 
-	const title = $derived(COPY[phase][0]);
+	const title = $derived(copy(phase)[0]);
 	const detail = $derived(
 		phase === 'failed'
 			? error
 			: phase === 'unlocking'
 				? secondsLeft
-					? `Unlocking in ${secondsLeft} s`
-					: 'Unlocking now'
-				: COPY[phase][1]
+					? t('Unlocking in {n} s', { n: secondsLeft })
+					: t('Unlocking now')
+				: copy(phase)[1]
 	);
 </script>
 

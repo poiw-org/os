@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { t as translate } from '#lib/i18n.svelte.ts';
 
 	// Reads "Operating System", then folds into "OS" once the reader has had a moment with it.
 	let short = $state(false);
@@ -10,7 +11,7 @@
 	});
 </script>
 
-<span class="os" class:short aria-label="Operating System">
+<span class="os" class:short aria-label={translate('Operating System')}>
 	<span aria-hidden="true"
 		>O<span class="fold">perating&nbsp;</span>S<span class="fold">ystem</span></span
 	>

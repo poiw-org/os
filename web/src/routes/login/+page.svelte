@@ -15,18 +15,19 @@
 	import AuthShell from '#lib/auth/AuthShell.svelte';
 	import LabRefusal from '#lib/auth/LabRefusal.svelte';
 	import QuickUnlock from '#lib/auth/QuickUnlock.svelte';
+	import { t } from '#lib/i18n.svelte.ts';
 	import { arrive, reveal as unfold } from '#lib/motion.ts';
 	import { supabase } from '#lib/supabase.ts';
 
 	type Mode = 'signin' | 'reset';
-	const copy: Record<Mode, { title: string; subtitle: string; action: string }> = {
-		signin: { title: 'Sign in', subtitle: '', action: 'Sign in' },
-		reset: {
-			title: 'Reset password',
-			subtitle: 'We will email you a link to choose a new one.',
-			action: 'Send reset link'
-		}
-	};
+	const copy = (mode: Mode) =>
+		mode === 'signin'
+			? { title: t('Sign in'), subtitle: '', action: t('Sign in') }
+			: {
+					title: t('Reset password'),
+					subtitle: t('We will email you a link to choose a new one.'),
+					action: t('Send reset link')
+				};
 
 	let mode = $state<Mode>('signin');
 	let email = $state('');
@@ -43,23 +44,25 @@
 	const forApp = !!pendingReturn();
 	const title = $derived(
 		refusedApp
-			? 'Welcome to po/iw'
+			? t('Welcome to po/iw')
 			: mode === 'signin' && forApp
-				? 'Sign in to continue'
-				: copy[mode].title
+				? t('Sign in to continue')
+				: copy(mode).title
 	);
 	const subtitle = $derived(
 		refusedApp
 			? ''
 			: mode === 'signin' && forApp
-				? 'An app wants you to sign in with your po/iw account. Next you choose whether to allow it.'
-				: copy[mode].subtitle
+				? t(
+						'An app wants you to sign in with your po/iw account. Next you choose whether to allow it.'
+					)
+				: copy(mode).subtitle
 	);
 
 	onMount(() => {
 		canUsePasskey = passkeysSupported();
 		if (new URLSearchParams(window.location.search).has('password'))
-			report('Sign in with your password to finish. Email links can’t be used on their own.');
+			report(t('Sign in with your password to finish. Email links can’t be used on their own.'));
 	});
 
 	const switchTo = (next: Mode) => {
@@ -109,7 +112,7 @@
 		try {
 			await action();
 		} catch (e) {
-			report(e instanceof Error ? e.message : 'Something went wrong.');
+			report(e instanceof Error ? e.message : t('Something went wrong.'));
 		}
 		busy = false;
 	};
@@ -128,7 +131,7 @@
 				await enter();
 			} else {
 				await sendPasswordReset(email);
-				report('If an account exists for this email, a reset link is on its way.', false);
+				report(t('If an account exists for this email, a reset link is on its way.'), false);
 			}
 		});
 	};
@@ -142,7 +145,7 @@
 	{#if refusedApp}
 		<LabRefusal app={refusedApp} />
 		<button type="button" onclick={() => (refusedApp = '')} class="text-sm text-gray-400 underline"
-			>Not you? Use another account</button
+			>{t('Not you? Use another account')}</button
 		>
 	{:else}
 		{#if mode === 'signin' && canUsePasskey && !forApp}
@@ -151,7 +154,7 @@
 
 		<form onsubmit={submit} class="flex flex-col gap-4">
 			<label class="flex flex-col gap-1.5">
-				<span class="eyebrow">Email</span>
+				<span class="eyebrow">{t('Email')}</span>
 				<input
 					type="email"
 					required
@@ -165,11 +168,11 @@
 			{#if mode === 'signin'}
 				<div class="flex flex-col gap-1.5" transition:unfold>
 					<span class="flex items-baseline justify-between">
-						<label for="password" class="eyebrow">Password</label>
+						<label for="password" class="eyebrow">{t('Password')}</label>
 						<button
 							type="button"
 							onclick={() => switchTo('reset')}
-							class="text-xs text-brand-text underline">Forgot password?</button
+							class="text-xs text-brand-text underline">{t('Forgot password?')}</button
 						>
 					</span>
 					<span class="relative flex">
@@ -186,9 +189,9 @@
 							type="button"
 							onclick={() => (reveal = !reveal)}
 							aria-pressed={reveal}
-							aria-label={reveal ? 'Hide password' : 'Show password'}
+							aria-label={reveal ? t('Hide password') : t('Show password')}
 							class="absolute inset-y-0 right-0 px-3.5 text-xs text-gray-400 hover:text-ink"
-							>{reveal ? 'Hide' : 'Show'}</button
+							>{reveal ? t('Hide') : t('Show')}</button
 						>
 					</span>
 				</div>
@@ -199,24 +202,25 @@
 			{/if}
 
 			<button type="submit" disabled={busy} class="btn btn-primary mt-1 py-2.5">
-				{busy ? 'One moment…' : copy[mode].action}
+				{busy ? t('One moment…') : copy(mode).action}
 			</button>
 		</form>
 
 		{#if mode === 'signin' && canUsePasskey}
 			<button type="button" onclick={passkey} disabled={busy} class="btn py-2.5"
-				>Sign in with a passkey</button
+				>{t('Sign in with a passkey')}</button
 			>
 		{/if}
 
 		{#if mode === 'signin'}
 			<p class="text-gray-400">
-				No account? <a href={resolve('/onboarding')} class="text-brand-text underline">Register</a>
+				{t('No account?')}
+				<a href={resolve('/onboarding')} class="text-brand-text underline">{t('Register')}</a>
 			</p>
 		{:else}
 			<p class="text-gray-400">
 				<button type="button" onclick={() => switchTo('signin')} class="text-brand-text underline"
-					>Back to sign in</button
+					>{t('Back to sign in')}</button
 				>
 			</p>
 		{/if}
