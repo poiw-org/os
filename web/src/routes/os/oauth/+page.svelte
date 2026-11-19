@@ -14,14 +14,14 @@
 	import { ask, toast } from '#lib/notify.svelte.ts';
 
 	// What an app that signs people in through doora (Cloudflare Access, for one) is configured with.
+	// Token and Certs go through the `oidc` function, whose ID tokens add the user's `roles`.
 	const auth = `${config.supabaseUrl}/auth/v1`;
+	const oidc = `${config.supabaseUrl}/functions/v1/oidc`;
 	const endpoints: [string, string][] = [
-		['Issuer', auth],
+		['Issuer', oidc],
 		['Auth URL', `${auth}/oauth/authorize`],
-		['Token URL', `${auth}/oauth/token`],
-		['Certs (JWKS) URL', `${auth}/.well-known/jwks.json`],
-		['Userinfo URL', `${auth}/oauth/userinfo`],
-		['OIDC discovery', `${auth}/.well-known/openid-configuration`]
+		['Token URL', `${oidc}/token`],
+		['Certs (JWKS) URL', `${oidc}/jwks`]
 	];
 
 	const METHODS: [OAuthClientTokenEndpointAuthMethod, string][] = [
@@ -133,7 +133,7 @@
 		{/if}
 	</div>
 	<p class="text-gray-400">
-		Apps that sign people in with their doora account. Each person sees a consent screen the first
+		Apps that sign people in with their po/iw account. Each person sees a consent screen the first
 		time.
 	</p>
 
@@ -240,7 +240,9 @@
 			{/each}
 		</dl>
 		<p class="text-sm text-gray-400">
-			Apps must use PKCE. Scopes: <span class="font-mono">openid email profile</span>.
+			Apps must use PKCE. Scopes: <span class="font-mono">openid email profile</span>. The ID
+			token's <span class="font-mono">roles</span> claim lists
+			<span class="font-mono">admin</span> and <span class="font-mono">lab-access</span> (an active key).
 		</p>
 	</section>
 </div>

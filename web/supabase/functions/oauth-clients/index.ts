@@ -1,4 +1,4 @@
-// Admin only. Registers the apps that may sign people in with their doora account through the
+// Admin only. Registers the apps that may sign people in with their po/iw account through the
 // Supabase OAuth 2.1 server (Cloudflare Access, for one). The admin API needs the service role, so
 // the console asks this function instead of Supabase directly.
 //

@@ -82,7 +82,7 @@
 	{:else}
 		<div class="flex flex-col gap-4">
 			<p>
-				<strong>{details.client.name}</strong> wants to use your doora account to sign you in. It will
+				<strong>{details.client.name}</strong> wants to use your po/iw account to sign you in. It will
 				be able to:
 			</p>
 			<ul class="panel">
