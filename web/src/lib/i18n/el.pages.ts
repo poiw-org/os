@@ -3,8 +3,8 @@ export const pages: Record<string, string> = {
 	// Welcome banner
 	'Welcome to po/iw': 'Καλώς ήρθες στο po/iw',
 	'Come say hi, and get your key': 'Έλα να τα πούμε και πάρε το κλειδί σου',
-	"You don't have an active key yet. Hop into our Discord, meet the people behind the lab and ask for one. We're friendly, promise.":
-		'Δεν έχεις ακόμα ενεργό κλειδί. Μπες στο Discord μας, γνώρισε τα άτομα που κρατούν το εργαστήριο ζωντανό και ζήτα ένα. Είμαστε φιλικοί, το υποσχόμαστε.',
+	"You don't have an active key yet. Hop into our Discord, meet the people behind the lab and ask for one.":
+		'Δεν έχεις ακόμα ενεργό κλειδί. Μπες στο Discord μας, γνώρισε τα άτομα που κρατούν το εργαστήριο ζωντανό και ζήτα ένα.',
 	'Join discord.poiw.org': 'Μπες στο discord.poiw.org',
 	'Your key shows up here as soon as someone issues it.':
 		'Μόλις σου βγάλει κλειδί κάποιο άτομο από την ομάδα, θα εμφανιστεί εδώ.',

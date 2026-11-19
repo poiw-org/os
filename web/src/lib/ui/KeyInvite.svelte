@@ -176,7 +176,7 @@
 		</h2>
 		<p class="max-w-prose leading-relaxed text-gray-400">
 			{t(
-				"You don't have an active key yet. Hop into our Discord, meet the people behind the lab and ask for one. We're friendly, promise."
+				"You don't have an active key yet. Hop into our Discord, meet the people behind the lab and ask for one."
 			)}
 		</p>
 		<div class="flex flex-wrap items-center gap-x-5 gap-y-2 pt-1">
