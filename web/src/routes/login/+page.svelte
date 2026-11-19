@@ -1,7 +1,13 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
-	import { passkeysSupported, sendPasswordReset, signIn, signInWithPasskey } from '#lib/auth.ts';
+	import {
+		passkeysSupported,
+		pendingReturn,
+		sendPasswordReset,
+		signIn,
+		signInWithPasskey
+	} from '#lib/auth.ts';
 	import AuthShell from '#lib/auth/AuthShell.svelte';
 	import QuickUnlock from '#lib/auth/QuickUnlock.svelte';
 	import { arrive, reveal as unfold } from '#lib/motion.ts';
@@ -24,6 +30,15 @@
 	let failed = $state(false);
 	let busy = $state(false);
 	let canUsePasskey = $state(false);
+	// Another app (Cloudflare Access, say) sent them here to sign in with their po/iw account, not
+	// to open the OS: say so, and leave out the door's quick unlock.
+	const forApp = !!pendingReturn();
+	const title = $derived(mode === 'signin' && forApp ? 'Sign in to continue' : copy[mode].title);
+	const subtitle = $derived(
+		mode === 'signin' && forApp
+			? 'An app wants you to sign in with your po/iw account. Next you choose whether to allow it.'
+			: copy[mode].subtitle
+	);
 
 	onMount(() => {
 		canUsePasskey = passkeysSupported();
@@ -78,11 +93,11 @@
 </script>
 
 <svelte:head>
-	<title>{copy[mode].title} · doora</title>
+	<title>{title} · doora</title>
 </svelte:head>
 
-<AuthShell title={copy[mode].title} subtitle={copy[mode].subtitle}>
-	{#if mode === 'signin' && canUsePasskey}
+<AuthShell {title} {subtitle}>
+	{#if mode === 'signin' && canUsePasskey && !forApp}
 		<QuickUnlock />
 	{/if}
 

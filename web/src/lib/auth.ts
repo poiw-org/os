@@ -109,12 +109,10 @@ export function rememberReturn(path: string) {
 	}
 }
 
-/** The waiting path, once: reading it forgets it. */
-export function takeReturn(): string | undefined {
+/** The waiting path, if there is one still open. */
+export function pendingReturn(): string | undefined {
 	try {
-		const saved = sessionStorage.getItem(RETURN_KEY);
-		sessionStorage.removeItem(RETURN_KEY);
-		const { path, at } = JSON.parse(saved ?? 'null') ?? {};
+		const { path, at } = JSON.parse(sessionStorage.getItem(RETURN_KEY) ?? 'null') ?? {};
 		// Only ever a path on this site, never somewhere a stored value could point elsewhere.
 		if (typeof path === 'string' && path.startsWith('/oauth/') && Date.now() - at < RETURN_MS)
 			return path;
@@ -122,6 +120,17 @@ export function takeReturn(): string | undefined {
 		// Nothing usable stored.
 	}
 	return undefined;
+}
+
+/** The waiting path, once: reading it forgets it. */
+export function takeReturn(): string | undefined {
+	const path = pendingReturn();
+	try {
+		sessionStorage.removeItem(RETURN_KEY);
+	} catch {
+		// Nothing stored to forget.
+	}
+	return path;
 }
 
 export async function signIn(email: string, password: string) {
