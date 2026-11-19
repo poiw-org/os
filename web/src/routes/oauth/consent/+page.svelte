@@ -24,6 +24,9 @@
 	let error = $state('');
 	let leaving = $state(false);
 	let busy = $state(false);
+	// The app is for people with an active key and this person has none. The `oidc` function refuses
+	// their token anyway; this says so before they try.
+	let turnedAway = $state(false);
 
 	const scopes = $derived(details?.scope.split(' ').filter(Boolean) ?? []);
 	const destination = $derived(details ? new URL(details.redirect_uri).host : '');
@@ -43,7 +46,18 @@
 		if (failure) error = `${failure.message}. Start again from the app.`;
 		// Already allowed earlier for these permissions: Supabase answers with where to go straight away.
 		else if (!('authorization_id' in data)) go(data.redirect_url);
-		else details = data;
+		else {
+			const [app, role] = await Promise.all([
+				supabase.from('lab_access_apps').select('client_id').eq('client_id', data.client.id),
+				supabase
+					.from('user_roles')
+					.select('role')
+					.eq('user_id', data.user.id)
+					.eq('role', 'lab-access')
+			]);
+			turnedAway = !!app.data?.length && !role.data?.length;
+			details = data;
+		}
 	});
 
 	const decide = async (allow: boolean) => {
@@ -81,29 +95,38 @@
 		<p role="status" class="text-gray-400">Checking the request…</p>
 	{:else}
 		<div class="flex flex-col gap-4">
-			<p>
-				<strong>{details.client.name}</strong> wants to use your po/iw account to sign you in. It will
-				be able to:
-			</p>
-			<ul class="panel">
-				{#each scopes as scope (scope)}
-					<li class="row">{SCOPES[scope] ?? scope}</li>
-				{/each}
-			</ul>
-			<p class="text-sm text-gray-400">
-				It cannot open the door, see your keys or use the OS. Afterwards you go to
-				<span class="font-mono">{destination}</span>. You can disconnect it any time in Settings.
-			</p>
+			{#if turnedAway}
+				<p class="text-red-400" role="alert">
+					<strong>{details.client.name}</strong> is only for people with an active key, and you have none
+					right now. Ask an admin if you think that is wrong.
+				</p>
+			{:else}
+				<p>
+					<strong>{details.client.name}</strong> wants to use your po/iw account to sign you in. It will
+					be able to:
+				</p>
+				<ul class="panel">
+					{#each scopes as scope (scope)}
+						<li class="row">{SCOPES[scope] ?? scope}</li>
+					{/each}
+				</ul>
+				<p class="text-sm text-gray-400">
+					It cannot open the door, see your keys or use the OS. Afterwards you go to
+					<span class="font-mono">{destination}</span>. You can disconnect it any time in Settings.
+				</p>
+			{/if}
 			<div class="flex gap-2">
 				<button type="button" class="key flex-1" disabled={busy} onclick={() => decide(false)}
-					>Deny</button
+					>{turnedAway ? 'Back to the app' : 'Deny'}</button
 				>
-				<button
-					type="button"
-					class="key key-signal flex-1"
-					disabled={busy}
-					onclick={() => decide(true)}>Allow</button
-				>
+				{#if !turnedAway}
+					<button
+						type="button"
+						class="key key-signal flex-1"
+						disabled={busy}
+						onclick={() => decide(true)}>Allow</button
+					>
+				{/if}
 			</div>
 			<button
 				type="button"

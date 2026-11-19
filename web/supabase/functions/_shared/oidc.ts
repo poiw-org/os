@@ -8,6 +8,10 @@ export const KEY_ID = 'poiw-oidc-1';
 
 const base64Url = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
 
+/** A JWT's claims, unverified: only for tokens straight from Supabase in the same request. */
+export const claimsOf = (jwt: string) =>
+	JSON.parse(Buffer.from(jwt.split('.')[1] ?? '', 'base64url').toString());
+
 /** The public key apps verify ID tokens with, as a JWKS. */
 export const jwks = (seed: string) => ({
 	keys: [{ kty: 'RSA', use: 'sig', alg: 'RS256', kid: KEY_ID, n: publicModulus(seed), e: 'AQAB' }]
@@ -23,7 +27,7 @@ export async function reissueIdToken(
 	issuer: string,
 	rolesOf: (userId: string) => Promise<string[]>
 ) {
-	const claims = JSON.parse(Buffer.from(idToken.split('.')[1] ?? '', 'base64url').toString());
+	const claims = claimsOf(idToken);
 	if (typeof claims?.sub !== 'string') throw new Error('ID token has no subject');
 	const roles = await rolesOf(claims.sub);
 	const signed = `${base64Url({ alg: 'RS256', typ: 'JWT', kid: KEY_ID })}.${base64Url({ ...claims, iss: issuer, roles })}`;

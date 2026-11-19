@@ -1,7 +1,7 @@
 // Remote unlock for members. An admin talks to the door's realtime channel from the browser; a
 // member must not, because that channel also carries key tokens and the write-card commands. So a
-// member asks this function instead: it checks that the caller may unlock (an admin, or a user with
-// an active key), sends `force_open` on the door's channel, waits for the door's confirmation and
+// member asks this function instead: it checks that the caller may unlock (the admin or lab-access
+// role in public.user_roles, through can_unlock), sends `force_open` on the door's channel, waits for the door's confirmation and
 // logs the open under the caller's name.
 //
 // POST {} -> { latency_ms, delay_ms, logged }   (delay_ms: the door unlocks this long after confirming)

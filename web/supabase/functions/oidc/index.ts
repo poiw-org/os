@@ -3,14 +3,16 @@
 // Supabase's Token and JWKS URLs; the authorize endpoint, consent and userinfo stay Supabase's.
 //
 // POST /oidc/token  the app's token request, passed on unchanged -> Supabase's reply, with id_token
-//                   re-signed and a `roles` claim from public.user_roles
+//                   re-signed and a `roles` claim from public.user_roles. For an app in
+//                   public.lab_access_apps, someone without lab-access gets invalid_grant instead,
+//                   on sign-in and on every refresh.
 // GET  /oidc/jwks   the key that signs those ID tokens
 //
 // Auth: none of its own. Supabase checks the client, its secret, the code and PKCE; this only ever
 // rewrites an ID token Supabase has just issued. verify_jwt is off at the gateway: apps send no
 // Supabase JWT.
 import { env, serviceClient } from '../_shared/http.ts';
-import { jwks, reissueIdToken } from '../_shared/oidc.ts';
+import { claimsOf, jwks, reissueIdToken } from '../_shared/oidc.ts';
 
 type Db = ReturnType<typeof serviceClient>;
 
@@ -19,6 +21,16 @@ async function rolesOf(db: Db, userId: string) {
 	const { data, error } = await db.from('user_roles').select('role').eq('user_id', userId);
 	if (error) throw new Error(error.message);
 	return data.map((row) => row.role as string).sort();
+}
+
+async function labOnly(db: Db, clientId: string) {
+	const { data, error } = await db
+		.from('lab_access_apps')
+		.select('client_id')
+		.eq('client_id', clientId)
+		.maybeSingle();
+	if (error) throw new Error(error.message);
+	return data !== null;
 }
 
 const json = (body: unknown, status = 200) =>
@@ -46,15 +58,31 @@ Deno.serve(async (req) => {
 			});
 			const reply = await upstream.json().catch(() => ({ error: 'server_error' }));
 			// Errors (a bad code, a wrong secret) go back exactly as Supabase gave them.
-			if (!upstream.ok || typeof reply.id_token !== 'string') return json(reply, upstream.status);
+			if (!upstream.ok) return json(reply, upstream.status);
 
+			// Supabase's OAuth access token names the user and the app it was issued to; without them
+			// the lab-access rule cannot be checked, so the token is not handed out.
+			const { sub, client_id } = claimsOf(String(reply.access_token));
+			if (typeof sub !== 'string' || typeof client_id !== 'string')
+				throw new Error('Access token has no sub or client_id');
 			const db = serviceClient();
-			reply.id_token = await reissueIdToken(
-				seed,
-				reply.id_token,
-				`${supabaseUrl}/functions/v1/oidc`,
-				(userId) => rolesOf(db, userId)
-			);
+			const roles = await rolesOf(db, sub);
+			if (!roles.includes('lab-access') && (await labOnly(db, client_id)))
+				return json(
+					{
+						error: 'invalid_grant',
+						error_description: 'This app is only for people with an active key.'
+					},
+					400
+				);
+
+			if (typeof reply.id_token === 'string')
+				reply.id_token = await reissueIdToken(
+					seed,
+					reply.id_token,
+					`${supabaseUrl}/functions/v1/oidc`,
+					async () => roles
+				);
 			return json(reply);
 		}
 

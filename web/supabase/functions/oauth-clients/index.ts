@@ -3,12 +3,15 @@
 // the console asks this function instead of Supabase directly.
 //
 // POST { action: "list" }                                                   -> { clients }
-// POST { action: "create", client_name, redirect_uris, token_endpoint_auth_method } -> { client }
-// POST { action: "update", client_id, client_name, redirect_uris }          -> { client }
+// POST { action: "create", client_name, redirect_uris, token_endpoint_auth_method, lab_access_only }
+//                                                                            -> { client }
+// POST { action: "update", client_id, client_name, redirect_uris, lab_access_only } -> { client }
 // POST { action: "regenerate_secret", client_id }                           -> { client }
 // POST { action: "delete", client_id }                                      -> {}
 //
-// A client's secret is only ever in the reply to create and regenerate_secret.
+// A client's secret is only ever in the reply to create and regenerate_secret. Each client in the
+// replies carries lab_access_only: whether only people with lab-access may sign in to it
+// (public.lab_access_apps, enforced by the `oidc` function).
 //
 // Auth: the caller's Supabase access token, which must belong to an admin signed in with 2FA.
 // verify_jwt is off at the gateway because that check is done here.
@@ -50,6 +53,27 @@ function parseClientId(value: unknown) {
 	return value;
 }
 
+type Db = ReturnType<typeof serviceClient>;
+
+function parseLabOnly(value: unknown) {
+	if (typeof value !== 'boolean') throw new HttpError(400, 'lab_access_only must be true or false');
+	return value;
+}
+
+async function setLabOnly(db: Db, clientId: string, labOnly: boolean) {
+	const table = db.from('lab_access_apps');
+	const { error } = labOnly
+		? await table.upsert({ client_id: clientId })
+		: await table.delete().eq('client_id', clientId);
+	if (error) throw new HttpError(500, 'Could not save who may sign in');
+}
+
+async function labOnlyIds(db: Db) {
+	const { data, error } = await db.from('lab_access_apps').select('client_id');
+	if (error) throw new HttpError(500, 'Could not load who may sign in');
+	return new Set(data.map((row) => row.client_id as string));
+}
+
 // The admin API answers with { data, error }; its message is the one worth showing.
 function unwrap<T>({
 	data,
@@ -72,12 +96,16 @@ Deno.serve((req) =>
 		if (body.action === 'list') {
 			// shortcut: one page of 100; page through listClients if a door ever has more apps.
 			const { clients } = unwrap(await oauth.listClients({ page: 1, perPage: 100 }));
-			return { clients };
+			const labOnly = await labOnlyIds(db);
+			return {
+				clients: clients.map((c) => ({ ...c, lab_access_only: labOnly.has(c.client_id) }))
+			};
 		}
 
 		if (body.action === 'create') {
 			const method = AUTH_METHODS.find((m) => m === body.token_endpoint_auth_method);
 			if (!method) throw new HttpError(400, 'Invalid token_endpoint_auth_method');
+			const labOnly = parseLabOnly(body.lab_access_only);
 			const client = unwrap(
 				await oauth.createClient({
 					client_name: parseName(body.client_name),
@@ -85,17 +113,20 @@ Deno.serve((req) =>
 					token_endpoint_auth_method: method
 				})
 			);
-			return { client };
+			await setLabOnly(db, client.client_id, labOnly);
+			return { client: { ...client, lab_access_only: labOnly } };
 		}
 
 		if (body.action === 'update') {
+			const labOnly = parseLabOnly(body.lab_access_only);
 			const client = unwrap(
 				await oauth.updateClient(parseClientId(body.client_id), {
 					client_name: parseName(body.client_name),
 					redirect_uris: parseRedirectUris(body.redirect_uris)
 				})
 			);
-			return { client };
+			await setLabOnly(db, client.client_id, labOnly);
+			return { client: { ...client, lab_access_only: labOnly } };
 		}
 
 		if (body.action === 'regenerate_secret') {
@@ -104,7 +135,9 @@ Deno.serve((req) =>
 		}
 
 		if (body.action === 'delete') {
-			unwrap(await oauth.deleteClient(parseClientId(body.client_id)));
+			const id = parseClientId(body.client_id);
+			unwrap(await oauth.deleteClient(id));
+			await setLabOnly(db, id, false);
 			return {};
 		}
 

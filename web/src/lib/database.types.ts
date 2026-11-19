@@ -191,6 +191,12 @@ export type Database = {
 					}
 				];
 			};
+			lab_access_apps: {
+				Row: { client_id: string; created_at: string };
+				Insert: { client_id: string; created_at?: string };
+				Update: { client_id?: string; created_at?: string };
+				Relationships: [];
+			};
 			profiles: {
 				Row: {
 					department: string | null;
@@ -246,7 +252,12 @@ export type Database = {
 				Relationships: [];
 			};
 		};
-		Views: { [_ in never]: never };
+		Views: {
+			user_roles: {
+				Row: { role: string | null; user_id: string | null };
+				Relationships: [];
+			};
+		};
 		Functions: {
 			attach_unidentified_tag: {
 				Args: { tag: string; target: string | null };

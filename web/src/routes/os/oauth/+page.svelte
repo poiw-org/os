@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import type { OAuthClient, OAuthClientTokenEndpointAuthMethod } from '@supabase/supabase-js';
 	import {
+		type App,
 		createOAuthClient,
 		deleteOAuthClient,
 		listOAuthClients,
@@ -31,7 +32,7 @@
 	];
 	const methodLabel = (m: string) => METHODS.find(([value]) => value === m)?.[1] ?? m;
 
-	let clients = $state<OAuthClient[]>();
+	let clients = $state<App[]>();
 	let busy = $state(false);
 	// The form both adds an app and edits one; `editing` is the app's id when editing.
 	let formOpen = $state(false);
@@ -39,6 +40,7 @@
 	let name = $state('');
 	let redirectUris = $state('');
 	let method = $state<OAuthClientTokenEndpointAuthMethod>('client_secret_basic');
+	let labOnly = $state(false);
 	// Supabase returns a secret only when it is made, so it is shown once, here.
 	let secret = $state<{ name: string; id: string; value: string }>();
 
@@ -64,19 +66,21 @@
 		busy = false;
 	};
 
-	const openForm = (client?: OAuthClient) => {
+	const openForm = (client?: App) => {
 		formOpen = true;
 		editing = client?.client_id;
 		name = client?.client_name ?? '';
 		redirectUris = client?.redirect_uris.join('\n') ?? '';
 		method = client?.token_endpoint_auth_method ?? 'client_secret_basic';
+		labOnly = client?.lab_access_only ?? false;
 	};
 
 	const save = (event: SubmitEvent) => {
 		event.preventDefault();
 		const fields = {
 			name: name.trim(),
-			redirectUris: redirectUris.split(/\s+/).filter(Boolean)
+			redirectUris: redirectUris.split(/\s+/).filter(Boolean),
+			labOnly
 		};
 		run(
 			async () => {
@@ -179,6 +183,15 @@
 					</select>
 				</label>
 			{/if}
+			<label class="flex items-start gap-2">
+				<input type="checkbox" bind:checked={labOnly} class="mt-1" />
+				<span>
+					Only people with an active key
+					<span class="block text-sm text-gray-400"
+						>Everyone else is turned away, also when their key later stops working.</span
+					>
+				</span>
+			</label>
 			<div class="flex justify-end gap-2">
 				<button type="button" class="btn" disabled={busy} onclick={() => (formOpen = false)}
 					>Cancel</button
@@ -205,6 +218,11 @@
 							{methodLabel(client.token_endpoint_auth_method)} · added {formatDate(
 								new Date(client.created_at)
 							)}
+						</p>
+						<p class="text-sm">
+							{client.lab_access_only
+								? 'Only people with an active key'
+								: 'Everyone with an account'}
 						</p>
 						<ul class="font-mono text-xs break-all">
 							{#each client.redirect_uris as uri (uri)}<li>{uri}</li>{/each}

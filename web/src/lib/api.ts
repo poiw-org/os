@@ -365,34 +365,40 @@ export const authorizeReleaseCli = async (challenge: string) =>
 	(await invoke<{ code: string }>('firmware-cli-auth', { action: 'authorize', challenge })).code;
 
 // Apps that sign people in through the Supabase OAuth server. Registering them needs the service
-// role, so it runs in the admin-only `oauth-clients` edge function.
+// role, so it runs in the admin-only `oauth-clients` edge function. lab_access_only: only people
+// with lab-access (an active key) may sign in to the app.
+export type App = OAuthClient & { lab_access_only: boolean };
+
 export const listOAuthClients = async () =>
-	(await invoke<{ clients: OAuthClient[] }>('oauth-clients', { action: 'list' })).clients;
+	(await invoke<{ clients: App[] }>('oauth-clients', { action: 'list' })).clients;
 
 export const createOAuthClient = async (client: {
 	name: string;
 	redirectUris: string[];
 	authMethod: OAuthClientTokenEndpointAuthMethod;
+	labOnly: boolean;
 }) =>
 	(
-		await invoke<{ client: OAuthClient }>('oauth-clients', {
+		await invoke<{ client: App }>('oauth-clients', {
 			action: 'create',
 			client_name: client.name,
 			redirect_uris: client.redirectUris,
-			token_endpoint_auth_method: client.authMethod
+			token_endpoint_auth_method: client.authMethod,
+			lab_access_only: client.labOnly
 		})
 	).client;
 
 export const updateOAuthClient = async (
 	id: string,
-	client: { name: string; redirectUris: string[] }
+	client: { name: string; redirectUris: string[]; labOnly: boolean }
 ) =>
 	(
-		await invoke<{ client: OAuthClient }>('oauth-clients', {
+		await invoke<{ client: App }>('oauth-clients', {
 			action: 'update',
 			client_id: id,
 			client_name: client.name,
-			redirect_uris: client.redirectUris
+			redirect_uris: client.redirectUris,
+			lab_access_only: client.labOnly
 		})
 	).client;
 
