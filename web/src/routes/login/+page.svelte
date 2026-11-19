@@ -2,6 +2,7 @@
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import {
+		getCurrentUser,
 		labAccessRefused,
 		passkeysSupported,
 		pendingReturn,
@@ -73,12 +74,22 @@
 	};
 
 	// An app that is for lab-access only turns away someone without it here, not after the code,
-	// onboarding and consent steps. If the request can't be read, the consent screen still checks.
+	// onboarding and consent steps. Asking Supabase about the request hands the user straight on to
+	// the app if they allowed it before, so only ask once nothing else stands in the way (the layout
+	// guards the consent page with the same steps). Otherwise the consent screen turns them away.
 	const refuseForApp = async () => {
 		const id = new URLSearchParams((pendingReturn() ?? '').split('?')[1]).get('authorization_id');
-		if (!id) return false;
+		const user = id ? await getCurrentUser() : null;
+		if (!id || !user?.onboarded) return false;
+		if (user.needsCode || user.needsEmailCode || user.secondFactorEnforced) return false;
 		const { data } = await supabase.auth.oauth.getAuthorizationDetails(id);
-		if (!data || !('authorization_id' in data)) return false;
+		if (!data) return false;
+		// Allowed before: Supabase has already approved it, so carry on to the app.
+		if (!('authorization_id' in data)) {
+			takeReturn();
+			window.location.href = data.redirect_url;
+			return true;
+		}
 		if (!(await labAccessRefused(data.client.id, data.user.id))) return false;
 		takeReturn();
 		await signOut();
