@@ -1,6 +1,8 @@
 <script lang="ts">
 	import {
 		deletePasskey,
+		disconnectApp,
+		listConnectedApps,
 		listPasskeys,
 		passkeysSupported,
 		listTotpFactors,
@@ -43,7 +45,20 @@
 		message = '';
 		if (next === 'security' && passkeysSupported()) refreshPasskeys();
 		if (next === 'security') refreshTotp();
+		if (next === 'sessions') refreshApps();
 	};
+
+	let apps = $state<Awaited<ReturnType<typeof listConnectedApps>>>([]);
+	const refreshApps = () =>
+		listConnectedApps().then(
+			(list) => (apps = list),
+			() => (apps = [])
+		);
+	const disconnect = (clientId: string, name: string) =>
+		run(async () => {
+			await disconnectApp(clientId);
+			await refreshApps();
+		}, `${name} is disconnected. It has to ask again to sign you in.`);
 
 	let passkeys = $state<Awaited<ReturnType<typeof listPasskeys>>>([]);
 	const refreshPasskeys = () =>
@@ -362,6 +377,27 @@
 						>
 					</div>
 				</div>
+				{#if apps.length}
+					<section class="flex flex-col gap-3 border-t pt-5">
+						{@render heading('Connected apps', 'Apps you let sign you in with this account')}
+						<ul class="panel">
+							{#each apps as grant (grant.client.id)}
+								<li class="row">
+									<span class="flex min-w-0 flex-col">
+										<span class="truncate font-medium">{grant.client.name}</span>
+										<span class="text-gray-400">Allowed {timeAgo(new Date(grant.granted_at))}</span>
+									</span>
+									<button
+										type="button"
+										disabled={busy}
+										onclick={() => disconnect(grant.client.id, grant.client.name)}
+										class="btn tone-red shrink-0">Disconnect</button
+									>
+								</li>
+							{/each}
+						</ul>
+					</section>
+				{/if}
 			{/if}
 
 			{#if message}

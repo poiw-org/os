@@ -62,6 +62,22 @@ export async function askAsCaller(token: string, fn: string) {
   return data === true;
 }
 
+/** The caller's id, once their token is shown to belong to an admin signed in with 2FA. */
+export async function requireAdmin(req: Request, db: ReturnType<typeof serviceClient>) {
+  const token = accessToken(req);
+  const id = await callerId(db, token);
+  const { data: row, error } = await db
+    .from("admins")
+    .select("user_id")
+    .eq("user_id", id)
+    .maybeSingle();
+  if (error) throw new HttpError(500, "Could not check permissions");
+  if (!row) throw new HttpError(403, "Not an admin");
+  if (!(await askAsCaller(token, "session_has_second_factor")))
+    throw new HttpError(403, "Admins must be signed in with 2FA");
+  return id;
+}
+
 /** Answers CORS preflights and non-POSTs, runs `handler`, and turns its result or error into JSON. */
 export async function handlePost(
   req: Request,

@@ -96,6 +96,34 @@ export function dismissSecondFactorPrompt(user: CurrentUser) {
 	}
 }
 
+// An app's sign-in request that had to wait for the user to sign in, verify or set up 2FA first.
+// Kept per tab, and only as long as Supabase keeps the request open.
+const RETURN_KEY = 'oauth-return';
+const RETURN_MS = 10 * 60_000;
+
+export function rememberReturn(path: string) {
+	try {
+		sessionStorage.setItem(RETURN_KEY, JSON.stringify({ path, at: Date.now() }));
+	} catch {
+		// Without storage the user lands in the OS and the app has to start its sign-in again.
+	}
+}
+
+/** The waiting path, once: reading it forgets it. */
+export function takeReturn(): string | undefined {
+	try {
+		const saved = sessionStorage.getItem(RETURN_KEY);
+		sessionStorage.removeItem(RETURN_KEY);
+		const { path, at } = JSON.parse(saved ?? 'null') ?? {};
+		// Only ever a path on this site, never somewhere a stored value could point elsewhere.
+		if (typeof path === 'string' && path.startsWith('/oauth/') && Date.now() - at < RETURN_MS)
+			return path;
+	} catch {
+		// Nothing usable stored.
+	}
+	return undefined;
+}
+
 export async function signIn(email: string, password: string) {
 	const { error } = await supabase.auth.signInWithPassword({ email, password });
 	if (error) throw error;
@@ -225,6 +253,19 @@ export async function signUp(
 }
 
 /** `everywhere` also revokes the sessions on the user's other devices. */
+/** The apps this user let sign them in through the OAuth server. */
+export async function listConnectedApps() {
+	const { data, error } = await supabase.auth.oauth.listGrants();
+	if (error) throw error;
+	return data;
+}
+
+/** Ends the app's sessions; it has to ask again to sign this user in. */
+export async function disconnectApp(clientId: string) {
+	const { error } = await supabase.auth.oauth.revokeGrant({ clientId });
+	if (error) throw error;
+}
+
 export async function signOut(everywhere = false) {
 	await supabase.auth.signOut({ scope: everywhere ? 'global' : 'local' });
 }

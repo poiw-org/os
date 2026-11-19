@@ -1,4 +1,10 @@
-import { createClient, FunctionsHttpError, type RealtimeChannel } from '@supabase/supabase-js';
+import {
+	createClient,
+	FunctionsHttpError,
+	type OAuthClient,
+	type OAuthClientTokenEndpointAuthMethod,
+	type RealtimeChannel
+} from '@supabase/supabase-js';
 import type { OnboardingAnswers } from '#lib/auth.ts';
 import { config } from '#lib/config.ts';
 import { withName } from '#lib/format.ts';
@@ -357,6 +363,49 @@ async function invoke<T>(name: string, body: Record<string, unknown> = {}): Prom
 
 export const authorizeReleaseCli = async (challenge: string) =>
 	(await invoke<{ code: string }>('firmware-cli-auth', { action: 'authorize', challenge })).code;
+
+// Apps that sign people in through the Supabase OAuth server. Registering them needs the service
+// role, so it runs in the admin-only `oauth-clients` edge function.
+export const listOAuthClients = async () =>
+	(await invoke<{ clients: OAuthClient[] }>('oauth-clients', { action: 'list' })).clients;
+
+export const createOAuthClient = async (client: {
+	name: string;
+	redirectUris: string[];
+	authMethod: OAuthClientTokenEndpointAuthMethod;
+}) =>
+	(
+		await invoke<{ client: OAuthClient }>('oauth-clients', {
+			action: 'create',
+			client_name: client.name,
+			redirect_uris: client.redirectUris,
+			token_endpoint_auth_method: client.authMethod
+		})
+	).client;
+
+export const updateOAuthClient = async (
+	id: string,
+	client: { name: string; redirectUris: string[] }
+) =>
+	(
+		await invoke<{ client: OAuthClient }>('oauth-clients', {
+			action: 'update',
+			client_id: id,
+			client_name: client.name,
+			redirect_uris: client.redirectUris
+		})
+	).client;
+
+export const regenerateOAuthSecret = async (id: string) =>
+	(
+		await invoke<{ client: OAuthClient }>('oauth-clients', {
+			action: 'regenerate_secret',
+			client_id: id
+		})
+	).client;
+
+export const deleteOAuthClient = (id: string) =>
+	invoke('oauth-clients', { action: 'delete', client_id: id });
 
 // Issuing and renewing sign the key's JWT, so they run in the `keys` edge function.
 const invokeKeys = (body: Record<string, unknown>) => invoke<{ id: string }>('keys', body);

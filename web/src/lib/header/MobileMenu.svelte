@@ -243,6 +243,9 @@
 						<a href={resolve('/os/firmware')} onclick={close} class="btn py-3 text-center text-sm"
 							>Firmware</a
 						>
+						<a href={resolve('/os/oauth')} onclick={close} class="btn py-3 text-center text-sm"
+							>Apps</a
+						>
 					{/if}
 					<a href={resolve('/os/keys')} onclick={close} class="btn py-3 text-center text-sm"
 						>My keys</a

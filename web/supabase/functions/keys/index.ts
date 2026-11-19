@@ -14,35 +14,10 @@
 //
 // Auth: the caller's Supabase access token, which must belong to a row in public.admins.
 // verify_jwt is off at the gateway because that check is done here.
-import {
-	accessToken,
-	askAsCaller,
-	callerId,
-	env,
-	HttpError,
-	handlePost,
-	serviceClient
-} from '../_shared/http.ts';
+import { env, HttpError, handlePost, requireAdmin, serviceClient } from '../_shared/http.ts';
 import { signKey } from '../_shared/keys.ts';
 
 type Db = ReturnType<typeof serviceClient>;
-
-async function requireAdmin(req: Request, db: Db) {
-	const token = accessToken(req);
-	const id = await callerId(db, token);
-
-	const { data: row, error } = await db
-		.from('admins')
-		.select('user_id')
-		.eq('user_id', id)
-		.maybeSingle();
-	if (error) throw new HttpError(500, 'Could not check permissions');
-	if (!row) throw new HttpError(403, 'Not an admin');
-	if (!(await askAsCaller(token, 'session_has_second_factor')))
-		throw new HttpError(403, 'Admins must be signed in with 2FA');
-
-	return id;
-}
 
 function parseDate(value: unknown, field: string) {
 	const date = typeof value === 'string' ? new Date(value) : undefined;

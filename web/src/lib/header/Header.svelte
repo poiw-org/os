@@ -35,6 +35,7 @@
 	{@render brand()}
 	{#if user?.isAdmin}
 		<a href={resolve('/os/firmware')} class="label only-md">Firmware</a>
+		<a href={resolve('/os/oauth')} class="label only-md">Apps</a>
 	{/if}
 	{#if user}
 		<a href={resolve('/os/keys')} class="label only-md">My keys</a>

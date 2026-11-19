@@ -48,8 +48,15 @@ Edge functions:
 | `keys` | Admin only. Issues and renews keys by signing an RS256 token. The key pair is derived from the `RSA_KEY_SEED` secret. |
 | `door-key` | Gives a signed-in door the public key it needs to check v2 tokens. |
 | `unlock` | Lets a member with an active key open the door. Sends the command, waits for the door to confirm, logs it. |
+| `oauth-clients` | Admin only. Registers the apps that sign people in through the Supabase OAuth 2.1 server (the console's Apps page). |
 
 Set the `RSA_KEY_SEED` secret on the Supabase project before deploying the functions. The `security-reminders` function also needs `SECURITY_CRON_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM` and `APP_URL`, and deploys with `--no-verify-jwt`. Its daily schedule reads the Vault secrets `project_url` and `security_cron_secret`.
+
+### Signing in to other apps (OAuth 2.1)
+
+Supabase's OAuth server lets other apps, such as Cloudflare Access, sign people in with their doora account. In the Supabase dashboard, under Authentication > OAuth Server, turn it on and set the Authorization Path to `/oauth/consent`. The Site URL must be this app's address. Leave dynamic registration off. Admins register apps at `/os/oauth`, which also lists the endpoint URLs.
+
+For Cloudflare Access, add an app with the redirect URI `https://<team>.cloudflareaccess.com/cdn-cgi/access/callback` and a confidential client type. Then, under Zero Trust > Integrations > Identity providers, add an OpenID Connect provider. Use the client ID, client secret, and the Auth, Token and Certs URLs from that page. Turn PKCE on, because Supabase requires it.
 
 ## Running it
 

@@ -1,5 +1,5 @@
 import { redirect } from '@sveltejs/kit';
-import { getCurrentUser } from '#lib/auth.ts';
+import { getCurrentUser, rememberReturn, takeReturn } from '#lib/auth.ts';
 import { openedRecoveryLink } from '#lib/supabase.ts';
 import type { LayoutLoad } from './$types';
 
@@ -11,11 +11,18 @@ export const prerender = true;
 
 const publicRoutes = ['/', '/login', '/reset-password', '/onboarding'];
 // Only admins manage users and keys; members see their own keys at /os/keys.
-const adminRoutes = ['/os/users', '/os/keys/create', '/os/firmware'];
+const adminRoutes = ['/os/users', '/os/keys/create', '/os/firmware', '/os/oauth'];
 
 // The one auth guard: every other route requires a signed-in user.
 export const load: LayoutLoad = async ({ url }) => {
 	const user = await getCurrentUser();
+	// An app asking to sign someone in (Cloudflare Access, say) waits behind every step below and is
+	// picked up again once they reach the OS.
+	const consent = url.pathname.startsWith('/oauth/');
+	const away = (to: string): never => {
+		if (consent) rememberReturn(url.pathname + url.search);
+		redirect(307, to);
+	};
 
 	// If the redirect URL is not allow-listed in Supabase, the recovery link lands on the Site URL
 	// instead of /reset-password; send the user to the new-password form either way.
@@ -23,20 +30,24 @@ export const load: LayoutLoad = async ({ url }) => {
 
 	// /d/<door id> is what a phone opens when it taps a door's reader.
 	const isPublic = publicRoutes.includes(url.pathname) || url.pathname.startsWith('/d/');
-	if (!user && !isPublic) redirect(307, '/login');
+	if (!user && !isPublic) away('/login');
 	if (user && url.pathname === '/login') redirect(307, '/os');
-	const inApp = url.pathname.startsWith('/os') || url.pathname === '/security';
+	const inApp = url.pathname.startsWith('/os') || url.pathname === '/security' || consent;
 	// A password sign-in is not finished until the code is in.
 	const unfinished = user?.needsCode || user?.needsEmailCode;
-	if (unfinished && inApp) redirect(307, '/verify');
+	if (unfinished && inApp) away('/verify');
 	if (user && !unfinished && url.pathname === '/verify') redirect(307, '/os');
 	// Everyone answers the onboarding questions once, before using the OS.
-	if (user && !user.onboarded && inApp) redirect(307, '/onboarding');
+	if (user && !user.onboarded && inApp) away('/onboarding');
 	if (user?.onboarded && url.pathname === '/onboarding') redirect(307, '/os');
 	// Admins must have 2FA to use the app. Key holders get a prompt at each sign-in for 14 days, and
 	// after that the same wall. Anyone with no live key is never asked.
-	if (user?.secondFactorEnforced && url.pathname.startsWith('/os')) redirect(307, '/security');
+	if (user?.secondFactorEnforced && (url.pathname.startsWith('/os') || consent)) away('/security');
 	if (user?.hasSecondFactor && url.pathname === '/security') redirect(307, '/os');
+	if (user && url.pathname.startsWith('/os')) {
+		const waiting = takeReturn();
+		if (waiting) redirect(307, waiting);
+	}
 	if (user && !user.isAdmin) {
 		if (url.pathname === '/os') redirect(307, '/os/keys');
 		// Key holders may grant `make release` access; that page turns away everyone else itself. The
