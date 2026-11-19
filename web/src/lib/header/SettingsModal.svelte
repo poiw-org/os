@@ -18,6 +18,7 @@
 	import Avatar from '#lib/ui/Avatar.svelte';
 	import TotpEnroll from '#lib/auth/TotpEnroll.svelte';
 	import { PASSWORD_HINT, passwordIsStrong } from '#lib/password.ts';
+	import { dateLocale, t } from '#lib/i18n.svelte.ts';
 
 	let { user, onclose }: { user: CurrentUser; onclose: () => void } = $props();
 
@@ -55,10 +56,13 @@
 			() => (apps = [])
 		);
 	const disconnect = (clientId: string, name: string) =>
-		run(async () => {
-			await disconnectApp(clientId);
-			await refreshApps();
-		}, `${name} is disconnected. It has to ask again to sign you in.`);
+		run(
+			async () => {
+				await disconnectApp(clientId);
+				await refreshApps();
+			},
+			t('{name} is disconnected. It has to ask again to sign you in.', { name })
+		);
 
 	let passkeys = $state<Awaited<ReturnType<typeof listPasskeys>>>([]);
 	const refreshPasskeys = () =>
@@ -71,13 +75,13 @@
 		run(async () => {
 			await registerPasskey();
 			await refreshPasskeys();
-		}, 'Passkey added. You can now sign in with it.');
+		}, t('Passkey added. You can now sign in with it.'));
 
 	const removePasskey = (id: string) =>
 		run(async () => {
 			await deletePasskey(id);
 			await refreshPasskeys();
-		}, 'Passkey removed.');
+		}, t('Passkey removed.'));
 
 	let totp = $state<Awaited<ReturnType<typeof listTotpFactors>>>([]);
 	let addingTotp = $state(false);
@@ -90,7 +94,7 @@
 		run(async () => {
 			await removeTotp(id);
 			await refreshTotp();
-		}, 'Authenticator removed.');
+		}, t('Authenticator removed.'));
 
 	// Runs one account change and reports how it went.
 	const run = async (action: () => Promise<unknown>, done: string) => {
@@ -102,7 +106,7 @@
 			message = done;
 		} catch (e) {
 			failed = true;
-			message = e instanceof Error ? e.message : 'Something went wrong.';
+			message = e instanceof Error ? e.message : t('Something went wrong.');
 		}
 		busy = false;
 	};
@@ -113,7 +117,7 @@
 			await setNickname(user.id, nickname.trim());
 			// The header reads the user from the layout load, so reload to pick up the change.
 			window.location.reload();
-		}, 'Saved.');
+		}, t('Saved.'));
 	};
 
 	const saveEmail = (event: SubmitEvent) => {
@@ -121,7 +125,7 @@
 		const next = email.trim();
 		run(
 			() => setEmail(next),
-			`Confirmation sent to ${next}. The change applies once you open the link.`
+			t('Confirmation sent to {email}. The change applies once you open the link.', { email: next })
 		);
 	};
 
@@ -129,25 +133,25 @@
 		event.preventDefault();
 		if (password !== confirm) {
 			failed = true;
-			message = 'The passwords do not match.';
+			message = t('The passwords do not match.');
 			return;
 		}
 		if (!passwordIsStrong(password)) {
 			failed = true;
-			message = PASSWORD_HINT;
+			message = t(PASSWORD_HINT);
 			return;
 		}
 		run(async () => {
 			await setPassword(password);
 			password = confirm = '';
-		}, 'Password updated.');
+		}, t('Password updated.'));
 	};
 
 	const leave = (everywhere: boolean) =>
 		run(async () => {
 			await signOut(everywhere);
 			window.location.href = '/login';
-		}, 'Signing out…');
+		}, t('Signing out…'));
 
 	const nameChanged = $derived(nickname.trim() !== '' && nickname.trim() !== user.nickname);
 	const emailChanged = $derived(email.trim() !== '' && email.trim() !== user.email);
@@ -178,7 +182,7 @@
 		<button
 			type="button"
 			onclick={() => dialog?.close()}
-			aria-label="Close"
+			aria-label={t('Close')}
 			class="absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-md text-gray-400 hover:bg-paper-2 hover:text-ink"
 			>✕</button
 		>
@@ -193,7 +197,7 @@
 				onclick={() => select(value)}
 				class="-mb-px border-b-2 px-2.5 py-3 text-sm font-medium {tab === value
 					? 'border-ink text-ink'
-					: 'border-transparent text-gray-400 hover:text-ink'}">{label}</button
+					: 'border-transparent text-gray-400 hover:text-ink'}">{t(label)}</button
 			>
 		{/each}
 	</div>
@@ -202,7 +206,9 @@
 		<div class="flex min-h-[300px] flex-col gap-6 p-6">
 			{#if tab === 'profile'}
 				<form onsubmit={saveName} class="flex flex-col gap-1.5">
-					<label for="settings-name">{@render heading('Display name', 'Shown in key logs')}</label>
+					<label for="settings-name"
+						>{@render heading(t('Display name'), t('Shown in key logs'))}</label
+					>
 					<span class="flex gap-2">
 						<input
 							id="settings-name"
@@ -212,7 +218,7 @@
 							class="min-w-0 flex-1 px-3.5 py-2.5"
 						/>
 						<button type="submit" disabled={busy || !nameChanged} class="btn btn-primary px-4"
-							>Save</button
+							>{t('Save')}</button
 						>
 					</span>
 				</form>
@@ -220,30 +226,30 @@
 				<div class="flex items-center gap-4 rounded-lg border p-4">
 					<Avatar email={user.email} size={40} />
 					<p class="flex-1 text-gray-400">
-						Your avatar comes from Gravatar, with a generated one as fallback.
+						{t('Your avatar comes from Gravatar, with a generated one as fallback.')}
 					</p>
 					<a href="https://gravatar.com/profile" target="_blank" rel="noreferrer" class="btn"
-						>Change</a
+						>{t('Change')}</a
 					>
 				</div>
 
 				<dl class="grid grid-cols-2 gap-4 border-t pt-5">
 					<div class="flex flex-col gap-1">
-						<dt class="eyebrow">Member since</dt>
-						<dd>{user.createdAt.toLocaleDateString('el-GR', { dateStyle: 'medium' })}</dd>
+						<dt class="eyebrow">{t('Member since')}</dt>
+						<dd>{user.createdAt.toLocaleDateString(dateLocale(), { dateStyle: 'medium' })}</dd>
 					</div>
 					<div class="flex flex-col gap-1">
-						<dt class="eyebrow">Last sign-in</dt>
+						<dt class="eyebrow">{t('Last sign-in')}</dt>
 						<dd>{user.lastSignInAt ? timeAgo(user.lastSignInAt) : '—'}</dd>
 					</div>
 					<div class="col-span-2 flex flex-col gap-1">
-						<dt class="eyebrow">User ID</dt>
+						<dt class="eyebrow">{t('User ID')}</dt>
 						<dd class="font-mono text-xs text-gray-600 select-all">{user.id}</dd>
 					</div>
 				</dl>
 			{:else if tab === 'security'}
 				<form onsubmit={saveEmail} class="flex flex-col gap-1.5">
-					<label for="settings-email">{@render heading('Email', 'Needs confirmation')}</label>
+					<label for="settings-email">{@render heading(t('Email'), t('Needs confirmation'))}</label>
 					<span class="flex gap-2">
 						<input
 							id="settings-email"
@@ -254,25 +260,25 @@
 							class="min-w-0 flex-1 px-3.5 py-2.5"
 						/>
 						<button type="submit" disabled={busy || !emailChanged} class="btn btn-primary px-4"
-							>Update</button
+							>{t('Update')}</button
 						>
 					</span>
 					{#if user.pendingEmail}
 						<span class="text-xs text-yellow-500"
-							>Waiting for confirmation of {user.pendingEmail}.</span
+							>{t('Waiting for confirmation of {email}.', { email: user.pendingEmail })}</span
 						>
 					{/if}
 				</form>
 
 				<form onsubmit={savePassword} class="flex flex-col gap-3 border-t pt-5">
-					{@render heading('New password', '12+ characters')}
+					{@render heading(t('New password'), t('12+ characters'))}
 					<input
 						type="password"
 						required
 						minlength="12"
 						autocomplete="new-password"
-						placeholder="New password"
-						aria-label="New password"
+						placeholder={t('New password')}
+						aria-label={t('New password')}
 						bind:value={password}
 						class="px-3.5 py-2.5"
 					/>
@@ -280,30 +286,32 @@
 						type="password"
 						required
 						autocomplete="new-password"
-						placeholder="Confirm new password"
-						aria-label="Confirm new password"
+						placeholder={t('Confirm new password')}
+						aria-label={t('Confirm new password')}
 						bind:value={confirm}
 						class="px-3.5 py-2.5"
 					/>
 					<button
 						type="submit"
 						disabled={busy || !password}
-						class="btn btn-primary self-end px-4 py-2">Change password</button
+						class="btn btn-primary self-end px-4 py-2">{t('Change password')}</button
 					>
 				</form>
 
 				{#if passkeysSupported()}
 					<section class="flex flex-col gap-3 border-t pt-5">
-						{@render heading('Passkeys', 'Face ID, Touch ID or a security key')}
+						{@render heading(t('Passkeys'), t('Face ID, Touch ID or a security key'))}
 						{#if passkeys.length}
 							<ul class="panel">
 								{#each passkeys as key (key.id)}
 									<li class="row">
 										<span class="flex min-w-0 flex-col">
-											<span class="truncate font-medium">{key.friendly_name || 'Passkey'}</span>
+											<span class="truncate font-medium">{key.friendly_name || t('Passkey')}</span>
 											<span class="text-xs text-gray-400"
-												>Added {timeAgo(new Date(key.created_at))}{key.last_used_at
-													? ` · used ${timeAgo(new Date(key.last_used_at))}`
+												>{t('Added {when}', {
+													when: timeAgo(new Date(key.created_at))
+												})}{key.last_used_at
+													? ` · ${t('used {when}', { when: timeAgo(new Date(key.last_used_at)) })}`
 													: ''}</span
 											>
 										</span>
@@ -311,31 +319,32 @@
 											type="button"
 											disabled={busy}
 											onclick={() => removePasskey(key.id)}
-											class="btn tone-red shrink-0">Remove</button
+											class="btn tone-red shrink-0">{t('Remove')}</button
 										>
 									</li>
 								{/each}
 							</ul>
 						{/if}
 						<button type="button" disabled={busy} onclick={addPasskey} class="btn self-start"
-							>+ Add a passkey</button
+							>{t('+ Add a passkey')}</button
 						>
 					</section>
 				{/if}
 
 				<section class="flex flex-col gap-3 border-t pt-5">
-					{@render heading('Authenticator app', 'Six-digit codes')}
+					{@render heading(t('Authenticator app'), t('Six-digit codes'))}
 					{#if totp.length}
 						<ul class="panel">
 							{#each totp as factor (factor.id)}
 								<li class="row">
-									<span class="truncate font-medium">{factor.friendly_name || 'Authenticator'}</span
+									<span class="truncate font-medium"
+										>{factor.friendly_name || t('Authenticator')}</span
 									>
 									<button
 										type="button"
 										disabled={busy}
 										onclick={() => removeAuthenticator(factor.id)}
-										class="btn tone-red shrink-0">Remove</button
+										class="btn tone-red shrink-0">{t('Remove')}</button
 									>
 								</li>
 							{/each}
@@ -349,7 +358,7 @@
 						/>
 					{:else}
 						<button type="button" onclick={() => (addingTotp = true)} class="btn self-start"
-							>+ Add an authenticator</button
+							>{t('+ Add an authenticator')}</button
 						>
 					{/if}
 				</section>
@@ -357,41 +366,43 @@
 				<div class="panel">
 					<div class="row py-4">
 						<span class="flex flex-col">
-							<span class="font-medium">This device</span>
-							<span class="text-gray-400">Sign out of the operating system here.</span>
+							<span class="font-medium">{t('This device')}</span>
+							<span class="text-gray-400">{t('Sign out of the operating system here.')}</span>
 						</span>
 						<button type="button" disabled={busy} onclick={() => leave(false)} class="btn"
-							>Sign out</button
+							>{t('Sign out')}</button
 						>
 					</div>
 					<div class="row py-4">
 						<span class="flex flex-col">
-							<span class="font-medium">All devices</span>
-							<span class="text-gray-400">Revoke every session, including this one.</span>
+							<span class="font-medium">{t('All devices')}</span>
+							<span class="text-gray-400">{t('Revoke every session, including this one.')}</span>
 						</span>
 						<button
 							type="button"
 							disabled={busy}
 							onclick={() => leave(true)}
-							class="btn tone-red shrink-0">Sign out all</button
+							class="btn tone-red shrink-0">{t('Sign out all')}</button
 						>
 					</div>
 				</div>
 				{#if apps.length}
 					<section class="flex flex-col gap-3 border-t pt-5">
-						{@render heading('Connected apps', 'Apps you let sign you in with this account')}
+						{@render heading(t('Connected apps'), t('Apps you let sign you in with this account'))}
 						<ul class="panel">
 							{#each apps as grant (grant.client.id)}
 								<li class="row">
 									<span class="flex min-w-0 flex-col">
 										<span class="truncate font-medium">{grant.client.name}</span>
-										<span class="text-gray-400">Allowed {timeAgo(new Date(grant.granted_at))}</span>
+										<span class="text-gray-400"
+											>{t('Allowed {when}', { when: timeAgo(new Date(grant.granted_at)) })}</span
+										>
 									</span>
 									<button
 										type="button"
 										disabled={busy}
 										onclick={() => disconnect(grant.client.id, grant.client.name)}
-										class="btn tone-red shrink-0">Disconnect</button
+										class="btn tone-red shrink-0">{t('Disconnect')}</button
 									>
 								</li>
 							{/each}
@@ -414,6 +425,8 @@
 	</div>
 
 	<footer class="flex shrink-0 justify-end border-t px-6 py-3">
-		<button type="button" disabled={busy} onclick={() => leave(false)} class="btn">Log out</button>
+		<button type="button" disabled={busy} onclick={() => leave(false)} class="btn"
+			>{t('Log out')}</button
+		>
 	</footer>
 </dialog>

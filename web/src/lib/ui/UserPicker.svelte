@@ -2,6 +2,7 @@
 	import { fly } from 'svelte/transition';
 	import type { UserOption } from '#lib/types.ts';
 	import Avatar from '#lib/ui/Avatar.svelte';
+	import { t } from '#lib/i18n.svelte.ts';
 
 	let { users, value = $bindable() }: { users: UserOption[]; value?: UserOption } = $props();
 
@@ -68,7 +69,7 @@
 				<Avatar email={value.email} size={36} />
 				<span class="truncate">{value.label}</span>
 			</span>
-			<button type="button" onclick={change} class="btn">Change</button>
+			<button type="button" onclick={change} class="btn">{t('Change')}</button>
 		</div>
 	{:else}
 		<div
@@ -79,13 +80,13 @@
 				bind:value={query}
 				type="text"
 				role="combobox"
-				aria-label="User"
+				aria-label={t('User')}
 				aria-expanded={open}
 				aria-controls="{id}-list"
 				aria-activedescendant={open && matches[active] ? `${id}-${active}` : undefined}
 				aria-autocomplete="list"
 				autocomplete="off"
-				placeholder="Search users by email"
+				placeholder={t('Search users by email')}
 				onfocus={() => (open = true)}
 				onblur={() => (open = false)}
 				oninput={() => {
@@ -101,7 +102,7 @@
 			<ul
 				id="{id}-list"
 				role="listbox"
-				aria-label="Users"
+				aria-label={t('Users')}
 				transition:fly={{ y: -6, duration: 150 }}
 				class="panel absolute inset-x-0 top-full z-20 mt-2 max-h-80 overflow-auto"
 			>
@@ -125,11 +126,16 @@
 						>
 					</li>
 				{:else}
-					<li class="row text-gray-400">No users match “{query.trim()}”.</li>
+					<li class="row text-gray-400">
+						{t('No users match “{query}”.', { query: query.trim() })}
+					</li>
 				{/each}
 				{#if found.length > MAX}
 					<li class="row text-xs text-gray-400">
-						Showing {MAX} of {found.length}. Keep typing to narrow it down.
+						{t('Showing {max} of {total}. Keep typing to narrow it down.', {
+							max: MAX,
+							total: found.length
+						})}
 					</li>
 				{/if}
 			</ul>

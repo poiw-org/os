@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { DateInput } from 'date-picker-svelte';
+	import { t } from '#lib/i18n.svelte.ts';
 
 	// An optional, inclusive day range. Either end may stay open.
 	let { from = $bindable(null), to = $bindable(null) }: { from?: Date | null; to?: Date | null } =
@@ -24,7 +25,7 @@
 
 <div class="flex flex-col gap-2">
 	<div class="flex flex-wrap items-center gap-2">
-		<span class="eyebrow mr-1">Date</span>
+		<span class="eyebrow mr-1">{t('Date')}</span>
 		{#each presets as preset (preset.days)}
 			<button
 				type="button"
@@ -34,16 +35,16 @@
 				onclick={() => {
 					from = day(-preset.days);
 					to = day();
-				}}>{preset.label}</button
+				}}>{t(preset.label)}</button
 			>
 		{/each}
 	</div>
 	<div class="grid grid-cols-2 gap-2">
 		<label class="flex min-w-0 flex-col gap-1 text-xs text-gray-400">
-			From
+			{t('From')}
 			<DateInput
 				format="yyyy-MM-dd"
-				placeholder="Any time"
+				placeholder={t('Any time')}
 				closeOnSelection
 				min={new Date('2000')}
 				max={to ?? new Date('2100')}
@@ -51,10 +52,10 @@
 			/>
 		</label>
 		<label class="flex min-w-0 flex-col gap-1 text-xs text-gray-400">
-			To
+			{t('To')}
 			<DateInput
 				format="yyyy-MM-dd"
-				placeholder="Any time"
+				placeholder={t('Any time')}
 				closeOnSelection
 				min={from ?? new Date('2000')}
 				max={new Date('2100')}

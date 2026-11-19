@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Entry } from '#lib/types.ts';
 	import Avatar from '#lib/ui/Avatar.svelte';
+	import { dateLocale, t, tn } from '#lib/i18n.svelte.ts';
 
 	// Successful door opens per local day, the newest day on the right. Each bar is topped by the
 	// people who came in that day. The readout above shows the whole window until a day is picked
@@ -69,9 +70,9 @@
 	const focused = $derived(selected === null ? undefined : columns[selected]);
 
 	const longDate = (date: Date) =>
-		date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-	const month = (date: Date) => date.toLocaleDateString('en-GB', { month: 'short' });
-	const plural = (count: number) => (count === 1 ? 'unlock' : 'unlocks');
+		date.toLocaleDateString(dateLocale(), { weekday: 'short', day: 'numeric', month: 'short' });
+	const month = (date: Date) => date.toLocaleDateString(dateLocale(), { month: 'short' });
+	const plural = (count: number) => tn(count, 'unlock', 'unlocks');
 	// Whole plaques only: heights snap to the 8px pitch of .bar-fill.
 	const barHeight = (count: number) =>
 		count ? Math.max(1, Math.round((count / peak) * (MAX_BAR / 8))) * 8 : 2;
@@ -79,15 +80,15 @@
 	const readout = $derived(
 		focused
 			? {
-					label: focused.today ? 'Today' : longDate(focused.date),
+					label: focused.today ? t('Today') : longDate(focused.date),
 					count: focused.count,
 					note: '',
 					people: focused.people
 				}
 			: {
-					label: `Last ${days} days`,
+					label: t('Last {days} days', { days }),
 					count: total,
-					note: `${average.toFixed(1)} a day`,
+					note: t('{n} a day', { n: average.toFixed(1) }),
 					people: regulars
 				}
 	);
@@ -123,7 +124,7 @@
 </script>
 
 <section class="flex flex-col gap-6 border-b p-4 md:p-8" aria-labelledby="unlocks-heading">
-	<h2 id="unlocks-heading" class="sr-only">Unlocks</h2>
+	<h2 id="unlocks-heading" class="sr-only">{t('Unlocks')}</h2>
 	<div class="flex flex-wrap items-end justify-between gap-x-10 gap-y-4">
 		<div class="flex flex-col gap-2">
 			<span class="eyebrow">{readout.label}</span>
@@ -144,7 +145,9 @@
 				</li>
 			{/each}
 			{#if readout.people.length > LISTED}
-				<li class="text-xs text-gray-400">+{readout.people.length - LISTED} more</li>
+				<li class="text-xs text-gray-400">
+					{t('+{n} more', { n: readout.people.length - LISTED })}
+				</li>
 			{/if}
 		</ul>
 	</div>
@@ -155,7 +158,7 @@
 				bind:this={plot}
 				role="slider"
 				tabindex="0"
-				aria-label="Unlocks per day"
+				aria-label={t('Unlocks per day')}
 				aria-valuemin={1}
 				aria-valuemax={days}
 				aria-valuenow={(selected ?? days - 1) + 1}
@@ -179,7 +182,7 @@
 					>
 						<span
 							class="absolute right-0 -translate-y-1/2 font-mono text-[10px] leading-4 tracking-widest text-gray-400 uppercase"
-							>avg</span
+							>{t('avg')}</span
 						>
 					</div>
 				{/if}

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { keyPath, userPath } from '#lib/routes.ts';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import {
 		getKeyBySerialNumber,
@@ -17,14 +18,22 @@
 	import { nfcSupported, scanTag } from '#lib/nfc.ts';
 	import { toast } from '#lib/notify.svelte.ts';
 	import { canonicalSerial, serialDigits } from '#lib/serial.ts';
-	import { keyStatus } from '#lib/status.ts';
-	import { EntryType, FailReason, type Entry, type KeySummary, type UserOption } from '#lib/types.ts';
+	import { keyStatus, needsKey } from '#lib/status.ts';
+	import {
+		EntryType,
+		FailReason,
+		type Entry,
+		type KeySummary,
+		type UserOption
+	} from '#lib/types.ts';
 	import Loading from '#lib/loading.svelte';
 	import ActivityRow from '#lib/ui/ActivityRow.svelte';
 	import Avatar from '#lib/ui/Avatar.svelte';
 	import DateRange from '#lib/ui/DateRange.svelte';
 	import UnlockChart from '#lib/ui/UnlockChart.svelte';
 	import UserMultiSelect from '#lib/ui/UserMultiSelect.svelte';
+	import KeyInvite from '#lib/ui/KeyInvite.svelte';
+	import { dateLocale, t, tn } from '#lib/i18n.svelte.ts';
 
 	// Someone who opened the door more recently than this gets a "last seen" badge.
 	const RECENT_MS = 2 * 3_600_000;
@@ -162,7 +171,7 @@
 			},
 			(e) => {
 				if (current === generation)
-					searchError = e instanceof Error ? e.message : 'Could not search entries.';
+					searchError = e instanceof Error ? e.message : t('Could not search entries.');
 			}
 		);
 	});
@@ -180,7 +189,7 @@
 			exhausted = list.length < PAGE_SIZE;
 		} catch (e) {
 			if (current === generation)
-				searchError = e instanceof Error ? e.message : 'Could not load more entries.';
+				searchError = e instanceof Error ? e.message : t('Could not load more entries.');
 		} finally {
 			if (current === generation) loadingMore = false;
 		}
@@ -229,7 +238,7 @@
 			(keys.items ?? []).flatMap((key) => {
 				const name = withNameOrFallback(
 					users.items?.find((user) => user.id === key.userId),
-					'Unknown user'
+					t('Unknown user')
 				);
 				return keyIds(key).map((id) => [id, name] as const);
 			})
@@ -256,9 +265,9 @@
 		if (owner)
 			return withNameOrFallback(
 				users.items?.find((user) => user.id === owner),
-				'Unknown user'
+				t('Unknown user')
 			);
-		return entry.keyId ? 'Deleted key' : 'Unidentified tag';
+		return entry.keyId ? t('Deleted key') : t('Unidentified tag');
 	};
 	const emailById = $derived(new Map((users.items ?? []).map((user) => [user.id, user.email])));
 	// A web open belongs to the admin who gave it; a tag open to the key's owner.
@@ -330,9 +339,9 @@
 				try {
 					const key = await getKeyBySerialNumber(canonicalSerial(serialNumber) ?? serialNumber);
 					if (key) await goto(keyPath(key.id));
-					else toast.error('This key was not found on the database.');
+					else toast.error(t('This key was not found on the database.'));
 				} catch (e) {
-					toast.error(e instanceof Error ? e.message : 'Could not look up the tag.');
+					toast.error(e instanceof Error ? e.message : t('Could not look up the tag.'));
 				}
 			},
 			() => {
@@ -351,8 +360,12 @@
 </script>
 
 <svelte:head>
-	<title>Users</title>
+	<title>{t('Users')}</title>
 </svelte:head>
+
+{#if keys.items && needsKey(keys.items, page.data.user.id, new Date(now))}
+	<div class="px-4 pt-4 md:px-8 md:pt-8"><KeyInvite /></div>
+{/if}
 
 {#if unlocks.items && loaded}
 	<UnlockChart unlocks={unlocks.items} personOf={unlockedBy} days={CHART_DAYS} {now} />
@@ -361,7 +374,7 @@
 <div class="stagger lg:grid lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
 	<section class="flex min-w-0 flex-col gap-5 p-4 md:p-8">
 		<div class="flex flex-col gap-1">
-			<h1 class="text-xl font-bold">Users</h1>
+			<h1 class="text-xl font-bold">{t('Users')}</h1>
 		</div>
 
 		{#if unattached.length}
@@ -370,29 +383,34 @@
 					<h2 id="stray-tags-title" class="flex items-center gap-2 font-bold text-red-500">
 						<span class="lamp lamp-red"></span>
 						{unattached.length}
-						{unattached.length === 1 ? 'unidentified tag needs' : 'unidentified tags need'} an owner
+						{tn(
+							unattached.length,
+							'unidentified tag needs an owner',
+							'unidentified tags need an owner'
+						)}
 					</h2>
 					<p class="text-xs text-gray-600">
-						These tags were used at the door but no key accounts for them. Open each one and attach
-						it to the person it belongs to.
+						{t(
+							'These tags were used at the door but no key accounts for them. Open each one and attach it to the person it belongs to.'
+						)}
 					</p>
 				</div>
 				{#each unattached as tag, at (tag.id)}
 					<a href={keyPath(tag.id)} in:arrive={{ index: at }} class="row">
 						<span class="flex min-w-0 flex-col">
 							<span class="truncate font-mono"
-								>{tag.serialNumber ?? tag.claims?.aud ?? 'No serial number'}</span
+								>{tag.serialNumber ?? tag.claims?.aud ?? t('No serial number')}</span
 							>
 							<span class="truncate text-xs text-gray-400"
 								>{tag.claims?.jti
-									? `Key ${tag.claims.jti.slice(0, 8)}${tag.claims.verified ? '' : ' (unverified)'}`
-									: 'No key on the tag'}</span
+									? `${t('Key')} ${tag.claims.jti.slice(0, 8)}${tag.claims.verified ? '' : ` (${t('unverified')})`}`
+									: t('No key on the tag')}</span
 							>
 						</span>
 						<span
 							class="shrink-0 text-right text-xs text-gray-400"
-							title={tag.lastSeen.toLocaleString('el-GR')}
-							>{tag.sightings}× · last {timeAgo(tag.lastSeen, now)}</span
+							title={tag.lastSeen.toLocaleString(dateLocale())}
+							>{tag.sightings}× · {t('last {when}', { when: timeAgo(tag.lastSeen, now) })}</span
 						>
 					</a>
 				{/each}
@@ -407,18 +425,18 @@
 					type="text"
 					bind:value={searchQuery}
 					id="search"
-					placeholder="Search users or tag S/N"
+					placeholder={t('Search users or tag S/N')}
 					class="w-full border-0! bg-transparent! p-1 text-ink shadow-none! outline-none!"
 				/>
 				{#if nfcSupported}
 					<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-					<span onclick={findByTag} class="btn shrink-0">Scan tag</span>
+					<span onclick={findByTag} class="btn shrink-0">{t('Scan tag')}</span>
 				{/if}
 			</div>
 		{:else}
 			<span class="flex items-center gap-2 self-start">
-				<span class="btn">Hold the tag to the phone…</span>
-				<button type="button" class="btn" onclick={() => stopScan?.()}>Cancel</button>
+				<span class="btn">{t('Hold the tag to the phone…')}</span>
+				<button type="button" class="btn" onclick={() => stopScan?.()}>{t('Cancel')}</button>
 			</span>
 		{/if}
 
@@ -439,31 +457,35 @@
 									{#if user.fullName}<span class="font-bold">{user.fullName}</span>
 										<span class="text-gray-400">{user.email}</span>{:else}{user.email}{/if}
 								</span>
-								{#if user.blocked}<span class="text-xs text-red-500">blocked</span>{/if}
+								{#if user.blocked}<span class="text-xs text-red-500">{t('blocked')}</span>{/if}
 								{#if seen}
 									<span
 										class="inline-flex shrink-0 items-center gap-1.5 text-xs text-gray-600"
-										title={seen.toLocaleString('el-GR')}
-										><span class="lamp lamp-green"></span>Last seen {timeAgo(seen, now)}</span
+										title={seen.toLocaleString(dateLocale())}
+										><span class="lamp lamp-green"></span>{t('Last seen {when}', {
+											when: timeAgo(seen, now)
+										})}</span
 									>
 								{/if}
 							</span>
 							<span class="flex shrink-0 items-center gap-3 text-xs text-gray-400">
 								{#if keys.length}
 									<span class="flex items-center gap-1.5"
-										><span class="lamp {active ? 'lamp-green' : 'lamp-gray lamp-off'}"
-										></span>{keys.length}
-										{keys.length === 1 ? 'key' : 'keys'}{#if active}<span class="hidden md:inline">
-												· {active} active</span
+										><span class="lamp {active ? 'lamp-green' : 'lamp-gray lamp-off'}"></span>{tn(
+											keys.length,
+											'{n} key',
+											'{n} keys'
+										)}{#if active}<span class="hidden md:inline">
+												· {t('{n} active', { n: active })}</span
 											>{/if}</span
 									>
 								{:else}
-									<span>no keys</span>
+									<span>{t('no keys')}</span>
 								{/if}
 							</span>
 						</a>
 					{:else}
-						<span class="block p-8 text-gray-400">No users found.</span>
+						<span class="block p-8 text-gray-400">{t('No users found.')}</span>
 					{/each}
 				</div>
 				{#if !query && withoutKeys > 0}
@@ -471,8 +493,8 @@
 						onclick={() => (showAll = !showAll)}
 						class="self-start text-xs text-brand-text underline"
 						>{showAll
-							? 'Hide users without keys'
-							: `Show ${withoutKeys} users without keys`}</button
+							? t('Hide users without keys')
+							: t('Show {n} users without keys', { n: withoutKeys })}</button
 					>
 				{/if}
 			</div>
@@ -483,9 +505,9 @@
 		class="flex min-w-0 flex-col gap-2 border-t p-4 *:shrink-0 md:p-8 lg:sticky lg:top-[49px] lg:h-[calc(100vh-49px)] lg:overflow-y-auto lg:border-t-0 lg:border-l"
 	>
 		<div class="flex items-center justify-between gap-3 pb-1">
-			<h2 class="text-xl font-bold">Door entries</h2>
+			<h2 class="text-xl font-bold">{t('Door entries')}</h2>
 			{#if filtered}
-				<button type="button" onclick={clearFilters} class="btn">Clear filters</button>
+				<button type="button" onclick={clearFilters} class="btn">{t('Clear filters')}</button>
 			{/if}
 		</div>
 		<div class="flex flex-col gap-2 pb-3">
@@ -504,7 +526,7 @@
 						label={entry.openedBy
 							? withNameOrFallback(
 									users.items?.find((user) => user.id === entry.openedBy),
-									'An admin'
+									t('An admin')
 								)
 							: tagLabel(entry)}
 					/>
@@ -512,20 +534,20 @@
 			{:else}
 				<span class="block p-8 text-gray-400"
 					>{!shownEntries && filtered
-						? 'Searching…'
+						? t('Searching…')
 						: filtered
-							? 'No entries match these filters.'
-							: 'No door activity yet.'}</span
+							? t('No entries match these filters.')
+							: t('No door activity yet.')}</span
 				>
 			{/each}
 		</div>
 		{#if filtered && results}
 			{#if !exhausted}
 				<div {@attach sentinel} class="py-4 text-center text-xs text-gray-400">
-					{loadingMore ? 'Loading more…' : ''}
+					{loadingMore ? t('Loading more…') : ''}
 				</div>
 			{:else if results.length > PAGE_SIZE}
-				<p class="py-4 text-center text-xs text-gray-400">End of results</p>
+				<p class="py-4 text-center text-xs text-gray-400">{t('End of results')}</p>
 			{/if}
 		{/if}
 	</aside>

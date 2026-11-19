@@ -9,6 +9,7 @@
 	import { nfcSupported, scanTag } from '#lib/nfc.ts';
 	import { toast } from '#lib/notify.svelte.ts';
 	import { canonicalSerial } from '#lib/serial.ts';
+	import { dateLocale, t, tn } from '#lib/i18n.svelte.ts';
 	import WriteCardModal from '#lib/header/WriteCardModal.svelte';
 	import Loading from '#lib/loading.svelte';
 	import type { UserOption } from '#lib/types.ts';
@@ -43,7 +44,7 @@
 		new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 	const days = $derived(Math.round((startOfDay(expiresAt) - startOfDay(notBefore)) / DAY));
 	const validRange = $derived(days > 0);
-	const day = (date: Date) => date.toLocaleDateString('en-GB', { dateStyle: 'medium' });
+	const day = (date: Date) => date.toLocaleDateString(dateLocale(), { dateStyle: 'medium' });
 
 	// A member without a second factor loses this key after 14 days, so the admin confirms that first.
 	let secondFactor = $state<Awaited<ReturnType<typeof getSecondFactorStatus>>>();
@@ -57,7 +58,7 @@
 		let current = true;
 		getSecondFactorStatus(id).then(
 			(status) => current && (secondFactor = status),
-			() => current && toast.error('Could not check this user’s second factor.')
+			() => current && toast.error(t('Could not check this user’s second factor.'))
 		);
 		return () => {
 			current = false;
@@ -70,18 +71,18 @@
 	const submit = async (event: SubmitEvent) => {
 		event.preventDefault();
 		if (!user) {
-			toast.error('Select a user first.');
+			toast.error(t('Select a user first.'));
 			return;
 		}
 		if (!secondFactor || emailUnverified || (noSecondFactor && !acknowledged)) return;
 		if (!validRange) {
-			toast.error('The key must expire after it activates.');
+			toast.error(t('The key must expire after it activates.'));
 			return;
 		}
 		// One tag, one spelling: "04A2B3C4" and "04:a2:b3:c4" must not become two keys.
 		const serial = virtual ? undefined : canonicalSerial(serialNumber);
 		if (!virtual && !serial) {
-			toast.error('The S/N must be a 4, 7 or 10 byte tag ID in hex, e.g. 04:a2:b3:c4.');
+			toast.error(t('The S/N must be a 4, 7 or 10 byte tag ID in hex, e.g. 04:a2:b3:c4.'));
 			return;
 		}
 		processing = true;
@@ -93,11 +94,11 @@
 				expiresAt,
 				acknowledgedNoSecondFactor: acknowledged
 			});
-			toast.success(`Key issued for ${user.label}.`);
+			toast.success(t('Key issued for {who}.', { who: user.label }));
 			await goto(keyPath(id));
 		} catch (e) {
 			toast.error(
-				e instanceof Error ? e.message : 'An error occured while communicating with the server'
+				e instanceof Error ? e.message : t('Something went wrong while talking to the server.')
 			);
 			processing = false;
 		}
@@ -109,7 +110,7 @@
 		stopScan = await scanTag(
 			(serial, _ndef, stop) => {
 				serialNumber = serial;
-				toast.success('Tag read.');
+				toast.success(t('Tag read.'));
 				stop();
 			},
 			() => (scanning = false)
@@ -123,7 +124,7 @@
 				// Arriving from a user's page ("Issue key") pre-selects that user.
 				user = users.find((option) => option.value === page.url.searchParams.get('user'));
 			} catch (e) {
-				toast.error(e instanceof Error ? e.message : 'Could not load the users.');
+				toast.error(e instanceof Error ? e.message : t('Could not load the users.'));
 				users = [];
 			}
 		})();
@@ -132,18 +133,18 @@
 </script>
 
 <svelte:head>
-	<title>Issue a key</title>
+	<title>{t('Issue a key')}</title>
 </svelte:head>
 
 <div class="stagger flex flex-col gap-6 p-4 md:p-8">
 	<div class="flex flex-col gap-3">
-		<Breadcrumb crumbs={[{ label: 'Users', href: '/os' }, { label: 'Issue a key' }]} />
+		<Breadcrumb crumbs={[{ label: t('Users'), href: '/os' }, { label: t('Issue a key') }]} />
 		<div class="flex flex-col gap-1">
-			<h1 class="text-xl font-bold">Issue a key</h1>
+			<h1 class="text-xl font-bold">{t('Issue a key')}</h1>
 			<p class="text-gray-400">
 				{virtual
-					? 'A virtual key with no tag, for remote unlock.'
-					: 'Bind a new key to a user and a physical NFC tag.'}
+					? t('A virtual key with no tag, for remote unlock.')
+					: t('Bind a new key to a user and a physical NFC tag.')}
 			</p>
 		</div>
 	</div>
@@ -158,8 +159,8 @@
 				<section class="flex gap-4 p-5 md:p-6">
 					<div class="flex min-w-0 flex-1 flex-col gap-4">
 						<div>
-							<h2 class="font-bold">Who is it for?</h2>
-							<p class="text-gray-400">Only users who are not blocked can hold a key.</p>
+							<h2 class="font-bold">{t('Who is it for?')}</h2>
+							<p class="text-gray-400">{t('Only users who are not blocked can hold a key.')}</p>
 						</div>
 						<UserPicker {users} bind:value={user} />
 					</div>
@@ -168,11 +169,13 @@
 				<section class="flex gap-4 border-t p-5 md:p-6">
 					<div class="flex min-w-0 flex-1 flex-col gap-4">
 						<div>
-							<h2 class="font-bold">{virtual ? 'Virtual key' : 'Which tag?'}</h2>
+							<h2 class="font-bold">{virtual ? t('Virtual key') : t('Which tag?')}</h2>
 							<p class="text-gray-400">
 								{virtual
-									? 'A virtual key has no tag. It only unlocks the door remotely.'
-									: 'The key is bound to this serial number. It cannot be written to another tag.'}
+									? t('A virtual key has no tag. It only unlocks the door remotely.')
+									: t(
+											'The key is bound to this serial number. It cannot be written to another tag.'
+										)}
 							</p>
 						</div>
 						{#if !virtual}
@@ -182,8 +185,8 @@
 								>
 									<input
 										required
-										placeholder="Tag S/N"
-										aria-label="Tag S/N"
+										placeholder={t('Tag S/N')}
+										aria-label={t('Tag S/N')}
 										autocomplete="off"
 										spellcheck="false"
 										bind:value={serialNumber}
@@ -194,14 +197,14 @@
 								{#if nfcSupported}
 									<button type="button" onclick={scan} class="btn py-3">
 										{#if scanning}
-											Hold a tag to the phone
+											{t('Hold a tag to the phone')}
 										{:else}
-											Scan tag
+											{t('Scan tag')}
 										{/if}
 									</button>
 								{/if}
 								<button type="button" onclick={() => (doorScan = true)} class="btn py-3">
-									Scan at door
+									{t('Scan at door')}
 								</button>
 							</div>
 						{/if}
@@ -211,12 +214,12 @@
 				<section class="flex gap-4 border-t p-5 md:p-6">
 					<div class="flex min-w-0 flex-1 flex-col gap-4">
 						<div>
-							<h2 class="font-bold">When is it valid?</h2>
-							<p class="text-gray-400">Outside this window the door refuses the key.</p>
+							<h2 class="font-bold">{t('When is it valid?')}</h2>
+							<p class="text-gray-400">{t('Outside this window the door refuses the key.')}</p>
 						</div>
 						<div class="flex flex-wrap gap-4">
 							<div class="flex flex-col gap-2">
-								<span class="eyebrow">Activate not before</span>
+								<span class="eyebrow">{t('Activate not before')}</span>
 								<DateInput
 									format="yyyy-MM-dd"
 									min={new Date()}
@@ -225,7 +228,7 @@
 								/>
 							</div>
 							<div class="flex flex-col gap-2">
-								<span class="eyebrow">Expires at</span>
+								<span class="eyebrow">{t('Expires at')}</span>
 								<DateInput
 									format="yyyy-MM-dd"
 									min={new Date()}
@@ -235,19 +238,21 @@
 							</div>
 						</div>
 						<div class="flex flex-wrap items-center gap-2">
-							<span class="eyebrow mr-1">Valid for</span>
+							<span class="eyebrow mr-1">{t('Valid for')}</span>
 							{#each presets as preset (preset.months)}
 								{@const target = addMonths(notBefore, preset.months)}
 								<button
 									type="button"
 									onclick={() => (expiresAt = target)}
 									aria-pressed={target.toDateString() === expiresAt.toDateString()}
-									class="chip">{preset.label}</button
+									class="chip">{t(preset.label)}</button
 								>
 							{/each}
 						</div>
 						{#if !validRange}
-							<p class="text-red-500" role="status">The key must expire after it activates.</p>
+							<p class="text-red-500" role="status">
+								{t('The key must expire after it activates.')}
+							</p>
 						{/if}
 					</div>
 				</section>
@@ -255,32 +260,32 @@
 
 			<aside class="panel flex flex-col lg:sticky lg:top-20">
 				<div class="flex flex-col gap-4 p-5">
-					<h2 class="font-bold">Summary</h2>
+					<h2 class="font-bold">{t('Summary')}</h2>
 					{#if user}
 						<div class="flex items-center gap-3">
 							<Avatar email={user.email} size={40} />
 							<span class="min-w-0 truncate">{user.label}</span>
 						</div>
 					{:else}
-						<p class="text-gray-400">Pick a user to get started.</p>
+						<p class="text-gray-400">{t('Pick a user to get started.')}</p>
 					{/if}
 					<dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2">
-						<dt class="text-gray-400">Tag</dt>
+						<dt class="text-gray-400">{t('Tag')}</dt>
 						<dd class="truncate text-right font-mono">
-							{virtual ? 'Virtual' : serialNumber || '—'}
+							{virtual ? t('Virtual') : serialNumber || '—'}
 						</dd>
-						<dt class="text-gray-400">From</dt>
+						<dt class="text-gray-400">{t('From')}</dt>
 						<dd class="text-right">{day(notBefore)}</dd>
-						<dt class="text-gray-400">Until</dt>
+						<dt class="text-gray-400">{t('Until')}</dt>
 						<dd class="text-right">{day(expiresAt)}</dd>
-						<dt class="text-gray-400">Length</dt>
-						<dd class="text-right">{validRange ? `${days} days` : '—'}</dd>
+						<dt class="text-gray-400">{t('Length')}</dt>
+						<dd class="text-right">{validRange ? tn(days, '{n} day', '{n} days') : '—'}</dd>
 					</dl>
 				</div>
 				<div class="flex flex-col gap-4 border-t p-5">
 					{#if emailUnverified}
 						<p role="alert" class="rounded-lg border border-red-500/50 p-3.5 text-red-400">
-							This user hasn't verified their email, so they can't be issued a key yet.
+							{t("This user hasn't verified their email, so they can't be issued a key yet.")}
 						</p>
 					{/if}
 					{#if noSecondFactor}
@@ -288,14 +293,16 @@
 							role="alert"
 							class="flex flex-col gap-3 rounded-lg border border-yellow-500/50 p-3.5"
 						>
-							<p class="font-bold">This user has no 2FA</p>
+							<p class="font-bold">{t('This user has no 2FA')}</p>
 							<p class="text-gray-400">
-								If they don't register a passkey or authenticator app, this key will be disabled
-								around {day(suspendsOn)}, and it comes back once they do.
+								{t(
+									"If they don't register a passkey or authenticator app, this key will be disabled around {date}, and it comes back once they do.",
+									{ date: day(suspendsOn) }
+								)}
 							</p>
 							<label class="flex items-start gap-2.5">
 								<input type="checkbox" required bind:checked={acknowledged} class="mt-1" />
-								<span>I understand and will let them know.</span>
+								<span>{t('I understand and will let them know.')}</span>
 							</label>
 						</div>
 					{/if}
@@ -308,9 +315,9 @@
 						class="btn btn-primary w-full py-3"
 					>
 						{#if processing}
-							Issuing…
+							{t('Issuing…')}
 						{:else}
-							Issue key
+							{t('Issue key')}
 						{/if}
 					</button>
 				</div>
@@ -326,7 +333,7 @@
 		onclose={() => (doorScan = false)}
 		onscanned={(serial) => {
 			serialNumber = serial;
-			toast.success('Tag read at the door.');
+			toast.success(t('Tag read at the door.'));
 		}}
 	/>
 {/if}

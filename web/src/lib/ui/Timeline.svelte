@@ -3,6 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { formatDate, formatDateTime, shortId, timeAgo } from '#lib/format.ts';
 	import { arrive } from '#lib/motion.ts';
+	import { dateLocale, t } from '#lib/i18n.svelte.ts';
 	import { EntryType, type Activity, type ActivityKind, type Entry } from '#lib/types.ts';
 
 	// One member's history, newest first: what happened to them and their keys (logged by the
@@ -84,19 +85,21 @@
 	};
 
 	const keyLabel = (id: string | null, serial: string | null | undefined) =>
-		serial ? serial : id ? `key ${shortId(id)}` : '';
+		serial ? serial : id ? t('key {id}', { id: shortId(id) }) : '';
 
 	const fromActivity = (a: Activity): Item => {
 		const [title, tone, icon] = KINDS[a.kind];
 		const label = keyLabel(a.keyId, a.serialNumber ?? serialByKey.get(a.keyId ?? '') ?? null);
-		const until = a.expiresAt ? `until ${formatDate(a.expiresAt).split(',')[0]}` : '';
-		const email = a.emailTo ? `${a.emailFrom ?? 'none'} → ${a.emailTo}` : '';
+		const until = a.expiresAt
+			? t('until {date}', { date: formatDate(a.expiresAt).split(',')[0] })
+			: '';
+		const email = a.emailTo ? `${a.emailFrom ?? t('none')} → ${a.emailTo}` : '';
 		return {
 			id: `a${a.id}`,
 			at: a.timestamp,
 			tone,
 			icon,
-			title,
+			title: t(title),
 			detail: [label, until, email].filter(Boolean).join(' · ') || undefined,
 			by: a.actorId ? { id: a.actorId, name: actorName(a.actorId) } : undefined,
 			// A deleted key has no page to open.
@@ -111,8 +114,12 @@
 			at: e.timestamp,
 			tone: ok ? 'good' : 'bad',
 			icon: ok ? 'door' : 'deny',
-			title: ok ? 'Opened the door' : `Denied${e.reason ? ` · ${e.reason}` : ''}`,
-			detail: e.openedBy ? 'from the web UI' : e.viaPhone ? 'with a phone' : keyLabel(e.keyId, serialByKey.get(e.keyId ?? ''))
+			title: ok ? t('Opened the door') : `${t('Denied')}${e.reason ? ` · ${t(e.reason)}` : ''}`,
+			detail: e.openedBy
+				? t('from the web UI')
+				: e.viaPhone
+					? t('with a phone')
+					: keyLabel(e.keyId, serialByKey.get(e.keyId ?? ''))
 		};
 	};
 
@@ -120,9 +127,13 @@
 		const days = Math.round(
 			(new Date(now).setHours(0, 0, 0, 0) - new Date(date).setHours(0, 0, 0, 0)) / 86_400_000
 		);
-		if (days === 0) return 'Today';
-		if (days === 1) return 'Yesterday';
-		return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+		if (days === 0) return t('Today');
+		if (days === 1) return t('Yesterday');
+		return date.toLocaleDateString(dateLocale(), {
+			day: 'numeric',
+			month: 'short',
+			year: 'numeric'
+		});
 	};
 
 	// Events in order, with a day label ahead of the first event of each day.
@@ -176,10 +187,7 @@
 				<div class="flex min-w-0 flex-1 items-start justify-between gap-3 pt-px">
 					<div class="flex min-w-0 flex-col gap-0.5">
 						{#if item.keyId}
-							<a
-								href={keyPath(item.keyId)}
-								class="leading-6 hover:text-brand-text">{item.title}</a
-							>
+							<a href={keyPath(item.keyId)} class="leading-6 hover:text-brand-text">{item.title}</a>
 						{:else}
 							<span class="leading-6">{item.title}</span>
 						{/if}
@@ -188,10 +196,9 @@
 						{/if}
 						{#if item.by}
 							<span class="text-xs text-gray-400"
-								>by
-								<a
-									href={userPath(item.by.id)}
-									class="text-gray-600 hover:text-brand-text">{item.by.name}</a
+								>{t('by')}
+								<a href={userPath(item.by.id)} class="text-gray-600 hover:text-brand-text"
+									>{item.by.name}</a
 								></span
 							>
 						{/if}
@@ -205,6 +212,6 @@
 			</div>
 		</li>
 	{:else}
-		<li class="text-gray-400">Nothing has happened yet.</li>
+		<li class="text-gray-400">{t('Nothing has happened yet.')}</li>
 	{/each}
 </ol>

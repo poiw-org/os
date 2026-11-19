@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { authorizeReleaseCli } from '#lib/api.ts';
 	import { toast } from '#lib/notify.svelte.ts';
+	import { t } from '#lib/i18n.svelte.ts';
 
 	// Consent for `make release`. The answer only ever goes to this computer's loopback address: the
 	// port is the one thing the link can choose. The function makes the real decision on who may allow it.
@@ -32,53 +33,55 @@
 		try {
 			back({ code: await authorizeReleaseCli(challenge) });
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'That did not work.');
+			toast.error(e instanceof Error ? e.message : t('That did not work.'));
 			busy = false;
 		}
 	};
 </script>
 
-<svelte:head><title>Allow firmware uploads</title></svelte:head>
+<svelte:head><title>{t('Allow firmware uploads')}</title></svelte:head>
 
 <div class="rise mx-auto flex max-w-lg flex-col gap-6 px-4 py-6 md:py-16">
-	<h1 class="text-2xl">Allow <code class="font-mono">make release</code>?</h1>
+	<h1 class="text-2xl">{t('Allow')} <code class="font-mono">make release</code>?</h1>
 	{#if !allowed}
 		<p class="text-red-400" role="alert">
-			Only admins and members with an active key can upload firmware.
+			{t('Only admins and members with an active key can upload firmware.')}
 		</p>
 	{:else if !valid}
 		<p class="text-red-400" role="alert">
-			This link is not valid. Run <code class="font-mono">make release</code> again.
+			{t('This link is not valid. Run')} <code class="font-mono">make release</code>{t(' again.')}
 		</p>
 	{:else}
 		<p>
-			The release tool on this computer is asking to upload firmware builds as <strong
-				>{email}</strong
-			>
-			for the next 30 days.
+			{t('The release tool on this computer is asking to upload firmware builds as')}
+			<strong>{email}</strong>
+			{t('for the next 30 days.')}
 		</p>
 		<ul class="panel">
 			<li class="row">
-				It can only queue builds. An admin still has to approve each one before the door installs
-				it.
+				{t(
+					'It can only queue builds. An admin still has to approve each one before the door installs it.'
+				)}
 			</li>
-			<li class="row">It cannot open the door, change keys or use the door console.</li>
+			<li class="row">{t('It cannot open the door, change keys or use the door console.')}</li>
 		</ul>
 		<p class="text-gray-400">
-			Only continue if you just ran <code class="font-mono">make release</code> yourself.
+			{t('Only continue if you just ran')} <code class="font-mono">make release</code>{t(
+				' yourself.'
+			)}
 		</p>
 		<div class="flex justify-end gap-2">
 			<button
 				type="button"
 				class="key flex-1 sm:flex-none"
 				disabled={busy}
-				onclick={() => back({ error: 'denied' })}>Deny</button
+				onclick={() => back({ error: 'denied' })}>{t('Deny')}</button
 			>
 			<button
 				type="button"
 				class="key key-signal flex-1 sm:flex-none"
 				disabled={busy}
-				onclick={allow}>Allow</button
+				onclick={allow}>{t('Allow')}</button
 			>
 		</div>
 	{/if}

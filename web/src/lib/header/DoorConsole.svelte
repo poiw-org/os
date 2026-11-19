@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { openDoorLink, sendDoorCommand } from '#lib/api.ts';
 	import { toast } from '#lib/notify.svelte.ts';
+	import { t } from '#lib/i18n.svelte.ts';
 
 	// Admins only: Header mounts this for them, and the door channel and the command function refuse
 	// anyone else. The door decides what runs; output is shown as plain text.
@@ -45,7 +46,7 @@
 			await sendDoorCommand(text);
 			return true;
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'The command was not sent.');
+			toast.error(e instanceof Error ? e.message : t('The command was not sent.'));
 			return false;
 		} finally {
 			sending = false;
@@ -67,11 +68,11 @@
 	class="sheet m-auto w-[calc(100%-2rem)] max-w-3xl overflow-hidden rounded-lg border bg-paper p-0 text-ink backdrop:bg-black/70"
 >
 	<div class="flex items-center justify-between border-b px-4 py-2.5">
-		<h2 id="door-console-title" class="text-sm">Door console · {label}</h2>
+		<h2 id="door-console-title" class="text-sm">{t('Door console')} · {label}</h2>
 		<button
 			type="button"
 			onclick={() => dialog?.close()}
-			aria-label="Close"
+			aria-label={t('Close')}
 			class="-mr-2 flex h-7 w-7 items-center justify-center rounded-md text-gray-400 hover:bg-paper-2 hover:text-ink"
 			>✕</button
 		>
@@ -79,11 +80,11 @@
 	<pre
 		bind:this={screen}
 		role="log"
-		aria-label="Door output"
+		aria-label={t('Door output')}
 		class="h-[60vh] overflow-auto bg-black p-4 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap text-gray-100">{output ||
-			'Waiting for output from the door…'}</pre>
+			t('Waiting for output from the door…')}</pre>
 	<div class="flex flex-wrap items-center gap-2 border-t px-3 pt-3 text-sm">
-		<span class="text-gray-400">Play</span>
+		<span class="text-gray-400">{t('Play')}</span>
 		{#each CHIMES as chime (chime)}
 			<button
 				type="button"
@@ -97,14 +98,14 @@
 		<span aria-hidden="true" class="font-mono text-sm text-gray-400">&gt;</span>
 		<input
 			bind:value={command}
-			aria-label="Command"
+			aria-label={t('Command')}
 			autocomplete="off"
 			spellcheck="false"
 			placeholder="status, pitch 1.2, volume 60, play unlock, help"
 			class="min-w-0 grow rounded-md border bg-paper px-2 py-1.5 font-mono text-sm text-ink"
 		/>
 		<button type="submit" class="btn px-4 py-1.5 text-sm" disabled={sending || !command.trim()}
-			>Send</button
+			>{t('Send')}</button
 		>
 	</form>
 </dialog>

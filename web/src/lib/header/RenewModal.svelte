@@ -5,6 +5,7 @@
 	import { shortId, withName } from '#lib/format.ts';
 	import { nfcSupported } from '#lib/nfc.ts';
 	import { toast } from '#lib/notify.svelte.ts';
+	import { t } from '#lib/i18n.svelte.ts';
 	import type { Key } from '#lib/types.ts';
 
 	let {
@@ -32,17 +33,17 @@
 	const submit = async (event: SubmitEvent) => {
 		event.preventDefault();
 		if (expiresAt <= notBefore) {
-			toast.error('The key must expire after it activates.');
+			toast.error(t('The key must expire after it activates.'));
 			return;
 		}
 		busy = true;
 		try {
 			await renewKey({ id: key.id, notBefore, expiresAt });
 			await onrenewed();
-			toast.success('Key renewed.');
+			toast.success(t('Key renewed.'));
 			renewed = true;
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Could not renew the key.');
+			toast.error(e instanceof Error ? e.message : t('Could not renew the key.'));
 		}
 		busy = false;
 	};
@@ -64,12 +65,14 @@
 		<button
 			type="button"
 			onclick={() => dialog?.close()}
-			aria-label="Close"
+			aria-label={t('Close')}
 			class="absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-md text-gray-400 hover:bg-paper-2 hover:text-ink"
 			>✕</button
 		>
 		<header class="pr-8">
-			<h2 id="renew-title" class="text-base font-bold">Renew {shortId(key.id)}</h2>
+			<h2 id="renew-title" class="text-base font-bold">
+				{t('Renew {id}', { id: shortId(key.id) })}
+			</h2>
 			<p class="mt-1 text-sm text-gray-400">{withName(key.user)}</p>
 		</header>
 
@@ -79,24 +82,29 @@
 					role="status"
 					class="rounded-md border border-yellow-500/50 bg-yellow-500/10 p-3 text-sm"
 				>
-					<strong>Reflash the tag.</strong> The tag still carries the old token, with the old dates. The
-					door only honours the new dates once the renewed key is written to the tag again.
+					<strong>{t('Reflash the tag.')}</strong>
+					{t(
+						'The tag still carries the old token, with the old dates. The door only honours the new dates once the renewed key is written to the tag again.'
+					)}
 				</p>
 				<div class="flex flex-wrap justify-end gap-2">
-					<button type="button" onclick={() => dialog?.close()} class="btn">Later</button>
+					<button type="button" onclick={() => dialog?.close()} class="btn">{t('Later')}</button>
 					{#if nfcSupported}
-						<button type="button" onclick={() => write('nfc')} class="btn">Write to tag</button>
+						<button type="button" onclick={() => write('nfc')} class="btn"
+							>{t('Write to tag')}</button
+						>
 					{/if}
 					<button type="button" onclick={() => write('door')} class="btn btn-primary"
-						>Write at door</button
+						>{t('Write at door')}</button
 					>
 				</div>
 			{:else}
 				<p role="status" class="text-sm text-gray-600">
-					Renewed. This is a virtual key, so there is no tag to reflash.
+					{t('Renewed. This is a virtual key, so there is no tag to reflash.')}
 				</p>
 				<div class="flex justify-end">
-					<button type="button" onclick={() => dialog?.close()} class="btn btn-primary">Done</button
+					<button type="button" onclick={() => dialog?.close()} class="btn btn-primary"
+						>{t('Done')}</button
 					>
 				</div>
 			{/if}
@@ -104,7 +112,7 @@
 			<form onsubmit={submit} class="flex flex-col gap-5">
 				<div class="flex flex-wrap gap-4">
 					<div class="flex flex-col gap-2">
-						<span class="eyebrow">Activate not before</span>
+						<span class="eyebrow">{t('Activate not before')}</span>
 						<DateInput
 							format="yyyy-MM-dd"
 							min={new Date()}
@@ -113,7 +121,7 @@
 						/>
 					</div>
 					<div class="flex flex-col gap-2">
-						<span class="eyebrow">Expires at</span>
+						<span class="eyebrow">{t('Expires at')}</span>
 						<DateInput
 							format="yyyy-MM-dd"
 							min={new Date()}
@@ -124,14 +132,15 @@
 				</div>
 				{#if key.serialNumber}
 					<p class="text-sm text-gray-400">
-						The key is bound to a tag. After renewing, write it to the tag again so the tag carries
-						the new dates.
+						{t(
+							'The key is bound to a tag. After renewing, write it to the tag again so the tag carries the new dates.'
+						)}
 					</p>
 				{/if}
 				<div class="flex justify-end gap-2">
-					<button type="button" onclick={() => dialog?.close()} class="btn">Cancel</button>
+					<button type="button" onclick={() => dialog?.close()} class="btn">{t('Cancel')}</button>
 					<button type="submit" disabled={busy} class="btn btn-primary"
-						>{busy ? 'Renewing…' : 'Renew'}</button
+						>{busy ? t('Renewing…') : t('Renew')}</button
 					>
 				</div>
 			</form>

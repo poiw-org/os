@@ -21,6 +21,7 @@
 	import { ask, toast } from '#lib/notify.svelte.ts';
 	import { sameSerial } from '#lib/serial.ts';
 	import { keyStatus } from '#lib/status.ts';
+	import { t } from '#lib/i18n.svelte.ts';
 	import Loading from '#lib/loading.svelte';
 	import { EntryType, type Entry, type Key, type UnidentifiedTag } from '#lib/types.ts';
 	import UnidentifiedTagView from '#lib/ui/UnidentifiedTagView.svelte';
@@ -76,7 +77,7 @@
 		if (!key?.serialNumber || !key.jwt) return;
 
 		processing = true;
-		status = `Please approach the tag with S/N ${key.serialNumber}`;
+		status = t('Please approach the tag with S/N {serial}', { serial: key.serialNumber });
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		let ended = false;
 		const done = () => {
@@ -90,23 +91,23 @@
 		const stop = await scanTag(async (serialNumber, ndef, stop) => {
 			// The key as it is now: a renew while waiting replaces its JWT.
 			const live = key;
-			status = 'Validating the tag…';
+			status = t('Validating the tag…');
 			if (!live?.serialNumber || !live.jwt) {
-				toast.error('This key no longer has anything to write.');
+				toast.error(t('This key no longer has anything to write.'));
 				stop();
 				return;
 			}
 			if (!sameSerial(live.serialNumber, serialNumber)) {
-				toast.error("The tag's serial number has changed. Please re-issue the key.");
+				toast.error(t("The tag's serial number has changed. Please re-issue the key."));
 				stop();
 				return;
 			}
-			status = `Writing key ${shortId(live.id)}`;
+			status = t('Writing key {id}', { id: shortId(live.id) });
 			try {
 				await ndef.write(live.jwt);
-				toast.success('Key written to the tag.');
+				toast.success(t('Key written to the tag.'));
 			} catch (e) {
-				toast.error(e instanceof Error ? e.message : 'Could not write to the tag.');
+				toast.error(e instanceof Error ? e.message : t('Could not write to the tag.'));
 			}
 			stop();
 		}, done);
@@ -123,7 +124,7 @@
 		try {
 			await action();
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Something went wrong.');
+			toast.error(e instanceof Error ? e.message : t('Something went wrong.'));
 			return;
 		}
 		next();
@@ -132,9 +133,9 @@
 	const disableKey = async () => {
 		if (!key) return;
 		const accepted = await ask({
-			title: 'Disable this key?',
-			message: 'It will stop opening the door until you enable it again.',
-			confirmLabel: 'Disable key'
+			title: t('Disable this key?'),
+			message: t('It will stop opening the door until you enable it again.'),
+			confirmLabel: t('Disable key')
 		});
 		if (!accepted) return;
 		const { id } = key;
@@ -142,7 +143,7 @@
 			() => setKeyDisabled(id, true),
 			() => {
 				key = key && { ...key, disabled: true };
-				toast.success('Key disabled.');
+				toast.success(t('Key disabled.'));
 			}
 		);
 	};
@@ -150,9 +151,12 @@
 	const releaseSerial = async () => {
 		if (!key) return;
 		const accepted = await ask({
-			title: 'Release the tag number?',
-			message: `Another key can then be issued on tag ${key.serialNumber}. This key stays disabled, and can only be enabled again while no other key uses that tag.`,
-			confirmLabel: 'Release tag'
+			title: t('Release the tag number?'),
+			message: t(
+				'Another key can then be issued on tag {serial}. This key stays disabled, and can only be enabled again while no other key uses that tag.',
+				{ serial: key.serialNumber ?? '' }
+			),
+			confirmLabel: t('Release tag')
 		});
 		if (!accepted) return;
 		const { id } = key;
@@ -160,7 +164,7 @@
 			() => setSerialReleased(id, true),
 			() => {
 				key = key && { ...key, serialReleased: true };
-				toast.success('Tag number released.');
+				toast.success(t('Tag number released.'));
 			}
 		);
 	};
@@ -168,9 +172,9 @@
 	const enableKey = async () => {
 		if (!key) return;
 		const accepted = await ask({
-			title: 'Enable this key?',
-			message: 'It will open the door again, within its validity dates.',
-			confirmLabel: 'Enable key'
+			title: t('Enable this key?'),
+			message: t('It will open the door again, within its validity dates.'),
+			confirmLabel: t('Enable key')
 		});
 		if (!accepted) return;
 		const { id } = key;
@@ -178,7 +182,7 @@
 			() => setKeyDisabled(id, false),
 			() => {
 				key = key && { ...key, disabled: false, serialReleased: false };
-				toast.success('Key enabled.');
+				toast.success(t('Key enabled.'));
 			}
 		);
 	};
@@ -186,10 +190,11 @@
 	const deleteKey = async () => {
 		if (!key) return;
 		const accepted = await ask({
-			title: 'Delete this key?',
-			message:
-				'This key has expired, so its tag no longer opens the door. Deleting it removes the key and its record here.',
-			confirmLabel: 'Delete key',
+			title: t('Delete this key?'),
+			message: t(
+				'This key has expired, so its tag no longer opens the door. Deleting it removes the key and its record here.'
+			),
+			confirmLabel: t('Delete key'),
 			tone: 'danger'
 		});
 		if (!accepted) return;
@@ -197,7 +202,7 @@
 		await act(
 			() => removeKey(id),
 			async () => {
-				toast.success('Key deleted.');
+				toast.success(t('Key deleted.'));
 				await goto(resolve('/os'));
 			}
 		);
@@ -214,9 +219,9 @@
 			try {
 				if (keyId) key = await getKey(keyId);
 				if (!key && keyId && admin) strayTag = await getUnidentifiedTag(keyId);
-				if (!key && !strayTag) loadError = 'Key not found.';
+				if (!key && !strayTag) loadError = t('Key not found.');
 			} catch (e) {
-				loadError = e instanceof Error ? e.message : 'Could not load the key.';
+				loadError = e instanceof Error ? e.message : t('Could not load the key.');
 			}
 			processing = false;
 		})();
@@ -228,7 +233,7 @@
 			change: ({ eventType, new: row }) => {
 				if (eventType === 'DELETE') {
 					key = undefined;
-					loadError = 'This key was deleted.';
+					loadError = t('This key was deleted.');
 				} else if (key) {
 					key = {
 						...key,
@@ -261,18 +266,20 @@
 	{:else if processing || !key}
 		<span class="w-full text-gray-400">{status}</span>
 		{#if stopWrite}
-			<button type="button" class="btn self-start" onclick={() => stopWrite?.()}>Cancel</button>
+			<button type="button" class="btn self-start" onclick={() => stopWrite?.()}
+				>{t('Cancel')}</button
+			>
 		{/if}
 		<Loading />
 	{:else}
 		<Breadcrumb
 			crumbs={admin
 				? [
-						{ label: 'Users', href: '/os' },
+						{ label: t('Users'), href: '/os' },
 						{ label: withName(key.user), href: { user: key.user.id } },
 						{ label: shortId(key.id) }
 					]
-				: [{ label: 'My keys', href: '/os/keys' }, { label: shortId(key.id) }]}
+				: [{ label: t('My keys'), href: '/os/keys' }, { label: shortId(key.id) }]}
 		/>
 		<div class="flex flex-wrap items-center justify-between gap-4">
 			<span class="flex flex-wrap items-center gap-3">
@@ -284,32 +291,32 @@
 			<span class="flex flex-wrap items-center gap-2">
 				{#if admin}
 					{#if !key.disabled}
-						<button onclick={() => (renewOpen = true)} class="btn">Renew</button>
+						<button onclick={() => (renewOpen = true)} class="btn">{t('Renew')}</button>
 					{/if}
 					{#if key.serialNumber && key.jwt}
 						{#if nfcSupported}
-							<button onclick={checkOut} class="btn">Write to tag</button>
+							<button onclick={checkOut} class="btn">{t('Write to tag')}</button>
 						{/if}
-						<button onclick={() => (writerOpen = true)} class="btn">Write at door</button>
+						<button onclick={() => (writerOpen = true)} class="btn">{t('Write at door')}</button>
 					{/if}
 				{/if}
 				{#if key.disabled}
 					{#if admin}
 						{#if key.serialNumber && !key.serialReleased}
-							<button onclick={releaseSerial} class="btn">Release tag</button>
+							<button onclick={releaseSerial} class="btn">{t('Release tag')}</button>
 						{/if}
 						<button
 							onclick={enableKey}
 							disabled={!!serialHolder}
-							title={serialHolder ? 'Its tag now belongs to another key' : undefined}
-							class="btn disabled:cursor-not-allowed disabled:opacity-40">Enable</button
+							title={serialHolder ? t('Its tag now belongs to another key') : undefined}
+							class="btn disabled:cursor-not-allowed disabled:opacity-40">{t('Enable')}</button
 						>
 					{/if}
 				{:else}
-					<button onclick={disableKey} class="btn">Disable</button>
+					<button onclick={disableKey} class="btn">{t('Disable')}</button>
 				{/if}
 				{#if admin && key.expiresAt <= new Date()}
-					<button onclick={deleteKey} class="btn tone-red">Delete</button>
+					<button onclick={deleteKey} class="btn tone-red">{t('Delete')}</button>
 				{/if}
 			</span>
 		</div>
@@ -317,21 +324,23 @@
 		{#if key.serialReleased}
 			<div class="panel border-yellow-500/50 px-4 py-3 text-sm text-yellow-500">
 				{#if serialHolder}
-					Tag {key.serialNumber} was released and now belongs to
+					{t('Tag {serial} was released and now belongs to', { serial: key.serialNumber ?? '' })}
 					<a href={keyPath(serialHolder.id)} class="font-mono underline underline-offset-4"
 						>{shortId(serialHolder.id)}</a
-					>. This key cannot be enabled unless that key is removed.
+					>. {t('This key cannot be enabled unless that key is removed.')}
 				{:else}
-					Tag {key.serialNumber} was released for reuse. Enabling this key will claim it again, if no
-					other key has taken it by then.
+					{t(
+						'Tag {serial} was released for reuse. Enabling this key will claim it again, if no other key has taken it by then.',
+						{ serial: key.serialNumber ?? '' }
+					)}
 				{/if}
 			</div>
 		{/if}
 
 		<dl class="panel text-sm">
-			{#each [['User', withName(key.user)], ['Tag S/N', key.serialNumber ? key.serialNumber + (key.serialReleased ? ' (released)' : '') : 'Virtual (no tag)'], ['Valid not before', formatDate(key.notBefore)], ['Expires at', formatDate(key.expiresAt)], ['Issued at', formatDate(key.issuedAt)], ['Issued by', key.issuedBy || '-'], ...(key.serialNumber ? [] : [['Phone', key.deviceName ? `${key.deviceName}, set up ${formatDate(key.deviceBoundAt!)}` : 'Not set up on a phone yet']])] as [label, value] (label)}
+			{#each [['User', withName(key.user)], ['Tag S/N', key.serialNumber ? key.serialNumber + (key.serialReleased ? ` (${t('released')})` : '') : t('Virtual (no tag)')], ['Valid not before', formatDate(key.notBefore)], ['Expires at', formatDate(key.expiresAt)], ['Issued at', formatDate(key.issuedAt)], ['Issued by', key.issuedBy || '-'], ...(key.serialNumber ? [] : [['Phone', key.deviceName ? t( '{device}, set up {date}', { device: key.deviceName, date: formatDate(key.deviceBoundAt!) } ) : t('Not set up on a phone yet')]])] as [label, value] (label)}
 				<div class="row">
-					<dt class="text-gray-400">{label}</dt>
+					<dt class="text-gray-400">{t(label)}</dt>
 					<dd class="min-w-0 text-right break-all {label === 'Tag S/N' ? 'font-mono' : ''}">
 						{#if label === 'User'}<a
 								href={userPath(key.user.id)}
@@ -356,7 +365,7 @@
 
 	{#if entries.items && !strayTag}
 		<div class="flex flex-col gap-2">
-			<h2 class="font-bold">Log</h2>
+			<h2 class="font-bold">{t('Log')}</h2>
 			<div class="panel">
 				{#each shownEntries ?? [] as entry, at (entry.id)}
 					<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
@@ -371,37 +380,39 @@
 							<span class="tabular-nums">{formatDateTime(entry.timestamp)}</span></span
 						>
 						<span class="text-xs text-gray-400"
-							>{entry.type == EntryType.SUCCESSFUL ? 'Opened' : (entry.reason ?? 'Denied')}{entry.viaPhone
-								? ' with a phone'
-								: ''}</span
+							>{entry.type == EntryType.SUCCESSFUL
+								? t('Opened')
+								: t(entry.reason ?? 'Denied')}{entry.viaPhone ? t(' with a phone') : ''}</span
 						>
 					</div>
 					{#if selectedId === entry.id}
 						<div class="flex flex-col gap-1 bg-paper-2 px-4 py-3 text-xs text-gray-600">
-							<div>Occurred on: {formatDateTime(entry.timestamp)}</div>
+							<div>{t('Occurred on:')} {formatDateTime(entry.timestamp)}</div>
 							<div>
-								Outcome: <span
-									class={entry.type == EntryType.SUCCESSFUL ? 'text-green-400' : 'text-red-400'}
-									>{entry.type == EntryType.SUCCESSFUL ? 'Success' : 'Failure'}</span
+								{t('Outcome:')}
+								<span class={entry.type == EntryType.SUCCESSFUL ? 'text-green-400' : 'text-red-400'}
+									>{entry.type == EntryType.SUCCESSFUL ? t('Success') : t('Failure')}</span
 								>
 							</div>
 							{#if entry.type == EntryType.FAILED}
-								<div>Reason: {entry.reason}</div>
+								<div>{t('Reason:')} {entry.reason ? t(entry.reason) : ''}</div>
 							{/if}
 							{#if entry.serialNumberFromTag}
-								<div>Serial Number from Tag: {entry.serialNumberFromTag}</div>
+								<div>{t('Serial Number from Tag:')} {entry.serialNumberFromTag}</div>
 							{/if}
 						</div>
 					{/if}
 				{:else}
-					<span class="block p-8 text-gray-400">No entries yet.</span>
+					<span class="block p-8 text-gray-400">{t('No entries yet.')}</span>
 				{/each}
 			</div>
 			{#if entries.items.length > PREVIEW}
 				<button
 					onclick={() => (showAllEntries = !showAllEntries)}
 					class="self-start text-xs text-brand-text underline"
-					>{showAllEntries ? 'Show fewer' : `Show all ${entries.items.length} entries`}</button
+					>{showAllEntries
+						? t('Show fewer')
+						: t('Show all {n} entries', { n: entries.items.length })}</button
 				>
 			{/if}
 		</div>

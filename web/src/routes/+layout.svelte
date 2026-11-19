@@ -11,6 +11,7 @@
 	import type { LayoutProps } from './$types';
 	import { onMount } from 'svelte';
 	import { startFaviconGalaxy } from '#lib/favicon-galaxy.ts';
+	import { t } from '#lib/i18n.svelte.ts';
 
 	let { children, data }: LayoutProps = $props();
 
@@ -59,9 +60,9 @@
 		</main>
 		<footer id="footer" class="border-t text-xs text-gray-400 print:hidden">
 			<p class="mx-auto w-full max-w-[1500px] px-4 py-4 md:px-8">
-				Open Source/FOSS project made by po/iw. Find the source code in our
+				{t('Open source project made by po/iw. Find the code on our')}
 				<a href="https://github.com/poiw-org" target="_blank" rel="noreferrer" class="font-bold"
-					>Github page</a
+					>{t('GitHub page')}</a
 				>.
 			</p>
 		</footer>

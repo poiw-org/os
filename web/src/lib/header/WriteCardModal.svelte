@@ -7,6 +7,7 @@
 		type WriteCardState,
 		type WriteCardStep
 	} from '#lib/api.ts';
+	import { t } from '#lib/i18n.svelte.ts';
 	import TagStage, { type TagScene } from './TagStage.svelte';
 
 	let {
@@ -56,38 +57,49 @@
 	const copyFor = (): Record<TagScene, { title: string; hint: string }> => ({
 		idle: scanning
 			? {
-					title: 'Read a tag with the door',
-					hint: 'The reader at the door reads the serial number of the next tag you hold to it. Stand at the door with the tag in your hand, then start.'
+					title: t('Read a tag with the door'),
+					hint: t(
+						'The reader at the door reads the serial number of the next tag you hold to it. Stand at the door with the tag in your hand, then start.'
+					)
 				}
 			: {
-					title: 'Write this key with the door',
-					hint: `The reader at the door writes the key to the tag with S/N ${serialNumber}. Stand at the door with that tag in your hand, then start.`
+					title: t('Write this key with the door'),
+					hint: t(
+						'The reader at the door writes the key to the tag with S/N {serial}. Stand at the door with that tag in your hand, then start.',
+						{ serial: serialNumber }
+					)
 				},
 		connecting: {
-			title: 'Putting the door in writer mode',
-			hint: 'Reaching the door over its private channel.'
+			title: t('Putting the door in writer mode'),
+			hint: t('Reaching the door over its private channel.')
 		},
 		ready: {
-			title: 'Hold the tag to the reader',
+			title: t('Hold the tag to the reader'),
 			hint: scanning
-				? 'Lay it flat on the reader. The door beeps while it waits.'
-				: 'Lay it flat on the reader and keep it there. The door beeps while it waits.'
+				? t('Lay it flat on the reader. The door beeps while it waits.')
+				: t('Lay it flat on the reader and keep it there. The door beeps while it waits.')
 		},
 		wrong_tag: {
-			title: 'That is a different tag',
-			hint: `This key belongs to the tag ending ${tail}. Swap it for that one.`
+			title: t('That is a different tag'),
+			hint: t('This key belongs to the tag ending {tail}. Swap it for that one.', { tail })
 		},
 		writing: {
-			title: 'Writing. Keep it still',
-			hint: 'Do not lift the tag until the door plays the happy chord.'
+			title: t('Writing. Keep it still'),
+			hint: t('Do not lift the tag until the door plays the happy chord.')
 		},
 		done: scanning
-			? { title: 'Tag read', hint: `Serial number ${scanned} is now in the form.` }
+			? {
+					title: t('Tag read'),
+					hint: t('Serial number {serial} is now in the form.', { serial: scanned })
+				}
 			: {
-					title: 'Key written',
-					hint: 'The door read it back and it matches. Tap the tag on the door to try it.'
+					title: t('Key written'),
+					hint: t('The door read it back and it matches. Tap the tag on the door to try it.')
 				},
-		failed: { title: scanning ? 'The tag was not read' : 'The tag was not written', hint: '' }
+		failed: {
+			title: scanning ? t('The tag was not read') : t('The tag was not written'),
+			hint: ''
+		}
 	});
 
 	// While the door waits: the countdown.
@@ -132,7 +144,7 @@
 		} catch (e) {
 			if (attempt.signal.aborted) return;
 			stopTick();
-			error = e instanceof Error ? e.message : 'Could not write the tag.';
+			error = e instanceof Error ? e.message : t('Could not write the tag.');
 			phase = 'failed';
 			scene = 'failed';
 		}
@@ -168,21 +180,21 @@
 		<button
 			type="button"
 			onclick={close}
-			aria-label="Close"
+			aria-label={t('Close')}
 			class="absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-md text-gray-400 hover:bg-paper-2 hover:text-ink"
 			>✕</button
 		>
 		<h2 id="write-card-title" class="text-base font-bold">
-			{scanning ? 'Scan a tag' : 'Write to tag'}
+			{scanning ? t('Scan a tag') : t('Write to tag')}
 		</h2>
 		<p class="mt-1 text-sm text-gray-400">
-			Uses the reader on <span class="font-mono text-gray-500">door:{DOOR_ID}</span> as a {scanning
-				? 'scanner'
-				: 'writer'}.
+			{t('Uses the reader on')}
+			<span class="font-mono text-gray-500">door:{DOOR_ID}</span>
+			{scanning ? t('as a scanner.') : t('as a writer.')}
 		</p>
 
 		<!-- Checkpoints -->
-		<ol class="mt-6 grid grid-cols-5" aria-label="Progress">
+		<ol class="mt-6 grid grid-cols-5" aria-label={t('Progress')}>
 			{#each WRITE_CARD_STEPS as step, i (step)}
 				{@const state = stepState[step]}
 				<li
@@ -212,7 +224,7 @@
 					>
 						{state === 'done' ? '✓' : state === 'failed' ? '!' : i + 1}
 					</span>
-					<span class="text-xs {state ? 'text-ink' : 'text-gray-400'}">{LABELS[step]}</span>
+					<span class="text-xs {state ? 'text-ink' : 'text-gray-400'}">{t(LABELS[step])}</span>
 				</li>
 			{/each}
 		</ol>
@@ -228,23 +240,25 @@
 				{phase === 'failed' ? error : copy.hint}
 			</p>
 			{#if waiting}
-				<p class="mt-2 font-mono text-xs text-gray-400">Writer mode ends in {remaining} s</p>
+				<p class="mt-2 font-mono text-xs text-gray-400">
+					{t('Writer mode ends in {remaining} s', { remaining })}
+				</p>
 			{/if}
 		</div>
 
 		<div class="mt-4 flex justify-end gap-2">
 			{#if phase === 'done'}
-				<button type="button" class="btn btn-primary" onclick={close}>Done</button>
+				<button type="button" class="btn btn-primary" onclick={close}>{t('Done')}</button>
 			{:else}
-				<button type="button" class="btn" onclick={close}>Cancel</button>
+				<button type="button" class="btn" onclick={close}>{t('Cancel')}</button>
 				<button type="button" class="btn btn-primary" onclick={run} disabled={phase === 'running'}>
 					{phase === 'running'
-						? 'Waiting…'
+						? t('Waiting…')
 						: phase === 'failed'
-							? 'Try again'
+							? t('Try again')
 							: scanning
-								? 'Start scanning'
-								: 'Start writer mode'}
+								? t('Start scanning')
+								: t('Start writer mode')}
 				</button>
 			{/if}
 		</div>

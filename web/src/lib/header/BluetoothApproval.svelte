@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { watchBluetoothRequests, type BluetoothRequest } from '#lib/api.ts';
 	import { toast } from '#lib/notify.svelte.ts';
+	import { t } from '#lib/i18n.svelte.ts';
 
 	// Asks every signed-in admin about a device connecting to the door's Bluetooth console. The door
 	// keeps the clock and the decision; this only shows its request and passes on the answer.
@@ -25,8 +26,8 @@
 			},
 			ended: (id, outcome) => {
 				if (id !== request?.id) return;
-				if (decided && outcome === 'approved') toast.success('Bluetooth connection approved.');
-				if (decided && outcome === 'denied') toast.info('Bluetooth connection denied.');
+				if (decided && outcome === 'approved') toast.success(t('Bluetooth connection approved.'));
+				if (decided && outcome === 'denied') toast.info(t('Bluetooth connection denied.'));
 				request = null;
 			}
 		});
@@ -62,26 +63,27 @@
 		class="sheet m-auto w-[calc(100%-2rem)] max-w-sm overflow-hidden rounded-lg border bg-paper p-0 text-ink backdrop:bg-black/70"
 	>
 		<div class="border-b px-4 py-2.5">
-			<h2 id="bluetooth-title" class="text-sm">Bluetooth connection</h2>
+			<h2 id="bluetooth-title" class="text-sm">{t('Bluetooth connection')}</h2>
 		</div>
 		<div class="flex flex-col gap-4 px-6 py-6 text-center">
 			<p>
-				A device wants to use the door's console. Approving gives it full access to the console for
-				24 hours.
+				{t(
+					"A device wants to use the door's console. Approving gives it full access to the console for 24 hours."
+				)}
 			</p>
 			<p class="font-mono text-lg font-bold">{request.address}</p>
 			<p class="text-sm" role="timer" aria-live="off">
-				Dropped in {secondsLeft} s unless you approve it.
+				{t('Dropped in {seconds} s unless you approve it.', { seconds: secondsLeft })}
 			</p>
 			<div class="flex justify-center gap-2">
 				<button type="button" class="key" disabled={decided !== null} onclick={() => decide(false)}
-					>Deny</button
+					>{t('Deny')}</button
 				>
 				<button
 					type="button"
 					class="key key-signal"
 					disabled={decided !== null}
-					onclick={() => decide(true)}>Approve</button
+					onclick={() => decide(true)}>{t('Approve')}</button
 				>
 			</div>
 		</div>

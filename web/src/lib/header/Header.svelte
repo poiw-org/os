@@ -10,6 +10,8 @@
 	import MobileMenu from './MobileMenu.svelte';
 	import SettingsModal from './SettingsModal.svelte';
 	import IssueKeyMenu from '#lib/ui/IssueKeyMenu.svelte';
+	import LocaleSwitch from '#lib/ui/LocaleSwitch.svelte';
+	import { t } from '#lib/i18n.svelte.ts';
 
 	let { user }: { user: CurrentUser | null } = $props();
 
@@ -34,13 +36,14 @@
 <header id="menu" class="bar full app-bar print:hidden">
 	{@render brand()}
 	{#if user?.isAdmin}
-		<a href={resolve('/os/firmware')} class="label only-md">Firmware</a>
-		<a href={resolve('/os/oauth')} class="label only-md">Apps</a>
+		<a href={resolve('/os/firmware')} class="label only-md">{t('Firmware')}</a>
+		<a href={resolve('/os/oauth')} class="label only-md">{t('Apps')}</a>
 	{/if}
 	{#if user}
-		<a href={resolve('/os/keys')} class="label only-md">My keys</a>
+		<a href={resolve('/os/keys')} class="label only-md">{t('My keys')}</a>
 	{/if}
 	<div class="grow"></div>
+	<LocaleSwitch />
 	{#if user?.isAdmin}
 		<span class="key-cell">
 			<DevicesMenu bind:label={doorLabel} onopen={() => (consoleOpen = true)} />
@@ -59,7 +62,7 @@
 		<span class="only-md">
 			{#if user.canUnlock}
 				<button type="button" onclick={() => (forceOpenOpen = true)} class="key"
-					>Remote unlock</button
+					>{t('Remote unlock')}</button
 				>
 			{/if}
 			{#if user.isAdmin}
@@ -68,7 +71,7 @@
 			<button
 				type="button"
 				onclick={() => (settingsOpen = true)}
-				aria-label="Settings"
+				aria-label={t('Settings')}
 				class="ml-1 rounded-full hover:opacity-80"><Avatar email={user.email} size={28} /></button
 			>
 		</span>

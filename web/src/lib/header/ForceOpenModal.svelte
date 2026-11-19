@@ -9,6 +9,7 @@
 	} from '#lib/api.ts';
 	import { reveal, swapIn, swapOut } from '#lib/motion.ts';
 	import { toast } from '#lib/notify.svelte.ts';
+	import { t } from '#lib/i18n.svelte.ts';
 	import DoorStage, { type DoorScene } from './DoorStage.svelte';
 
 	// Admins talk to the door directly; members go through the server.
@@ -84,24 +85,26 @@
 
 	const headline = $derived(
 		phase === 'confirm'
-			? 'Unlock the door?'
+			? t('Unlock the door?')
 			: phase === 'opened'
-				? 'Door unlocked'
+				? t('Door unlocked')
 				: phase === 'failed'
-					? 'Could not unlock'
+					? t('Could not unlock')
 					: last
-						? HEADLINES[last.step]
-						: 'Connecting'
+						? t(HEADLINES[last.step])
+						: t('Connecting')
 	);
 	const detail = $derived(
 		phase === 'confirm'
-			? `Sends a one-time unlock to door:${DOOR_ID}. It is logged under your name.`
+			? t('Sends a one-time unlock to door:{door}. It is logged under your name.', {
+					door: DOOR_ID
+				})
 			: phase === 'failed'
 				? error
 				: phase === 'opened'
 					? latest.log?.state === 'done'
-						? 'Recorded under your name'
-						: 'It opened, but the entry was not logged'
+						? t('Recorded under your name')
+						: t('It opened, but the entry was not logged')
 					: (last?.text ?? '')
 	);
 
@@ -112,9 +115,9 @@
 		try {
 			const { logged } = await (admin ? forceOpenDoor : unlockDoor)((e) => events.push(e));
 			phase = 'opened';
-			if (!logged) toast.error('The door opened, but the entry could not be logged.');
+			if (!logged) toast.error(t('The door opened, but the entry could not be logged.'));
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Could not send the remote unlock command.';
+			error = e instanceof Error ? e.message : t('Could not send the remote unlock command.');
 			phase = 'failed';
 		}
 	};
@@ -134,12 +137,12 @@
 	class="sheet m-auto w-[calc(100%-2rem)] max-w-sm overflow-hidden rounded-lg border bg-paper p-0 text-ink backdrop:bg-black/70"
 >
 	<div class="flex items-center justify-between border-b px-4 py-2.5">
-		<h2 id="force-open-title" class="text-sm">Remote unlock</h2>
+		<h2 id="force-open-title" class="text-sm">{t('Remote unlock')}</h2>
 		<button
 			type="button"
 			onclick={close}
 			disabled={phase === 'running'}
-			aria-label="Close"
+			aria-label={t('Close')}
 			class="-mr-2 flex h-7 w-7 items-center justify-center rounded-md text-gray-400 hover:bg-paper-2 hover:text-ink disabled:opacity-30"
 			>✕</button
 		>
@@ -150,7 +153,7 @@
 		<div
 			class="w-full"
 			role="progressbar"
-			aria-label="Unlock progress"
+			aria-label={t('Unlock progress')}
 			aria-valuemin={0}
 			aria-valuemax={100}
 			aria-valuenow={Math.round(progress * 100)}
@@ -190,21 +193,25 @@
 			<div class="w-full" in:reveal>
 				<dl class="mt-5 grid w-full grid-cols-3 divide-x border-y py-3 text-center">
 					<div>
-						<dt class="eyebrow">Door reply</dt>
+						<dt class="eyebrow">{t('Door reply')}</dt>
 						<dd class="mt-0.5 font-mono tabular-nums">
 							{ackLatency === undefined ? '—' : `${ackLatency} ms`}
 						</dd>
 					</div>
 					<div>
-						<dt class="eyebrow">Elapsed</dt>
+						<dt class="eyebrow">{t('Elapsed')}</dt>
 						<dd class="mt-0.5 font-mono tabular-nums">
 							{phase === 'running' || !last ? '—' : seconds(last.at)}
 						</dd>
 					</div>
 					<div>
-						<dt class="eyebrow">Logged</dt>
+						<dt class="eyebrow">{t('Logged')}</dt>
 						<dd class="mt-0.5 font-mono">
-							{latest.log?.state === 'done' ? 'Yes' : latest.log?.state === 'failed' ? 'No' : '—'}
+							{latest.log?.state === 'done'
+								? t('Yes')
+								: latest.log?.state === 'failed'
+									? t('No')
+									: '—'}
 						</dd>
 					</div>
 				</dl>
@@ -213,7 +220,7 @@
 					<summary
 						class="flex cursor-pointer list-none items-center justify-between py-2.5 text-xs text-gray-400 hover:text-ink [&::-webkit-details-marker]:hidden"
 					>
-						Steps
+						{t('Steps')}
 						<svg
 							viewBox="0 0 12 12"
 							class="h-3 w-3 transition-transform duration-200 group-open:rotate-90 motion-reduce:transition-none"
@@ -239,7 +246,7 @@
 												: 'lamp-gray lamp-off'}"
 								></span>
 								<span class="w-16 shrink-0 font-mono {e ? 'text-ink' : 'text-gray-400'}"
-									>{LABELS[step]}</span
+									>{t(LABELS[step])}</span
 								>
 								<span class="min-w-0 flex-1 truncate text-gray-400">{e?.text ?? ''}</span>
 								{#if e?.latencyMs !== undefined}
@@ -254,17 +261,18 @@
 
 		<div class="mt-6 grid w-full grid-cols-2 gap-2">
 			{#if phase === 'opened'}
-				<button type="button" class="btn btn-primary col-span-2" onclick={close}>Done</button>
+				<button type="button" class="btn btn-primary col-span-2" onclick={close}>{t('Done')}</button
+				>
 			{:else}
 				<button type="button" class="btn" onclick={close} disabled={phase === 'running'}
-					>Cancel</button
+					>{t('Cancel')}</button
 				>
 				<button type="button" class="btn btn-primary" onclick={run} disabled={phase === 'running'}
 					>{phase === 'running'
-						? 'Unlocking…'
+						? t('Unlocking…')
 						: phase === 'failed'
-							? 'Try again'
-							: 'Unlock'}</button
+							? t('Try again')
+							: t('Unlock')}</button
 				>
 			{/if}
 		</div>

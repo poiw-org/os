@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { userPath } from '#lib/routes.ts';
+	import { t } from '#lib/i18n.svelte.ts';
 
 	// Wayfinding for the users -> keys -> entries hierarchy; the last crumb is the current page.
 	let {
@@ -10,7 +11,7 @@
 	} = $props();
 </script>
 
-<nav aria-label="Breadcrumb" class="flex flex-wrap items-center gap-2 text-sm tracking-wider">
+<nav aria-label={t('Breadcrumb')} class="flex flex-wrap items-center gap-2 text-sm tracking-wider">
 	{#each crumbs as crumb, i (i)}
 		{#if i > 0}<span class="text-gray-300" aria-hidden="true">/</span>{/if}
 		{#if crumb.href}

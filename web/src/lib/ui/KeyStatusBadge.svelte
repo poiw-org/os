@@ -14,5 +14,5 @@
 </script>
 
 <span class="readout-chip">
-	<span class="lamp {lamp[status]}" aria-hidden="true"></span>{statusLabel[status]}
+	<span class="lamp {lamp[status]}" aria-hidden="true"></span>{statusLabel(status)}
 </span>

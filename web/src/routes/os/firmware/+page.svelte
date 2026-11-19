@@ -3,6 +3,7 @@
 	import { formatDate } from '#lib/format.ts';
 	import { liveRows } from '#lib/live.svelte.ts';
 	import Loading from '#lib/loading.svelte';
+	import { t } from '#lib/i18n.svelte.ts';
 
 	const releases = liveRows({
 		table: 'firmware_releases',
@@ -33,16 +34,17 @@
 	};
 </script>
 
-<svelte:head><title>Firmware</title></svelte:head>
+<svelte:head><title>{t('Firmware')}</title></svelte:head>
 
 <div class="stagger flex max-w-4xl flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
-	<h1 class="text-2xl">Firmware</h1>
+	<h1 class="text-2xl">{t('Firmware')}</h1>
 
 	{#if !releases.items}
 		<Loading />
 	{:else if releases.items.length === 0}
 		<p class="panel px-4 py-8 text-center text-gray-400">
-			No firmware uploaded yet. Publish a build with <code class="font-mono">make release</code>.
+			{t('No firmware uploaded yet. Publish a build with')}
+			<code class="font-mono">make release</code>.
 		</p>
 	{:else}
 		<ul class="panel">
@@ -59,7 +61,7 @@
 						</p>
 					</div>
 					<div class="flex flex-col gap-0.5 md:w-72 md:shrink-0 md:text-right">
-						<p role="status">{state.text}</p>
+						<p role="status">{t(state.text)}</p>
 						<p class="text-xs text-gray-400">
 							{Math.round(r.size / 1024)} KB · {formatDate(new Date(r.createdAt))}
 						</p>

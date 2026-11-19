@@ -2,6 +2,7 @@
 	import { fly } from 'svelte/transition';
 	import type { UserOption } from '#lib/types.ts';
 	import Avatar from '#lib/ui/Avatar.svelte';
+	import { t } from '#lib/i18n.svelte.ts';
 
 	// Pick any number of users: chips sit inside the field, the list stays open while choosing.
 	let { users, selected = $bindable([]) }: { users: UserOption[]; selected?: UserOption[] } =
@@ -72,7 +73,7 @@
 				<span class="max-w-40 truncate">{user.label}</span>
 				<button
 					type="button"
-					aria-label="Remove {user.label}"
+					aria-label={t('Remove {name}', { name: user.label })}
 					onclick={(e) => {
 						e.stopPropagation();
 						toggle(user);
@@ -87,13 +88,13 @@
 			bind:value={query}
 			type="text"
 			role="combobox"
-			aria-label="Filter by users"
+			aria-label={t('Filter by users')}
 			aria-expanded={open}
 			aria-controls="{id}-list"
 			aria-activedescendant={open && matches[active] ? `${id}-${active}` : undefined}
 			aria-autocomplete="list"
 			autocomplete="off"
-			placeholder={selected.length ? '' : 'All users'}
+			placeholder={selected.length ? '' : t('All users')}
 			onfocus={() => (open = true)}
 			onblur={() => (open = false)}
 			oninput={() => {
@@ -110,7 +111,7 @@
 			id="{id}-list"
 			role="listbox"
 			aria-multiselectable="true"
-			aria-label="Users"
+			aria-label={t('Users')}
 			transition:fly={{ y: -6, duration: 150 }}
 			class="panel absolute inset-x-0 top-full z-20 mt-2 max-h-80 overflow-auto"
 		>
@@ -138,11 +139,14 @@
 						>{/if}
 				</li>
 			{:else}
-				<li class="row text-gray-400">No users match “{query.trim()}”.</li>
+				<li class="row text-gray-400">{t('No users match “{query}”.', { query: query.trim() })}</li>
 			{/each}
 			{#if found.length > MAX}
 				<li class="row text-xs text-gray-400">
-					Showing {MAX} of {found.length}. Keep typing to narrow it down.
+					{t('Showing {max} of {total}. Keep typing to narrow it down.', {
+						max: MAX,
+						total: found.length
+					})}
 				</li>
 			{/if}
 		</ul>

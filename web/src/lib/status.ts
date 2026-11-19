@@ -1,3 +1,4 @@
+import { t } from '#lib/i18n.svelte.ts';
 import type { KeyStatus, KeySummary } from '#lib/types.ts';
 
 export function keyStatus(
@@ -10,9 +11,13 @@ export function keyStatus(
 	return 'active';
 }
 
-export const statusLabel: Record<KeyStatus, string> = {
-	active: 'ENABLED',
-	disabled: 'DISABLED',
-	expired: 'EXPIRED',
-	pending: 'NOT YET ACTIVE'
-};
+/** True when the member has no key that works now or is about to start, so the OS invites them to ask for one. */
+export const needsKey = (keys: KeySummary[], userId: string, now = new Date()) =>
+	!keys.some((key) => key.userId === userId && ['active', 'pending'].includes(keyStatus(key, now)));
+
+export const statusLabel = (status: KeyStatus) =>
+	t(
+		{ active: 'ENABLED', disabled: 'DISABLED', expired: 'EXPIRED', pending: 'NOT YET ACTIVE' }[
+			status
+		]
+	);

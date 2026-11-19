@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import Dropdown from './Dropdown.svelte';
+	import { t } from '#lib/i18n.svelte.ts';
 
 	let {
 		trigger,
@@ -37,7 +38,7 @@
 </script>
 
 <Dropdown {trigger} {inline} {align}>
-	{#snippet label()}Issue key{/snippet}
+	{#snippet label()}{t('Issue key')}{/snippet}
 	{#snippet children(close)}
 		<ul class="list">
 			{#each kinds as kind (kind.type)}
@@ -49,8 +50,8 @@
 							onnavigate?.();
 						}}
 					>
-						<strong>{kind.label}</strong>
-						<span>{kind.text}</span>
+						<strong>{t(kind.label)}</strong>
+						<span>{t(kind.text)}</span>
 					</a>
 				</li>
 			{/each}

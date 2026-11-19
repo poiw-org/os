@@ -8,6 +8,7 @@ import {
 import type { OnboardingAnswers } from '#lib/auth.ts';
 import { config } from '#lib/config.ts';
 import { withName } from '#lib/format.ts';
+import { t as translate } from '#lib/i18n.svelte.ts';
 import { supabase } from '#lib/supabase.ts';
 import {
 	type Activity,
@@ -506,14 +507,19 @@ async function joinDoorChannel(
 		emit({ step, state: 'failed', dir: '·', text: message });
 		throw new Error(message);
 	};
-	emit({ step: 'auth', state: 'active', dir: '·', text: 'Authorising the realtime socket' });
+	emit({
+		step: 'auth',
+		state: 'active',
+		dir: '·',
+		text: translate('Authorising the realtime socket')
+	});
 	let t = performance.now();
 	await supabase.realtime.setAuth().catch((e: Error) => fail('auth', e.message));
 	emit({
 		step: 'auth',
 		state: 'done',
 		dir: '·',
-		text: 'Access token attached',
+		text: translate('Access token attached'),
 		latencyMs: since(performance.now()) - since(t)
 	});
 
@@ -524,10 +530,17 @@ async function joinDoorChannel(
 			channel.subscribe((status, err) => {
 				if (status === 'SUBSCRIBED') resolve();
 				else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED')
-					reject(new Error(`Could not join ${topic} (${err?.message ?? status}).`));
+					reject(
+						new Error(
+							translate('Could not join {topic} ({reason}).', {
+								topic,
+								reason: err?.message ?? status
+							})
+						)
+					);
 			})
 		),
-		'Could not reach the realtime service.'
+		translate('Could not reach the realtime service.')
 	).catch((e: Error) => fail('join', e.message));
 	emit({
 		step: 'join',
@@ -546,8 +559,8 @@ export async function unlockDoor(onEvent: (event: ForceOpenEvent) => void = () =
 	const emit = (e: Omit<ForceOpenEvent, 'at'>) =>
 		onEvent({ at: Math.round(performance.now() - t0), ...e });
 
-	emit({ step: 'auth', state: 'done', dir: '·', text: 'Signed in' });
-	emit({ step: 'join', state: 'done', dir: '·', text: 'The server relays to the door' });
+	emit({ step: 'auth', state: 'done', dir: '·', text: translate('Signed in') });
+	emit({ step: 'join', state: 'done', dir: '·', text: translate('The server relays to the door') });
 	emit({ step: 'send', state: 'active', dir: '>', text: 'rpc unlock' });
 	let result: { latency_ms: number; delay_ms: number; logged: boolean };
 	try {
@@ -557,11 +570,11 @@ export async function unlockDoor(onEvent: (event: ForceOpenEvent) => void = () =
 			step: 'ack',
 			state: 'failed',
 			dir: '<',
-			text: e instanceof Error ? e.message : 'Failed'
+			text: e instanceof Error ? e.message : translate('Failed')
 		});
 		throw e;
 	}
-	emit({ step: 'send', state: 'done', dir: '·', text: 'Command on the wire' });
+	emit({ step: 'send', state: 'done', dir: '·', text: translate('Command on the wire') });
 	emit({
 		step: 'ack',
 		state: 'done',
@@ -575,18 +588,30 @@ export async function unlockDoor(onEvent: (event: ForceOpenEvent) => void = () =
 		step: 'unlock',
 		state: 'active',
 		dir: '·',
-		text: result.delay_ms ? 'Warning tone playing at the door' : 'Door unlocking'
+		text: result.delay_ms
+			? translate('Warning tone playing at the door')
+			: translate('Door unlocking')
 	});
 	for (let left = Math.ceil((unlockAt - performance.now()) / 1000); left > 0; left--) {
-		emit({ step: 'unlock', state: 'active', dir: '·', text: `Unlocking in ${left} s` });
+		emit({
+			step: 'unlock',
+			state: 'active',
+			dir: '·',
+			text: translate('Unlocking in {left} s', { left })
+		});
 		await new Promise((resolve) =>
 			setTimeout(resolve, Math.min(1000, unlockAt - performance.now()))
 		);
 	}
-	emit({ step: 'unlock', state: 'done', dir: '·', text: 'Door unlocked' });
+	emit({ step: 'unlock', state: 'done', dir: '·', text: translate('Door unlocked') });
 	if (result.logged)
-		emit({ step: 'log', state: 'done', dir: '<', text: 'Entry recorded under your name' });
-	else emit({ step: 'log', state: 'failed', dir: '<', text: 'Not logged' });
+		emit({
+			step: 'log',
+			state: 'done',
+			dir: '<',
+			text: translate('Entry recorded under your name')
+		});
+	else emit({ step: 'log', state: 'failed', dir: '<', text: translate('Not logged') });
 	return { latencyMs: result.latency_ms, logged: result.logged };
 }
 
@@ -700,7 +725,7 @@ export async function sendDoorCommand(command: string) {
 	if (error)
 		throw new Error(
 			error.code === '23514'
-				? 'Commands available here: status, show, reboot, help.'
+				? translate('Commands available here: status, show, reboot, help.')
 				: error.message
 		);
 }
@@ -788,10 +813,15 @@ export async function forceOpenDoor(onEvent: (event: ForceOpenEvent) => void = (
 		});
 		const sentAt = performance.now();
 		const sent = await channel.send(command);
-		if (sent !== 'ok') fail('send', `The command could not be sent (${sent}).`);
-		emit({ step: 'send', state: 'done', dir: '·', text: 'Command on the wire' });
+		if (sent !== 'ok') fail('send', translate('The command could not be sent ({sent}).', { sent }));
+		emit({ step: 'send', state: 'done', dir: '·', text: translate('Command on the wire') });
 
-		emit({ step: 'ack', state: 'active', dir: '·', text: 'Waiting for the door to confirm' });
+		emit({
+			step: 'ack',
+			state: 'active',
+			dir: '·',
+			text: translate('Waiting for the door to confirm')
+		});
 		let copies = 1;
 		const resend = setInterval(() => {
 			copies++;
@@ -800,14 +830,14 @@ export async function forceOpenDoor(onEvent: (event: ForceOpenEvent) => void = (
 				step: 'ack',
 				state: 'active',
 				dir: '>',
-				text: `No answer yet, resending (copy ${copies})`
+				text: translate('No answer yet, resending (copy {copies})', { copies })
 			});
 		}, COMMAND_RESEND_MS);
 		let ack: { receivedAt: number; delayMs: number };
 		try {
 			ack = await withTimeout(
 				confirmed,
-				'The door did not answer, so nothing was unlocked. It may be offline.'
+				translate('The door did not answer, so nothing was unlocked. It may be offline.')
 			).catch((e: Error) => fail('ack', e.message));
 		} finally {
 			clearInterval(resend);
@@ -827,15 +857,22 @@ export async function forceOpenDoor(onEvent: (event: ForceOpenEvent) => void = (
 			step: 'unlock',
 			state: 'active',
 			dir: '·',
-			text: ack.delayMs ? 'Warning tone playing at the door' : 'Door unlocking'
+			text: ack.delayMs
+				? translate('Warning tone playing at the door')
+				: translate('Door unlocking')
 		});
 		for (let left = Math.ceil((unlockAt - performance.now()) / 1000); left > 0; left--) {
-			emit({ step: 'unlock', state: 'active', dir: '·', text: `Unlocking in ${left} s` });
+			emit({
+				step: 'unlock',
+				state: 'active',
+				dir: '·',
+				text: translate('Unlocking in {left} s', { left })
+			});
 			await new Promise((resolve) =>
 				setTimeout(resolve, Math.min(1000, unlockAt - performance.now()))
 			);
 		}
-		emit({ step: 'unlock', state: 'done', dir: '·', text: 'Door unlocked' });
+		emit({ step: 'unlock', state: 'done', dir: '·', text: translate('Door unlocked') });
 
 		// The door has opened; a failure to log must not read as a failure to open.
 		emit({ step: 'log', state: 'active', dir: '>', text: 'rpc log_web_open' });
@@ -846,14 +883,19 @@ export async function forceOpenDoor(onEvent: (event: ForceOpenEvent) => void = (
 			latency_ms: latencyMs
 		});
 		if (error) {
-			emit({ step: 'log', state: 'failed', dir: '<', text: `Not logged: ${error.message}` });
+			emit({
+				step: 'log',
+				state: 'failed',
+				dir: '<',
+				text: translate('Not logged: {error}', { error: error.message })
+			});
 			return { latencyMs, logged: false };
 		}
 		emit({
 			step: 'log',
 			state: 'done',
 			dir: '<',
-			text: 'Entry recorded under your name',
+			text: translate('Entry recorded under your name'),
 			latencyMs: Math.round(performance.now() - t)
 		});
 		return { latencyMs, logged: true };
@@ -923,7 +965,7 @@ export async function writeCardViaDoor(
 				clearTimeout(timer);
 				signal.removeEventListener('abort', done);
 				wake = () => {};
-				if (signal.aborted) reject(new Error(WRITE_FAILURES.cancelled));
+				if (signal.aborted) reject(new Error(translate(WRITE_FAILURES.cancelled)));
 				else if (inbox.length) resolve(inbox.shift()!);
 				else reject(new Error(message));
 			};
@@ -936,7 +978,7 @@ export async function writeCardViaDoor(
 	try {
 		await joinDoorChannel(channel, topic, emit, since);
 		// Cancelled while joining: never arm the door.
-		if (signal.aborted) throw new Error(WRITE_FAILURES.cancelled);
+		if (signal.aborted) throw new Error(translate(WRITE_FAILURES.cancelled));
 
 		const command = {
 			type: 'broadcast' as const,
@@ -950,7 +992,7 @@ export async function writeCardViaDoor(
 			text: `broadcast ${token ? 'write_card' : 'scan_card'} id=${id.slice(0, 8)}`
 		});
 		const sent = await channel.send(command);
-		if (sent !== 'ok') fail('door', `The command could not be sent (${sent}).`);
+		if (sent !== 'ok') fail('door', translate('The command could not be sent ({sent}).', { sent }));
 
 		// The door answers every copy and arms itself once, so repeating until it speaks is harmless.
 		let copies = 1;
@@ -961,14 +1003,14 @@ export async function writeCardViaDoor(
 				step: 'door',
 				state: 'active',
 				dir: '>',
-				text: `No answer yet, resending (copy ${copies})`
+				text: translate('No answer yet, resending (copy {copies})', { copies })
 			});
 		}, COMMAND_RESEND_MS);
 		let first: (typeof inbox)[number];
 		try {
 			first = await next(
 				COMMAND_TIMEOUT_MS,
-				'The door did not answer, so nothing was written. It may be offline.'
+				translate('The door did not answer, so nothing was written. It may be offline.')
 			).catch((e: Error) => fail('door', e.message));
 		} finally {
 			clearInterval(resend);
@@ -980,33 +1022,45 @@ export async function writeCardViaDoor(
 			// The door gives up on its own at its timeout; allow a little for the last message to arrive.
 			const { state, timeoutMs, serial } = await next(
 				(first.timeoutMs || 60_000) + COMMAND_TIMEOUT_MS,
-				'The door stopped answering.'
+				translate('The door stopped answering.')
 			).catch((e: Error) => fail(announced ? 'tag' : 'door', e.message));
 			if (state === 'ready' || state === 'wrong_tag') {
 				if (!announced) {
 					announced = true;
-					emit({ step: 'door', state: 'done', dir: '<', text: 'Door is in writer mode' });
-					emit({ step: 'tag', state: 'active', dir: '·', text: 'Waiting for the tag' });
+					emit({
+						step: 'door',
+						state: 'done',
+						dir: '<',
+						text: translate('Door is in writer mode')
+					});
+					emit({ step: 'tag', state: 'active', dir: '·', text: translate('Waiting for the tag') });
 				} else if (state === 'wrong_tag') {
 					emit({ step: 'tag', state: 'active', dir: '<', text: 'A different tag was presented' });
 				}
 				onState(state, timeoutMs);
 			} else if (state === 'writing') {
-				emit({ step: 'tag', state: 'done', dir: '<', text: 'Tag detected' });
-				emit({ step: 'write', state: 'active', dir: '·', text: 'Writing and verifying the tag' });
+				emit({ step: 'tag', state: 'done', dir: '<', text: translate('Tag detected') });
+				emit({
+					step: 'write',
+					state: 'active',
+					dir: '·',
+					text: translate('Writing and verifying the tag')
+				});
 				onState('writing', timeoutMs);
 			} else if (state === 'done') {
-				emit({ step: 'tag', state: 'done', dir: '<', text: 'Tag detected' });
+				emit({ step: 'tag', state: 'done', dir: '<', text: translate('Tag detected') });
 				emit({
 					step: 'write',
 					state: 'done',
 					dir: '<',
-					text: token ? 'Written and read back' : `Tag ${serial}`
+					text: token ? translate('Written and read back') : translate('Tag {serial}', { serial })
 				});
 				onState('done', timeoutMs);
 				return { serial };
 			} else {
-				const message = WRITE_FAILURES[state] ?? `The door reported "${state}".`;
+				const message = WRITE_FAILURES[state]
+					? translate(WRITE_FAILURES[state])
+					: translate('The door reported “{state}”.', { state });
 				onState('failed', timeoutMs);
 				fail(announced ? (state === 'failed' ? 'write' : 'tag') : 'door', message);
 			}
@@ -1060,5 +1114,5 @@ export async function saveAnswers(userId: string, a: OnboardingAnswers) {
 	if (error) throw error;
 	// Row-level security hides rows from an update instead of failing it, so an empty result means
 	// the database did not let this user change them.
-	if (!data?.length) throw new Error('Not allowed to edit this profile.');
+	if (!data?.length) throw new Error(translate('Not allowed to edit this profile.'));
 }

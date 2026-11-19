@@ -13,6 +13,7 @@
 	import { ask, toast } from '#lib/notify.svelte.ts';
 	import ScaredPerson from '#lib/ScaredPerson.svelte';
 	import Breadcrumb from '#lib/ui/Breadcrumb.svelte';
+	import { t } from '#lib/i18n.svelte.ts';
 
 	// Opened by `make release`. The hash in the link comes from the terminal that uploaded the build,
 	// and an approval only goes through for exactly that hash on exactly this release. Members land
@@ -48,7 +49,7 @@
 			await run();
 			toast.success(done);
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'That did not work.');
+			toast.error(e instanceof Error ? e.message : t('That did not work.'));
 		}
 		busy = false;
 	};
@@ -58,14 +59,17 @@
 		const yes =
 			someoneElses ||
 			(await ask({
-				title: 'Install this firmware?',
-				message: `This code will run on the door. Only approve it if you know what changed and the uploader confirms this hash: ${expected}`,
-				confirmLabel: 'Approve'
+				title: t('Install this firmware?'),
+				message: t(
+					'This code will run on the door. Only approve it if you know what changed and the uploader confirms this hash: {hash}',
+					{ hash: expected }
+				),
+				confirmLabel: t('Approve')
 			}));
 		if (yes)
 			await act(
 				() => approveFirmware(id, expected, someoneElses ? typed : undefined),
-				'Approved. The door will fetch it now.'
+				t('Approved. The door will fetch it now.')
 			);
 	};
 </script>
@@ -77,35 +81,38 @@
 	</div>
 {/snippet}
 
-<svelte:head><title>Approve firmware</title></svelte:head>
+<svelte:head><title>{t('Approve firmware')}</title></svelte:head>
 
 <div class="stagger flex max-w-2xl flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
 	{#if isAdmin}
-		<Breadcrumb crumbs={[{ label: 'Firmware', href: '/os/firmware' }, { label: 'Approve' }]} />
+		<Breadcrumb
+			crumbs={[{ label: t('Firmware'), href: '/os/firmware' }, { label: t('Approve') }]}
+		/>
 	{/if}
-	<h1 class="text-2xl">Approve firmware</h1>
+	<h1 class="text-2xl">{t('Approve firmware')}</h1>
 
 	{#if !isAdmin}
 		<div class="panel flex flex-col gap-3 p-4">
 			<p role="status">
-				Your build is uploaded. Contact an admin to approve it; the door will not install it until
-				they do. Approval has to happen within 24 hours.
+				{t(
+					'Your build is uploaded. Contact an admin to approve it; the door will not install it until they do. Approval has to happen within 24 hours.'
+				)}
 			</p>
 			<div class="flex flex-col gap-1 border-t pt-3">
-				<span class="eyebrow">Send them this link</span>
+				<span class="eyebrow">{t('Send them this link')}</span>
 				<p class="font-mono text-xs break-all select-all">{page.url.href}</p>
 			</div>
 		</div>
 	{:else if !rows?.items}
 		<Loading />
 	{:else if !release}
-		<p role="alert">This release does not exist.</p>
+		<p role="alert">{t('This release does not exist.')}</p>
 	{:else}
 		<dl class="panel">
-			{@render fact('Version', release.version)}
-			{@render fact('Uploaded by', uploader ?? 'unknown')}
+			{@render fact(t('Version'), release.version)}
+			{@render fact(t('Uploaded by'), uploader ?? t('unknown'))}
 			{@render fact(
-				'Build',
+				t('Build'),
 				`${Math.round(release.size / 1024)} KB, ${formatDate(new Date(release.createdAt))}`
 			)}
 			<div class="row flex-col items-start gap-1 sm:flex-row sm:items-baseline sm:gap-6">
@@ -113,8 +120,9 @@
 				<dd class="flex min-w-0 flex-1 flex-col gap-1.5">
 					<span class="font-mono text-xs break-all select-all">{release.sha256}</span>
 					<span class="text-xs text-gray-400">
-						Compare this hash with the one printed in the uploader's terminal. If someone else
-						uploaded it, confirm the hash with them directly.
+						{t(
+							"Compare this hash with the one printed in the uploader's terminal. If someone else uploaded it, confirm the hash with them directly."
+						)}
 					</span>
 				</dd>
 			</div>
@@ -122,17 +130,25 @@
 
 		{#if release.version.endsWith('-dirty')}
 			<p class="text-red-400" role="alert">
-				This label says the build has uncommitted changes, so its code may not be in the repository.
+				{t(
+					'This label says the build has uncommitted changes, so its code may not be in the repository.'
+				)}
 			</p>
 		{/if}
 
 		{#if !matches}
 			<p class="text-red-400" role="alert">
-				This link does not carry the hash of this release, so it cannot be approved. Use the link
-				opened by <code class="font-mono">make release</code>.
+				{t(
+					'This link does not carry the hash of this release, so it cannot be approved. Use the link opened by'
+				)}
+				<code class="font-mono">make release</code>.
 			</p>
 		{:else if release.status !== 'pending'}
-			<p role="status">No longer waiting for approval ({release.doorState ?? release.status}).</p>
+			<p role="status">
+				{t('No longer waiting for approval ({state}).', {
+					state: release.doorState ?? release.status
+				})}
+			</p>
 		{:else}
 			{#if someoneElses}
 				<section
@@ -140,18 +156,22 @@
 					role="alert"
 				>
 					<ScaredPerson />
-					<h2 class="text-xl text-red-400">You do not know what is in this binary.</h2>
+					<h2 class="text-xl text-red-400">{t('You do not know what is in this binary.')}</h2>
 					<p>
-						{uploader ?? 'Someone else'} uploaded it, not you. Once approved it runs on the door and can
-						do anything the door can do, including letting anyone in. A label and a hash cannot tell you
-						what the code does.
+						{t(
+							'{who} uploaded it, not you. Once approved it runs on the door and can do anything the door can do, including letting anyone in. A label and a hash cannot tell you what the code does.',
+							{ who: uploader ?? t('Someone else') }
+						)}
 					</p>
 					<p class="font-bold">
-						You may want to check the code yourself before approving. If you cannot vouch for it,
-						reject it.
+						{t(
+							'You may want to check the code yourself before approving. If you cannot vouch for it, reject it.'
+						)}
 					</p>
 					<label class="flex flex-col gap-1.5 border-t !border-red-500/40 pt-3">
-						<span>To approve anyway, type <strong class="font-mono">{ACKNOWLEDGEMENT}</strong></span
+						<span
+							>{t('To approve anyway, type')}
+							<strong class="font-mono">{ACKNOWLEDGEMENT}</strong></span
 						>
 						<input
 							bind:value={typed}
@@ -169,13 +189,13 @@
 					type="button"
 					class="key flex-1 sm:flex-none"
 					disabled={busy}
-					onclick={() => act(() => rejectFirmware(id), 'Rejected.')}>Reject</button
+					onclick={() => act(() => rejectFirmware(id), t('Rejected.'))}>{t('Reject')}</button
 				>
 				<button
 					type="button"
 					class="key key-signal flex-1 sm:flex-none"
 					disabled={busy || (someoneElses && typed !== ACKNOWLEDGEMENT)}
-					onclick={approve}>Approve</button
+					onclick={approve}>{t('Approve')}</button
 				>
 			</div>
 		{/if}

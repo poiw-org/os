@@ -6,7 +6,9 @@
 	import { formatDate, shortId } from '#lib/format.ts';
 	import { liveRows } from '#lib/live.svelte.ts';
 	import { arrive } from '#lib/motion.ts';
-	import { keyStatus } from '#lib/status.ts';
+	import { keyStatus, needsKey } from '#lib/status.ts';
+	import { t } from '#lib/i18n.svelte.ts';
+	import KeyInvite from '#lib/ui/KeyInvite.svelte';
 	import Loading from '#lib/loading.svelte';
 	import KeyStatusBadge from '#lib/ui/KeyStatusBadge.svelte';
 	import V1Badge from '#lib/ui/V1Badge.svelte';
@@ -31,14 +33,14 @@
 </script>
 
 <svelte:head>
-	<title>My keys</title>
+	<title>{t('My keys')}</title>
 </svelte:head>
 
 <div class="stagger flex max-w-4xl flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
 	<div class="flex flex-col gap-1">
-		<h1 class="text-xl font-bold">My keys</h1>
+		<h1 class="text-xl font-bold">{t('My keys')}</h1>
 		<p class="text-gray-400">
-			You can disable a key you no longer trust. Only an admin can enable it again.
+			{t('You can disable a key you no longer trust. Only an admin can enable it again.')}
 		</p>
 	</div>
 
@@ -47,6 +49,7 @@
 	{:else if !keys.items}
 		<Loading />
 	{:else}
+		{#if needsKey(keys.items, userId, new Date(now))}<KeyInvite />{/if}
 		<div class="panel">
 			{#each keys.items as key, at (key.id)}
 				<a href={keyPath(key.id)} in:arrive={{ index: at }} class="row">
@@ -59,13 +62,13 @@
 					</span>
 					<span class="flex shrink-0 items-center gap-4">
 						<span class="hidden text-xs text-gray-400 md:inline"
-							>until {formatDate(key.expiresAt).split(',')[0]}</span
+							>{t('until {date}', { date: formatDate(key.expiresAt).split(',')[0] })}</span
 						>
 						<KeyStatusBadge status={keyStatus(key, new Date(now))} />
 					</span>
 				</a>
 			{:else}
-				<span class="block p-8 text-gray-400">You have no keys yet.</span>
+				<span class="block p-8 text-gray-400">{t('You have no keys yet.')}</span>
 			{/each}
 		</div>
 	{/if}

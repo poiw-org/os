@@ -10,6 +10,7 @@
 	import { formatDate, formatDateTime, shortId, withName } from '#lib/format.ts';
 	import { liveRows, watchTable } from '#lib/live.svelte.ts';
 	import { ask, toast } from '#lib/notify.svelte.ts';
+	import { t } from '#lib/i18n.svelte.ts';
 	import { EntryType, type UnidentifiedTag, type UserOption } from '#lib/types.ts';
 	import Breadcrumb from '#lib/ui/Breadcrumb.svelte';
 	import UserPicker from '#lib/ui/UserPicker.svelte';
@@ -62,14 +63,17 @@
 		const accepted = await ask(
 			userId
 				? {
-						title: 'Attach this tag?',
-						message: `Its door entries will be shown as ${who}'s. This does not give the tag access to the door.`,
-						confirmLabel: 'Attach tag'
+						title: t('Attach this tag?'),
+						message: t(
+							'Its door entries will be shown under {who}. This does not give the tag access to the door.',
+							{ who: who ?? '' }
+						),
+						confirmLabel: t('Attach tag')
 					}
 				: {
-						title: 'Detach this tag?',
-						message: 'It will be listed as unidentified again.',
-						confirmLabel: 'Detach'
+						title: t('Detach this tag?'),
+						message: t('It will be listed as unidentified again.'),
+						confirmLabel: t('Detach')
 					}
 		);
 		if (!accepted) return;
@@ -78,9 +82,9 @@
 			await attachUnidentifiedTag(tag.id, userId);
 			tag = { ...tag, userId, attachedAt: userId ? new Date() : null };
 			chosen = undefined;
-			toast.success(userId ? `Tag attached to ${who}.` : 'Tag detached.');
+			toast.success(userId ? t('Tag attached to {who}.', { who: who ?? '' }) : t('Tag detached.'));
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Could not attach the tag.');
+			toast.error(e instanceof Error ? e.message : t('Could not attach the tag.'));
 		} finally {
 			busy = false;
 		}
@@ -88,30 +92,33 @@
 
 	const claims = $derived(tag.claims);
 	const facts = $derived<[string, string][]>([
-		['Tag S/N (read)', tag.serialNumber ?? '-'],
-		['Key id (jti)', claims?.jti || '-'],
-		['Issued to (sub)', claims?.sub ? (nameOf(claims.sub) ?? claims.sub) : '-'],
-		['Issued for S/N (aud)', claims?.aud || '-'],
-		['Issued at (iat)', claims?.iat ? formatDate(new Date(claims.iat * 1000)) : '-'],
-		['Valid not before (nbf)', claims?.nbf ? formatDate(new Date(claims.nbf * 1000)) : '-'],
-		['Expires at (exp)', claims?.exp ? formatDate(new Date(claims.exp * 1000)) : '-'],
-		['Signature', claims ? (claims.verified ? 'Valid' : 'Did not verify') : 'No key on the tag'],
-		['First seen', formatDateTime(tag.firstSeen)],
-		['Last seen', formatDateTime(tag.lastSeen)],
-		['Times used', String(tag.sightings)],
-		['Last outcome', tag.lastReason ?? 'Opened']
+		[t('Tag S/N (read)'), tag.serialNumber ?? '-'],
+		[t('Key id (jti)'), claims?.jti || '-'],
+		[t('Issued to (sub)'), claims?.sub ? (nameOf(claims.sub) ?? claims.sub) : '-'],
+		[t('Issued for S/N (aud)'), claims?.aud || '-'],
+		[t('Issued at (iat)'), claims?.iat ? formatDate(new Date(claims.iat * 1000)) : '-'],
+		[t('Valid not before (nbf)'), claims?.nbf ? formatDate(new Date(claims.nbf * 1000)) : '-'],
+		[t('Expires at (exp)'), claims?.exp ? formatDate(new Date(claims.exp * 1000)) : '-'],
+		[
+			t('Signature'),
+			claims ? (claims.verified ? t('Valid') : t('Did not verify')) : t('No key on the tag')
+		],
+		[t('First seen'), formatDateTime(tag.firstSeen)],
+		[t('Last seen'), formatDateTime(tag.lastSeen)],
+		[t('Times used'), String(tag.sightings)],
+		[t('Last outcome'), tag.lastReason ? t(tag.lastReason) : t('Opened')]
 	]);
 </script>
 
-<Breadcrumb crumbs={[{ label: 'Users', href: '/os' }, { label: shortId(tag.id) }]} />
+<Breadcrumb crumbs={[{ label: t('Users'), href: '/os' }, { label: shortId(tag.id) }]} />
 
 <div class="flex flex-wrap items-center gap-3">
 	<span class="font-mono text-xl font-bold" title={tag.id}>{shortId(tag.id)}</span>
 	{#if tag.userId}
-		<span class="text-xs text-green-500">attached</span>
+		<span class="text-xs text-green-500">{t('attached')}</span>
 	{:else}
 		<span class="flex items-center gap-1.5 text-xs text-red-500"
-			><span class="lamp lamp-red"></span>unidentified tag</span
+			><span class="lamp lamp-red"></span>{t('unidentified tag')}</span
 		>
 	{/if}
 </div>
@@ -119,35 +126,43 @@
 {#if tag.userId}
 	<div class="panel flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
 		<span
-			>Belongs to <a href={userPath(tag.userId)} class="font-bold underline underline-offset-4"
+			>{t('Belongs to')}
+			<a href={userPath(tag.userId)} class="font-bold underline underline-offset-4"
 				>{nameOf(tag.userId) ?? tag.userId}</a
 			>{#if tag.attachedAt}<span class="text-gray-400">
-					· since {formatDate(tag.attachedAt)}</span
+					· {t('since {date}', { date: formatDate(tag.attachedAt) })}</span
 				>{/if}</span
 		>
-		<button type="button" class="btn" disabled={busy} onclick={() => attach(null)}>Detach</button>
+		<button type="button" class="btn" disabled={busy} onclick={() => attach(null)}
+			>{t('Detach')}</button
+		>
 	</div>
 {:else}
-	<div class="panel flex flex-col gap-3 overflow-visible border-red-500/60 bg-red-500/5 px-4 py-3 text-sm">
+	<div
+		class="panel flex flex-col gap-3 overflow-visible border-red-500/60 bg-red-500/5 px-4 py-3 text-sm"
+	>
 		<p>
-			No key accounts for this tag: its key was deleted, its token did not verify, or it carries
-			none. Attach it to the person it belongs to.
+			{t(
+				'No key accounts for this tag: its key was deleted, its token did not verify, or it carries none. Attach it to the person it belongs to.'
+			)}
 			{#if claims?.sub && nameOf(claims.sub)}
-				Its token names <b>{nameOf(claims.sub)}</b>{claims.verified ? '' : ' (unverified)'}.
+				{t('Its token names')} <b>{nameOf(claims.sub)}</b>{claims.verified
+					? ''
+					: ` (${t('unverified')})`}.
 			{/if}
 		</p>
 		<div class="flex flex-col gap-2 sm:flex-row sm:items-start">
 			<div class="min-w-0 flex-1"><UserPicker users={people} bind:value={chosen} /></div>
 			{#if claims?.sub && nameOf(claims.sub) && !chosen}
 				<button type="button" class="btn" disabled={busy} onclick={() => attach(claims.sub)}
-					>Attach to {nameOf(claims.sub)}</button
+					>{t('Attach to {who}', { who: nameOf(claims.sub) ?? '' })}</button
 				>
 			{/if}
 			<button
 				type="button"
 				class="btn"
 				disabled={!chosen || busy}
-				onclick={() => chosen && attach(chosen.value)}>Attach</button
+				onclick={() => chosen && attach(chosen.value)}>{t('Attach')}</button
 			>
 		</div>
 	</div>
@@ -164,7 +179,7 @@
 
 {#if entries.items}
 	<div class="flex flex-col gap-2">
-		<h2 class="font-bold">Log</h2>
+		<h2 class="font-bold">{t('Log')}</h2>
 		<div class="panel">
 			{#each entries.items as entry (entry.id)}
 				<div class="row">
@@ -174,11 +189,11 @@
 						<span class="tabular-nums">{formatDateTime(entry.timestamp)}</span></span
 					>
 					<span class="text-xs text-gray-400"
-						>{entry.type == EntryType.SUCCESSFUL ? 'Opened' : (entry.reason ?? 'Denied')}</span
+						>{entry.type == EntryType.SUCCESSFUL ? t('Opened') : t(entry.reason ?? 'Denied')}</span
 					>
 				</div>
 			{:else}
-				<span class="block p-8 text-gray-400">No entries yet.</span>
+				<span class="block p-8 text-gray-400">{t('No entries yet.')}</span>
 			{/each}
 		</div>
 	</div>

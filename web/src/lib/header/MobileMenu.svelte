@@ -7,6 +7,7 @@
 	import type { CurrentUser } from '#lib/types.ts';
 	import Avatar from '#lib/ui/Avatar.svelte';
 	import IssueKeyMenu from '#lib/ui/IssueKeyMenu.svelte';
+	import { t } from '#lib/i18n.svelte.ts';
 
 	// The phone header: one "Menu" word that unfolds a sheet from under the bar. The sheet carries
 	// the same actions as the desktop header and leaves the way it came: back up under the bar.
@@ -170,14 +171,14 @@
 	aria-haspopup="dialog"
 	aria-expanded={mounted}
 	aria-controls="mobile-menu"
-	class="btn w-[4.75rem]">Menu</button
+	class="btn w-[4.75rem]">{t('Menu')}</button
 >
 
 {#if mounted}
 	<dialog
 		bind:this={dialog}
 		id="mobile-menu"
-		aria-label="Menu"
+		aria-label={t('Menu')}
 		oncancel={(e) => {
 			e.preventDefault();
 			close();
@@ -206,8 +207,8 @@
 				<button
 					type="button"
 					onclick={() => (shown ? close() : open())}
-					aria-label={shown ? 'Close menu' : 'Open menu'}
-					class="btn w-[4.75rem]">{shown ? 'Close' : 'Menu'}</button
+					aria-label={shown ? t('Close menu') : t('Open menu')}
+					class="btn w-[4.75rem]">{shown ? t('Close') : t('Menu')}</button
 				>
 			</span>
 		</div>
@@ -228,27 +229,27 @@
 					<span class="truncate font-mono font-bold">{user.nickname}</span>
 					<span class="truncate text-gray-400">{withName(user)}</span>
 				</span>
-				<span class="shrink-0 text-gray-400">Settings</span>
+				<span class="shrink-0 text-gray-400">{t('Settings')}</span>
 			</button>
 
 			{#if user}
 				<div class="grid grid-cols-2 gap-2 border-t px-4 py-4">
 					{#if user.canUnlock}
 						<button type="button" onclick={() => handOff(onunlock)} class="btn py-3 text-sm"
-							>Remote unlock</button
+							>{t('Remote unlock')}</button
 						>
 					{/if}
 					{#if user.isAdmin}
 						<IssueKeyMenu trigger="btn btn-primary py-3 text-sm" inline onnavigate={close} />
 						<a href={resolve('/os/firmware')} onclick={close} class="btn py-3 text-center text-sm"
-							>Firmware</a
+							>{t('Firmware')}</a
 						>
 						<a href={resolve('/os/oauth')} onclick={close} class="btn py-3 text-center text-sm"
-							>Apps</a
+							>{t('Apps')}</a
 						>
 					{/if}
 					<a href={resolve('/os/keys')} onclick={close} class="btn py-3 text-center text-sm"
-						>My keys</a
+						>{t('My keys')}</a
 					>
 				</div>
 			{/if}

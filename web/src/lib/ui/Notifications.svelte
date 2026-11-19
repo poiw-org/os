@@ -2,6 +2,7 @@
 	import { flip } from 'svelte/animate';
 	import { fly } from 'svelte/transition';
 	import { confirmation, toast, toasts, type ToastTone } from '#lib/notify.svelte.ts';
+	import { t } from '#lib/i18n.svelte.ts';
 
 	const reduced = () =>
 		typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -44,7 +45,7 @@
 			<button
 				type="button"
 				onclick={() => toast.dismiss(item.id)}
-				class="text-xs text-gray-400 hover:text-ink">Dismiss</button
+				class="text-xs text-gray-400 hover:text-ink">{t('Dismiss')}</button
 			>
 		</div>
 	{/each}
@@ -65,7 +66,7 @@
 			</div>
 			<span class="flex justify-end gap-2">
 				<button type="button" onclick={() => answer(false)} class="btn"
-					>{question.cancelLabel ?? 'Cancel'}</button
+					>{question.cancelLabel ?? t('Cancel')}</button
 				>
 				<!-- svelte-ignore a11y_autofocus -->
 				<button
@@ -73,7 +74,7 @@
 					autofocus
 					onclick={() => answer(true)}
 					class="btn {question.tone === 'danger' ? 'tone-red' : 'btn-primary'}"
-					>{question.confirmLabel ?? 'Confirm'}</button
+					>{question.confirmLabel ?? t('Confirm')}</button
 				>
 			</span>
 		</div>

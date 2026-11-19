@@ -34,6 +34,7 @@
 	import V1Badge from '#lib/ui/V1Badge.svelte';
 	import VirtualBadge from '#lib/ui/VirtualBadge.svelte';
 	import IssueKeyMenu from '#lib/ui/IssueKeyMenu.svelte';
+	import { t, tn } from '#lib/i18n.svelte.ts';
 
 	const userId = page.params.id ?? '';
 
@@ -78,7 +79,7 @@
 	});
 	// Names for the people behind the changes.
 	let people = $state.raw(new Map<string, string>());
-	const actorName = (id: string) => people.get(id) ?? 'Unknown user';
+	const actorName = (id: string) => people.get(id) ?? t('Unknown user');
 
 	let now = $state(Date.now());
 	$effect(() => {
@@ -107,13 +108,13 @@
 
 	let resetting = $state(false);
 	const resetFactors = async () => {
-		if (!confirm('Remove all of this user’s passkeys and authenticator apps?')) return;
+		if (!confirm(t('Remove all of this user’s passkeys and authenticator apps?'))) return;
 		resetting = true;
 		try {
 			const { removed } = await resetSecondFactors(userId);
-			toast.success(`Removed ${removed} sign-in factors.`);
+			toast.success(tn(removed, 'Removed {n} sign-in factor.', 'Removed {n} sign-in factors.'));
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Could not reset the factors.');
+			toast.error(e instanceof Error ? e.message : t('Could not reset the factors.'));
 		}
 		resetting = false;
 	};
@@ -124,9 +125,12 @@
 		event.preventDefault();
 		if (!user) return;
 		const accepted = await ask({
-			title: 'Change email?',
-			message: `${withName(user)} will sign in with ${newEmail.trim()} from now on. It takes effect immediately, with no confirmation email.`,
-			confirmLabel: 'Change email'
+			title: t('Change email?'),
+			message: t(
+				'{who} will sign in with {email} from now on. It takes effect immediately, with no confirmation email.',
+				{ who: withName(user), email: newEmail.trim() }
+			),
+			confirmLabel: t('Change email')
 		});
 		if (!accepted) return;
 		changingEmail = true;
@@ -134,9 +138,9 @@
 			const { email } = await changeUserEmail(user.id, newEmail);
 			user = { ...user, email };
 			newEmail = '';
-			toast.success('Email changed.');
+			toast.success(t('Email changed.'));
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Could not change the email.');
+			toast.error(e instanceof Error ? e.message : t('Could not change the email.'));
 		}
 		changingEmail = false;
 	};
@@ -149,9 +153,9 @@
 			await saveAnswers(userId, draft);
 			answers = { ...draft };
 			user = { ...user, fullName: `${draft.firstName} ${draft.lastName}`.trim() };
-			toast.success('Answers saved.');
+			toast.success(t('Answers saved.'));
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Could not save the answers.');
+			toast.error(e instanceof Error ? e.message : t('Could not save the answers.'));
 		}
 		savingAnswers = false;
 	};
@@ -170,9 +174,9 @@
 			[user, admin] = userId
 				? await Promise.all([getUser(userId), isAdmin(userId)])
 				: [undefined, false];
-			if (!user) loadError = 'User not found.';
+			if (!user) loadError = t('User not found.');
 		} catch (e) {
-			loadError = e instanceof Error ? e.message : 'Could not load the user.';
+			loadError = e instanceof Error ? e.message : t('Could not load the user.');
 		}
 	});
 
@@ -181,15 +185,21 @@
 		const accepted = await ask(
 			admin
 				? {
-						title: 'Remove admin?',
-						message: `${withName(user)} will no longer manage users, keys or the door. Their own keys keep working.`,
-						confirmLabel: 'Remove admin',
+						title: t('Remove admin?'),
+						message: t(
+							'{who} will no longer manage users, keys or the door. Their own keys keep working.',
+							{ who: withName(user) }
+						),
+						confirmLabel: t('Remove admin'),
 						tone: 'danger'
 					}
 				: {
-						title: 'Make admin?',
-						message: `${withName(user)} will be able to manage every user, key and the door, including other admins.`,
-						confirmLabel: 'Make admin'
+						title: t('Make admin?'),
+						message: t(
+							'{who} will be able to manage every user, key and the door, including other admins.',
+							{ who: withName(user) }
+						),
+						confirmLabel: t('Make admin')
 					}
 		);
 		if (!accepted) return;
@@ -198,10 +208,12 @@
 			await setAdmin(user.id, !admin);
 			admin = !admin;
 			toast.success(
-				admin ? `${withName(user)} is now an admin.` : `${withName(user)} is no longer an admin.`
+				admin
+					? t('{who} is now an admin.', { who: withName(user) })
+					: t('{who} is no longer an admin.', { who: withName(user) })
 			);
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Could not change the role.');
+			toast.error(e instanceof Error ? e.message : t('Could not change the role.'));
 		} finally {
 			changingRole = false;
 		}
@@ -209,7 +221,7 @@
 </script>
 
 <svelte:head>
-	<title>{user ? user.fullName || user.email : 'User'}</title>
+	<title>{user ? user.fullName || user.email : t('User')}</title>
 </svelte:head>
 
 <div class="stagger flex flex-col gap-8 px-4 py-6 md:px-8 md:py-10 lg:flex-row lg:items-start">
@@ -220,7 +232,7 @@
 	{:else}
 		<div class="relative z-10 flex max-w-4xl min-w-0 flex-1 flex-col gap-6">
 			<Breadcrumb
-				crumbs={[{ label: 'Users', href: '/os' }, { label: user.fullName || user.email }]}
+				crumbs={[{ label: t('Users'), href: '/os' }, { label: user.fullName || user.email }]}
 			/>
 
 			<div class="flex flex-wrap items-center justify-between gap-4">
@@ -230,19 +242,19 @@
 						<span class="text-xl font-bold break-all">{user.fullName || user.email}</span>
 						{#if user.fullName}<span class="break-all text-gray-400">{user.email}</span>{/if}
 						<span class="text-gray-400"
-							>{#if admin}<span class="text-ink">admin</span> ·
-							{/if}{keys.items.length} key{keys.items.length === 1 ? '' : 's'}{#if user.blocked}
-								· <span class="text-red-500">blocked</span>{/if}</span
+							>{#if admin}<span class="text-ink">{t('admin')}</span> ·
+							{/if}{tn(keys.items.length, '{n} key', '{n} keys')}{#if user.blocked}
+								· <span class="text-red-500">{t('blocked')}</span>{/if}</span
 						>
 					</span>
 				</span>
 				<span class="flex flex-wrap gap-2">
 					{#if !self}
 						<button class="btn" onclick={toggleAdmin} disabled={changingRole}
-							>{admin ? 'Remove admin' : 'Make admin'}</button
+							>{admin ? t('Remove admin') : t('Make admin')}</button
 						>
 					{/if}
-					<button class="btn" onclick={resetFactors} disabled={resetting}>Reset 2FA</button>
+					<button class="btn" onclick={resetFactors} disabled={resetting}>{t('Reset 2FA')}</button>
 					{#if !user.blocked}
 						<IssueKeyMenu trigger="btn btn-primary" user={user.id} align="right" />
 					{/if}
@@ -251,10 +263,10 @@
 
 			{#if !self}
 				<div class="flex flex-col gap-2">
-					<h2 class="font-bold">Email</h2>
+					<h2 class="font-bold">{t('Email')}</h2>
 					<form onsubmit={changeEmail} class="panel flex flex-wrap items-end gap-2 p-4">
 						<label class="flex min-w-0 flex-1 basis-64 flex-col gap-1.5">
-							<span class="eyebrow">New email</span>
+							<span class="eyebrow">{t('New email')}</span>
 							<input
 								required
 								type="email"
@@ -269,50 +281,50 @@
 							class="btn btn-primary"
 							disabled={changingEmail || !newEmail.trim()}
 						>
-							{changingEmail ? 'Changing…' : 'Change email'}
+							{changingEmail ? t('Changing…') : t('Change email')}
 						</button>
 					</form>
 				</div>
 			{/if}
 
 			<div class="flex flex-col gap-2">
-				<h2 class="font-bold">Questionnaire</h2>
+				<h2 class="font-bold">{t('Questionnaire')}</h2>
 				{#if draft}
 					<form onsubmit={saveDraft} class="panel grid gap-4 p-4 sm:grid-cols-2">
 						<label class="flex flex-col gap-1.5">
-							<span class="eyebrow">First name</span>
+							<span class="eyebrow">{t('First name')}</span>
 							<input required bind:value={draft.firstName} class="px-3 py-2" />
 						</label>
 						<label class="flex flex-col gap-1.5">
-							<span class="eyebrow">Last name</span>
+							<span class="eyebrow">{t('Last name')}</span>
 							<input required bind:value={draft.lastName} class="px-3 py-2" />
 						</label>
 						<label class="flex flex-col gap-1.5">
-							<span class="eyebrow">Studies</span>
+							<span class="eyebrow">{t('Studies')}</span>
 							<select bind:value={draft.studies} class="px-3 py-2">
-								<option value={true}>Yes</option>
-								<option value={false}>No</option>
+								<option value={true}>{t('Yes')}</option>
+								<option value={false}>{t('No')}</option>
 							</select>
 						</label>
 						{#if draft.studies}
 							<label class="flex flex-col gap-1.5">
-								<span class="eyebrow">Department</span>
+								<span class="eyebrow">{t('Department')}</span>
 								<input required bind:value={draft.department} class="px-3 py-2" />
 							</label>
 						{/if}
 						<label class="flex flex-col gap-1.5">
-							<span class="eyebrow">How they found the lab</span>
+							<span class="eyebrow">{t('How they found the lab')}</span>
 							<select bind:value={draft.referralSource} class="px-3 py-2">
 								{#each REFERRALS as [value, text] (value)}
-									<option {value}>{text}</option>
+									<option {value}>{t(text)}</option>
 								{/each}
 							</select>
 						</label>
 						<label class="flex flex-col gap-1.5">
-							<span class="eyebrow">Familiar with DIY equipment</span>
+							<span class="eyebrow">{t('Familiar with DIY equipment')}</span>
 							<select bind:value={draft.diyFamiliar} class="px-3 py-2">
-								<option value={true}>Yes</option>
-								<option value={false}>No</option>
+								<option value={true}>{t('Yes')}</option>
+								<option value={false}>{t('No')}</option>
 							</select>
 						</label>
 						<div class="flex gap-2 sm:col-span-2">
@@ -321,26 +333,28 @@
 								class="btn btn-primary"
 								disabled={!answersChanged || savingAnswers}
 							>
-								{savingAnswers ? 'Saving…' : 'Save answers'}
+								{savingAnswers ? t('Saving…') : t('Save answers')}
 							</button>
 							{#if answersChanged}
 								<button
 									type="button"
 									class="btn"
-									onclick={() => answers && (draft = { ...answers })}>Reset</button
+									onclick={() => answers && (draft = { ...answers })}>{t('Reset')}</button
 								>
 							{/if}
 						</div>
 					</form>
 				{:else if answers === null}
 					<div class="panel">
-						<span class="block p-8 text-gray-400">Has not completed the questionnaire yet.</span>
+						<span class="block p-8 text-gray-400"
+							>{t('Has not completed the questionnaire yet.')}</span
+						>
 					</div>
 				{/if}
 			</div>
 
 			<div class="flex flex-col gap-2">
-				<h2 class="font-bold">Keys</h2>
+				<h2 class="font-bold">{t('Keys')}</h2>
 				<div class="panel">
 					{#each keys.items as key, at (key.id)}
 						<a href={keyPath(key.id)} in:arrive={{ index: at }} class="row">
@@ -353,13 +367,13 @@
 							</span>
 							<span class="flex shrink-0 items-center gap-4">
 								<span class="hidden text-xs text-gray-400 md:inline"
-									>until {formatDate(key.expiresAt).split(',')[0]}</span
+									>{t('until {date}', { date: formatDate(key.expiresAt).split(',')[0] })}</span
 								>
 								<KeyStatusBadge status={keyStatus(key, new Date(now))} />
 							</span>
 						</a>
 					{:else}
-						<span class="block p-8 text-gray-400">This user has no keys yet.</span>
+						<span class="block p-8 text-gray-400">{t('This user has no keys yet.')}</span>
 					{/each}
 				</div>
 			</div>
@@ -368,9 +382,13 @@
 		<aside class="w-full lg:sticky lg:top-6 lg:w-80 lg:shrink-0 xl:w-96">
 			<div class="panel flex flex-col lg:max-h-[calc(100vh-6rem)]">
 				<div class="flex items-center justify-between border-b px-4 py-2.5">
-					<h2 class="eyebrow">Timeline</h2>
+					<h2 class="eyebrow">{t('Timeline')}</h2>
 					<span class="eyebrow"
-						>{(activity.items?.length ?? 0) + (entries.items?.length ?? 0)} events</span
+						>{tn(
+							(activity.items?.length ?? 0) + (entries.items?.length ?? 0),
+							'{n} event',
+							'{n} events'
+						)}</span
 					>
 				</div>
 				<div class="overflow-y-auto p-4">
