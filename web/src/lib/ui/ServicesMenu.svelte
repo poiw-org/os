@@ -31,7 +31,7 @@
 				<a href="https://print.poiw.org" onclick={close}>
 					{@render row(
 						t('3D print lab'),
-						t("Get something printed on the lab's 3D printer."),
+						t("Upload a file to the lab's 3D printer and watch it print."),
 						true
 					)}
 				</a>
@@ -79,6 +79,7 @@
 	.list a > span {
 		font-size: 0.8125rem;
 		line-height: 1.35;
+		text-wrap: pretty;
 		color: var(--c-mute);
 	}
 </style>

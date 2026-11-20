@@ -29,7 +29,8 @@ export const landing: Record<string, string> = {
 	'See your door keys, and disable one if you lose it.':
 		'Δες τα κλειδιά σου για την πόρτα και απενεργοποίησε όποιο χάσεις.',
 	'3D print lab': 'Εργαστήριο 3D εκτύπωσης',
-	"Get something printed on the lab's 3D printer.": 'Τύπωσε κάτι στον 3D εκτυπωτή του εργαστηρίου.',
+	"Upload a file to the lab's 3D printer and watch it print.":
+		'Ανέβασε ένα αρχείο στον 3D εκτυπωτή του εργαστηρίου και παρακολούθησε την εκτύπωση.',
 
 	// About
 	Introduction: 'Εισαγωγή',
