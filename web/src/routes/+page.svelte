@@ -3,6 +3,7 @@
 	import PrinterViewer from '#lib/PrinterViewer.svelte';
 	import Brand from '#lib/ui/Brand.svelte';
 	import LocaleSwitch from '#lib/ui/LocaleSwitch.svelte';
+	import ServicesMenu from '#lib/ui/ServicesMenu.svelte';
 	import { getLocale, t } from '#lib/i18n.svelte.ts';
 	import type { PageProps } from './$types';
 
@@ -98,7 +99,7 @@
 <svelte:window onscroll={() => (scrolled = scrollY > 160)} />
 
 <div lang={getLocale()} class="console">
-	<header class="bar" class:full={scrolled}>
+	<header class="bar tight" class:full={scrolled}>
 		<a
 			href={resolve('/')}
 			class="label brand-cell"
@@ -108,6 +109,7 @@
 		{#each nav as [text, hash] (hash)}
 			<a href={hash} class="label hide-sm">{t(text)}</a>
 		{/each}
+		<ServicesMenu />
 		<div class="grow"></div>
 		<a href="https://github.com/poiw-org" class="label hide-sm">GitHub</a>
 		<LocaleSwitch />
@@ -115,7 +117,8 @@
 			{data.user ? 'OS' : t('Sign in')}
 		</a>
 		{#if !data.user}
-			<div class="key-cell">
+			<!-- Not on a phone: the bar has no room left, and the hero shows the same button. -->
+			<div class="key-cell hide-sm">
 				<a href={resolve('/onboarding')} class="key key-signal">{t('Become a member')}</a>
 			</div>
 		{/if}

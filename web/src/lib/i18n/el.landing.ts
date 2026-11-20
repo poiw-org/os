@@ -23,6 +23,14 @@ export const landing: Record<string, string> = {
 	'Under the po/iw umbrella we run projects and events that spread the culture of free and open source software and hardware.':
 		'Κάτω από την ομπρέλα του po/iw γίνονται projects και εκδηλώσεις που διαδίδουν την κουλτούρα του ανοιχτού και ελεύθερου λογισμικού και υλισμικού.',
 
+	// Online services menu
+	'Online services': 'Online υπηρεσίες',
+	'Lab key management': 'Διαχείριση κλειδιών εργαστηρίου',
+	'See your door keys, and disable one if you lose it.':
+		'Δες τα κλειδιά σου για την πόρτα και απενεργοποίησε όποιο χάσεις.',
+	'3D print lab': 'Εργαστήριο 3D εκτύπωσης',
+	"Get something printed on the lab's 3D printer.": 'Τύπωσε κάτι στον 3D εκτυπωτή του εργαστηρίου.',
+
 	// About
 	Introduction: 'Εισαγωγή',
 	'po/iw (from the Greek ποιώ, “I make”) grew out of a need among students at the Hellenic Mediterranean University for a place to work together and build projects of all kinds, mostly open source software and hardware.':

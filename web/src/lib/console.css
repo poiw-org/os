@@ -105,7 +105,8 @@
 	border-right-width: 1px;
 	box-shadow: inset 1px 0 0 var(--c-edge);
 }
-.console .bar a:hover {
+.console .bar a:hover,
+.console .bar > :has(> button.label):hover {
 	background: var(--c-chassis);
 }
 .console .bar .grow {
@@ -334,6 +335,10 @@
 	}
 	.console .bar .hide-sm {
 		display: none;
+	}
+	/* The homepage bar, once the brand cell slides in, needs every pixel on a narrow phone. */
+	.console .bar.tight > :not(.brand-cell, .grow, .key-cell) {
+		padding-inline: 0.75rem;
 	}
 	.console .strip {
 		grid-template-columns: minmax(0, 1fr);

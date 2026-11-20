@@ -15,8 +15,12 @@
 		children: Snippet<[() => void]>;
 		/** The list pushes the page down instead of floating over it (phone menu). */
 		inline?: boolean;
-		/** `bar` hangs from the right on wide screens and spans the top bar on phones. */
-		align?: 'left' | 'right' | 'bar';
+		/**
+		 * `bar` hangs from the right on wide screens and spans the top bar on phones. `nav` is for a
+		 * trigger among the bar's left-hand links: it hangs from the left, and on phones it pins under
+		 * the bar so a bar that scrolls sideways cannot clip it.
+		 */
+		align?: 'left' | 'right' | 'bar' | 'nav';
 	} = $props();
 
 	let open = $state(false);
@@ -38,7 +42,7 @@
 <span
 	bind:this={root}
 	class={inline ? 'contents' : 'relative inline-flex'}
-	class:bar-anchor={align === 'bar'}
+	class:bar-anchor={align === 'bar' || align === 'nav'}
 >
 	<button
 		bind:this={button}
@@ -66,7 +70,8 @@
 			class:stacked={inline}
 			class:floating={!inline}
 			class:end={align === 'right' || align === 'bar'}
-			class:across={align === 'bar'}
+			class:across={align === 'bar' || align === 'nav'}
+			class:pinned={align === 'nav'}
 		>
 			{@render children(close)}
 		</div>
@@ -119,6 +124,12 @@
 			width: auto;
 			max-width: none;
 			transform-origin: top center;
+		}
+		/* Fixed, not absolute: the landing bar scrolls sideways on a phone and would clip the list.
+		   The bar publishes its height as --bar-h. */
+		.floating.pinned {
+			position: fixed;
+			top: calc(var(--bar-h, 2.5rem) + 0.25rem);
 		}
 	}
 	@keyframes menu-in {
