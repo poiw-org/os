@@ -14,7 +14,7 @@ class Actuators {
 	static constexpr bool kSound = true;
 	void begin();
 	void service();
-	void grant();                // energise the relay and buzz for 5 s, the unlock phrase looping throughout
+	void grant();                // energise the relay for 5 s; green and the looping unlock phrase start 500 ms in
 	void deny();                 // denial phrase and the error LED
 	void forceOpen();            // attention tone for 3 s, then grant(); ignored while one is pending
 	// True once per force open whose countdown ended and whose relay was just energised.

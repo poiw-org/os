@@ -7,6 +7,9 @@ namespace {
 // Relay on time (the strike buzzes and the speaker loops the unlock phrase the whole time), the same
 // for every way of opening. Fixed, so a bug can never keep the relay energised.
 constexpr uint32_t kOpenMs = 5000;
+// The strike gets a head start on the green LED and the chime, so they never announce a door that is
+// not open yet. Both run for the rest of kOpenMs.
+constexpr uint32_t kLeadMs = 500;
 constexpr uint32_t kSuccessMs = Chimes::kUnlockPhraseMs;
 constexpr uint32_t kDenyLedMs = 3300;
 constexpr uint8_t kToneChannel = 0;
@@ -97,7 +100,7 @@ void Actuators::reading(bool on) { reading_ = on; }
 void Actuators::service() {
 	uint32_t ms = millis();
 	uint16_t hz = 0;
-	bool success = false, error = false, warning = false;
+	bool success = false, error = false, warning = false, dark = false;
 
 	if (previewing_) {
 		uint32_t t = ms - previewStart_;
@@ -134,8 +137,13 @@ void Actuators::service() {
 	if (doorOn_) {
 		if ((int32_t)(ms - doorUntil_) >= 0) doorOn_ = false;
 		uint32_t t = ms - eventStart_;
-		hz = Chimes::unlocked(t);
-		success = t < kSuccessMs;
+		if (t < kLeadMs) {
+			hz = 0;
+			dark = true;
+		} else {
+			hz = Chimes::unlocked(t - kLeadMs);
+			success = t - kLeadMs < kSuccessMs;
+		}
 	}
 	if (denying_) {
 		uint32_t t = ms - eventStart_;
@@ -150,7 +158,7 @@ void Actuators::service() {
 	// Red, green and blue are the ERROR, SUCCESS and BUSY LEDs. Events drive them at full duty; with
 	// nothing going on they daydream.
 	uint8_t duty[3] = {0, 0, 0};
-	if (error || success || reading_ || warning) {
+	if (error || success || reading_ || warning || dark) {
 		duty[0] = error ? 255 : 0;
 		duty[1] = success ? 255 : 0;
 		duty[2] = reading_ || warning ? 255 : 0;
