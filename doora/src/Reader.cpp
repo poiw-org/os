@@ -7,8 +7,16 @@ namespace {
 // The token's TLV needs 4 bytes of TLV header, 7 of record header and 3 of text record prefix.
 static_assert(kMaxTokenLen + 14 <= Reader::kAreaBytes, "tag area too small for a maximum-size token");
 
-// Pause between polls, so a tag resting on the reader does not keep the chip transmitting flat out.
-constexpr uint32_t kIdlePollMs = 5;
+// Pause between polls, so the chip is never kept transmitting flat out.
+constexpr uint32_t kIdlePollMs = 20;
+// Slower while a tag that was already handled (or ignored) rests on the reader: each poll selects it
+// again, and a card the door does not support has no reason to be woken 50 times a second.
+constexpr uint32_t kRestPollMs = 100;
+// After the chip had to be reset for failing polls, the next poll waits this long, doubling with
+// each reset in a row up to kMaxBackoffMs: something on the reader that keeps upsetting the chip
+// must not turn into a reset loop.
+constexpr uint32_t kBackoffMs = 500;
+constexpr uint32_t kMaxBackoffMs = 4000;
 // A tag must be gone this long before it can be read again.
 constexpr uint32_t kReleaseMs = 600;
 constexpr uint32_t kHealthEveryMs = 300000;
@@ -18,11 +26,6 @@ constexpr uint8_t kMaxErrors = 5;
 // A read that fails on the radio link (tag at the edge of the field, slid away) is retried this
 // many times before the tap is handed out without a token.
 constexpr uint8_t kMaxReadRetries = 2;
-// How long each poll lets a phone find the link tag. Tag reads wait at most this much longer.
-constexpr uint32_t kLinkWindowMs = 150;
-// After a phone read the link, it is not offered again for this long: a phone held to the reader
-// would otherwise open the link over and over.
-constexpr uint32_t kLinkQuietMs = 4000;
 // While the chip is down, how often the reader task wakes to check a write session's deadline.
 constexpr uint32_t kDownTickMs = 250;
 
@@ -137,6 +140,12 @@ bool fillClassic(void* ctx, size_t n) {
 	return true;
 }
 
+// The only targets the door talks to: NFC Forum Type 2 tags (SAK 0x00) and MIFARE Classic (SAK bit
+// 3) that are not ISO-DEP. Phones, bank cards, DESFire and the like (SAK bit 5, including Classic
+// emulations such as 0x28) are never sent a command beyond the poll that found them.
+bool isType2(uint8_t sak) { return sak == 0x00; }
+bool isClassic(uint8_t sak) { return (sak & 0x08) && !(sak & 0x20); }
+
 // Type 2 capability container (page 3): E1, version, size / 8, access.
 constexpr uint8_t kCcPage = 3;
 constexpr uint8_t kFirstDataPage = 4;
@@ -157,9 +166,7 @@ bool Reader::probe() {
 	return true;
 }
 
-void Reader::begin(uint8_t sda, uint8_t scl, const char* link) {
-	link_.ndefLen = *link ? ndefEncodeUri(link, strlen(link), link_.ndef, sizeof(link_.ndef)) : 0;
-	if (*link && !link_.ndefLen) LOG("Door link too long for the tag; phones will not see it.");
+void Reader::begin(uint8_t sda, uint8_t scl) {
 	sda_ = sda;
 	scl_ = scl;
 	lastCheckMs_ = lastReadyMs_ = millis();
@@ -177,7 +184,7 @@ void Reader::loop() {
 		if (ready_) {
 			lastReadyMs_ = millis();
 			poll();
-			vTaskDelay(pdMS_TO_TICKS(kIdlePollMs));
+			vTaskDelay(pdMS_TO_TICKS(present_ ? kRestPollMs : kIdlePollMs));
 			if (!ready_) nextProbeMs_ = millis() + kRetryEveryMs;
 		} else if ((int32_t)(millis() - nextProbeMs_) >= 0) {
 			ready_ = probe();
@@ -233,26 +240,31 @@ void Reader::poll() {
 		case Pn532::Detect::Error:
 			if (++errors_ >= kMaxErrors) {  // reset the bus and the chip before giving up on it
 				errors_ = 0;
-				LOG("PN532 failed %u polls in a row (last error %d: -1 bus, -2 timeout, -3 frame); resetting it.", (unsigned)kMaxErrors,
-				    pn_.lastError());
+				uint32_t wait = kBackoffMs << (resets_ < 3 ? resets_ : 3);
+				if (wait > kMaxBackoffMs) wait = kMaxBackoffMs;
+				resets_++;
+				LOG("PN532 failed %u polls in a row (last error %d: -1 bus, -2 timeout, -3 frame); resetting it, next poll in %lu ms.",
+				    (unsigned)kMaxErrors, pn_.lastError(), (unsigned long)wait);
 				ready_ = probe();
 				if (!ready_) LOG("PN532 stopped answering; retrying in the background.");
+				else hold(wait);
 			}
 			return;
 		case Pn532::Detect::None:
 			errors_ = 0;
+			resets_ = 0;
 			// retries_ is reset even when present_ is already false (a failed read clears it), so
 			// the next tag gets its own retries.
 			if (ms - lastSeenMs_ > kReleaseMs) {
 				present_ = false;
 				retries_ = 0;
 			}
-			offerLink(ms);
 			return;
 		case Pn532::Detect::Found:
 			break;
 	}
 	errors_ = 0;
+	resets_ = 0;
 	lastSeenMs_ = millis();
 	if (writeActive(writeState_.load(std::memory_order_acquire))) {
 		// loop() still holds a tag read before the session was armed, and its token points into
@@ -263,24 +275,15 @@ void Reader::poll() {
 		write(target);
 		return;
 	}
-	// An ISO-DEP target is a phone (its wallet answering) or a smart card: neither carries a key the
-	// door can read. A phone is answered with the link instead, and nothing is denied.
-	if (target.sak & 0x20) {
-		offerLink(ms);
-		return;
-	}
 	if (present_ || full_.load(std::memory_order_acquire)) return;  // already handled, or loop() is busy
 	present_ = true;
-	read(target);
-}
-
-void Reader::offerLink(uint32_t ms) {
-	if (!link_.ndefLen || writeActive(writeState_.load(std::memory_order_acquire))) return;
-	if ((int32_t)(ms - linkQuietUntilMs_) < 0) return;
-	if (pn_.emulate(link_, kLinkWindowMs)) {
-		linkQuietUntilMs_ = millis() + kLinkQuietMs;
-		LOG("A phone read the door link.");
+	// An ISO-DEP target is a phone (its wallet answering) or a smart card: neither carries a key the
+	// door can read. It is left alone and nothing is denied, so a phone in a pocket stays quiet.
+	if (target.sak & 0x20) {
+		LOG("Ignored an unsupported card (SAK %02x, uid %u bytes).", (unsigned)target.sak, (unsigned)target.uidLen);
+		return;
 	}
+	read(target);
 }
 
 void Reader::read(const Pn532::Target& target) {
@@ -290,7 +293,7 @@ void Reader::read(const Pn532::Target& target) {
 	slot_.uidLen = target.uidLen;
 	memcpy(slot_.uid, target.uid, target.uidLen);
 
-	NdefFill fill = target.sak == 0x00 ? fillType2 : (target.sak & 0x08) ? fillClassic : nullptr;
+	NdefFill fill = isType2(target.sak) ? fillType2 : isClassic(target.sak) ? fillClassic : nullptr;
 	Fetch fetch = {&pn_, &target, area_, 0, 4};
 	const uint8_t* token;
 	size_t len;
@@ -380,8 +383,8 @@ void Reader::write(const Pn532::Target& target) {
 }
 
 WriteState Reader::writeTo(const Pn532::Target& target) {
-	if (target.sak == 0x00) return writeType2(target);
-	if (target.sak & 0x08) return writeClassic(target);
+	if (isType2(target.sak)) return writeType2(target);
+	if (isClassic(target.sak)) return writeClassic(target);
 	return WriteState::Unsupported;
 }
 

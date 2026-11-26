@@ -8,8 +8,6 @@
 #include <stdint.h>
 #include "SoftI2c.h"
 
-struct T4tTag;
-
 class Pn532 {
  public:
 	struct Target {
@@ -40,16 +38,12 @@ class Pn532 {
 	// Same, but the chip passes `data` to the tag as is (InCommunicateThru), for tag commands it
 	// does not know, such as FAST_READ. A response may carry up to kMaxThroughData bytes.
 	int communicate(const uint8_t* data, size_t n, uint8_t* out, size_t cap);
-	// Acts as `tag` (a Type 4 tag) for a phone, waiting at most `windowMs` for one to tap, then
-	// answering its commands until it lets go. True when the phone read the whole NDEF file.
-	bool emulate(T4tTag& tag, uint32_t windowMs);
 	// A normal frame's LEN byte covers TFI, response code, status byte and data.
 	static constexpr size_t kMaxThroughData = 255 - 3;
 
  private:
 	int transceive(uint8_t code, bool withTarget, const uint8_t* data, size_t n, uint8_t* out, size_t cap);
 	uint32_t firmware();
-	void sendEcp();
 	bool configure();
 	int command(const uint8_t* payload, size_t n, uint8_t* resp, size_t cap, uint32_t timeoutMs);
 	bool writeFrame(const uint8_t* payload, size_t n);

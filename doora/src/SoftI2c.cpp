@@ -3,12 +3,13 @@
 #include <driver/gpio.h>
 
 namespace {
-// Bus timing, kept inside the PN532's 400 kHz (fast mode) limits. START, STOP and the low half of
-// each clock take kHalfUs (fast mode needs 1.3 us low); the high half of a data clock only needs
-// 0.6 us, so it takes kHighUs. The master waits for SCL to really rise before timing the high half,
-// so slow pull-ups stretch the clock instead of shortening it.
-constexpr uint32_t kHalfUs = 2;
-constexpr uint32_t kHighUs = 1;
+// Bus timing: standard mode (about 100 kHz), well inside the PN532's 400 kHz limit, for margin on
+// long wires and weak pull-ups; stability over speed. START, STOP and the low half of each clock
+// take kHalfUs (standard mode needs 4.7 us low), the high half of a data clock kHighUs (4.0 us).
+// The master waits for SCL to really rise before timing the high half, so slow pull-ups stretch
+// the clock instead of shortening it.
+constexpr uint32_t kHalfUs = 5;
+constexpr uint32_t kHighUs = 5;
 // Longest a slave may hold SCL low before the bus counts as stuck.
 constexpr uint32_t kStretchUs = 20000;
 

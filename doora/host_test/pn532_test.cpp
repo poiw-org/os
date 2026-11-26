@@ -91,6 +91,7 @@ void process() {
 			enqueue(0x15, {});
 			break;
 		case 0x32: enqueue(0x33, {}); break;
+		case 0x12: enqueue(0x13, {}); break;  // SetParameters
 		case 0x4A:
 			if (!chip.tagPresent) { enqueue(0x4B, {0}); break; }
 			chip.halted = false;
@@ -101,10 +102,7 @@ void process() {
 				enqueue(0x4B, d);
 			}
 			break;
-		case 0x08: enqueue(0x09, {}); break;  // WriteRegister
 		case 0x42:
-			if (!arg.empty() && arg[0] == 0x6A) { enqueue(0x43, {0x01}); break; }  // Apple ECP: nothing answers
-			[[fallthrough]];
 		case 0x40: {  // InDataExchange: arg = {tg, tag command...}; InCommunicateThru: {tag command...}  // InCommunicateThru: arg = {tag command...}
 			chip.exchanges++;
 			std::vector<uint8_t> t(arg.begin() + (cmd == 0x40 ? 1 : 0), arg.end());
@@ -584,7 +582,7 @@ static void testReader() {
 	      !memcmp(scanned, chip.uid.data(), 4));
 
 	// ISO-DEP targets (phones, smart cards) carry no readable key: not read, not handed out, so
-	// nothing is denied. With no link set, the chip is not asked to act as a tag either.
+	// nothing is denied.
 	chip.tagPresent = false;
 	reader.poll();
 	g_nowUs += 700000;
@@ -598,6 +596,23 @@ static void testReader() {
 	chip.tagPresent = true;
 	reader.poll();
 	CHECK(!reader.take() && chip.exchanges == 0);
+	// Nor is an ISO-DEP card that also emulates MIFARE Classic (SAK 0x28), not even to write it.
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
+	chip.sak = 0x28;
+	chip.tagPresent = true;
+	reader.poll();
+	CHECK(!reader.take() && chip.exchanges == 0);
+	chip.tagPresent = false;
+	reader.poll();
+	g_nowUs += 700000;
+	reader.poll();
+	CHECK(reader.arm("abc", 3, chip.uid.data(), (uint8_t)chip.uid.size(), 60000));
+	chip.tagPresent = true;
+	reader.poll();
+	CHECK(reader.writeState() == WriteState::Unsupported && chip.exchanges == 0);
 }
 
 static void resetChip() {
@@ -641,7 +656,8 @@ int main() {
 	CHECK(pn.communicate(fast60, sizeof(fast60), big, sizeof(big)) == 240 && !memcmp(big, chip.flat + 16, 240));
 	CHECK(pn.communicate(fast60, sizeof(fast60), big, 100) == Pn532::kErrFrame);  // does not fit the caller's buffer
 
-	// An ISO-DEP tag appends a long ATS after the UID; that must not look like a bus error.
+	// A chip that lost its parameters (automatic RATS back on) appends an ISO-DEP tag's ATS after
+	// the UID; that must not look like a bus error.
 	chip.ats.assign(40, 0x77);
 	chip.sak = 0x20;
 	CHECK(pn.detect(t) == Pn532::Detect::Found && t.sak == 0x20);

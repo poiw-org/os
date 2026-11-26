@@ -2,7 +2,6 @@
 #include <Arduino.h>
 #include <string.h>
 #include "Pn532Frame.h"
-#include "T4t.h"
 
 namespace {
 constexpr uint8_t kAddr = 0x24;  // 7-bit; the datasheet's 0x48 / 0x49 include the R/W bit
@@ -10,13 +9,10 @@ constexpr uint8_t kAddr = 0x24;  // 7-bit; the datasheet's 0x48 / 0x49 include t
 constexpr uint8_t kCmdFirmware = 0x02;
 constexpr uint8_t kCmdRfConfig = 0x32;
 constexpr uint8_t kCmdSam = 0x14;
+constexpr uint8_t kCmdSetParams = 0x12;
 constexpr uint8_t kCmdListTarget = 0x4A;
 constexpr uint8_t kCmdExchange = 0x40;
 constexpr uint8_t kCmdThrough = 0x42;
-constexpr uint8_t kCmdWriteReg = 0x08;
-constexpr uint8_t kCmdTgInit = 0x8C;
-constexpr uint8_t kCmdTgGetData = 0x86;
-constexpr uint8_t kCmdTgSetData = 0x8E;
 
 constexpr uint32_t kAckMs = 50;
 constexpr uint32_t kConfigMs = 50;
@@ -27,18 +23,8 @@ constexpr uint32_t kExchangeMs = 100;
 constexpr uint32_t kSpinUs = 1500;
 // Activation attempts per detect(): 0xFF would mean "forever".
 constexpr uint8_t kDetectRetries = 2;
-// Large enough for TgSetData with a full READ BINARY answer (command code, data, status word).
+// Largest command frame the door sends (a Classic block write is 20 bytes).
 constexpr size_t kMaxPayload = 64;
-static_assert(kMaxPayload >= 1 + kT4tMaxRead + 2, "frame too small for a Type 4 read");
-// While emulating a tag: how long the phone may take to send its next command, and how many it
-// may send in one session (a full read is about six).
-constexpr uint32_t kTargetMs = 250;
-// Apple's Enhanced Contactless Polling frame (ECP 1, "VAS only"), sent before every poll. Without
-// it an iPhone takes the door for a payment terminal and brings up Apple Pay; with it the iPhone
-// stays quiet and still reads the door's link tag. Nothing answers it, so it is not waited for.
-constexpr uint8_t kEcp[] = {0x6A, 0x01, 0x00, 0x00, 0x02};
-constexpr uint32_t kEcpMs = 5;
-constexpr int kMaxApdus = 16;
 // abort() reads out at most this many leftover frames; a command leaves two (ACK and response).
 constexpr int kMaxQueuedFrames = 4;
 constexpr int kBeginAttempts = 3;
@@ -179,26 +165,20 @@ bool Pn532::configure() {
 	const uint8_t sam[] = {kCmdSam, 0x01, 0x14, 0x00};  // normal mode, IRQ pin unused
 	// Item 5, MaxRetries: ATR 0xFF and PSL 0x01 are the defaults; the last byte bounds detect().
 	const uint8_t retries[] = {kCmdRfConfig, 0x05, 0xFF, 0x01, kDetectRetries};
+	// Every flag off, automatic RATS above all: the door never speaks ISO-DEP (phones, bank cards,
+	// academic IDs), and a card that asks for a long start-up time in its ATS kept detect() past
+	// kDetectMs, so every poll timed out and the chip was reset over and over. Without RATS such a
+	// card is just a UID and a SAK, found as fast as a tag.
+	const uint8_t params[] = {kCmdSetParams, 0x00};
 	return command(sam, sizeof(sam), r, sizeof(r), kConfigMs) >= 0 &&
-	       command(retries, sizeof(retries), r, sizeof(r), kConfigMs) >= 0;
-}
-
-void Pn532::sendEcp() {
-	// 106 kbps type A with CRC on both ways (InListPassiveTarget and target mode change these), and
-	// whole bytes: the frame goes out as a normal type A frame with its CRC_A.
-	const uint8_t regs[] = {kCmdWriteReg, 0x63, 0x02, 0x80, 0x63, 0x03, 0x80, 0x63, 0x3D, 0x00};
-	uint8_t r[4];
-	if (command(regs, sizeof(regs), r, sizeof(r), kConfigMs) < 0) return;
-	uint8_t cmd[1 + sizeof(kEcp)] = {kCmdThrough};
-	memcpy(cmd + 1, kEcp, sizeof(kEcp));
-	command(cmd, sizeof(cmd), r, sizeof(r), kEcpMs);  // no answer comes: the chip is aborted after kEcpMs
+	       command(retries, sizeof(retries), r, sizeof(r), kConfigMs) >= 0 &&
+	       command(params, sizeof(params), r, sizeof(r), kConfigMs) >= 0;
 }
 
 Pn532::Detect Pn532::detect(Target& out) {
-	sendEcp();
 	const uint8_t cmd[] = {kCmdListTarget, 0x01, 0x00};  // one target, 106 kbps type A
-	// ISO-DEP tags (phones, DESFire, emulators) append their ATS after the UID, up to a full normal
-	// frame: an answer that does not fit would read as a bus error and keep resetting the chip.
+	// With automatic RATS off no ATS follows the UID, but a chip that lost its parameters would append
+	// one, up to a full normal frame: an answer that does not fit would read as a bus error.
 	uint8_t r[kMaxThroughData + 1];
 	int n = command(cmd, sizeof(cmd), r, sizeof(r), kDetectMs);
 	lastError_ = n;
@@ -233,24 +213,4 @@ int Pn532::transceive(uint8_t code, bool withTarget, const uint8_t* data, size_t
 	if (out[0] & 0x3F) return kErrTag;  // status byte: low 6 bits are the error code
 	memmove(out, out + 1, (size_t)got - 1);
 	return got - 1;
-}
-
-bool Pn532::emulate(T4tTag& tag, uint32_t windowMs) {
-	// PICC only, passive only: SENS_RES 04 00, NFCID1 (the chip fixes its first byte), SEL_RES 0x20
-	// (ISO-DEP, so the chip answers RATS itself); FeliCa parameters, NFCID3, Gt and Tk left empty.
-	uint8_t init[38] = {kCmdTgInit, 0x05, 0x04, 0x00, 0xD0, 0x02, 0x0A, 0x20};
-	uint8_t r[kMaxThroughData + 1];
-	// Times out (and is aborted) when no phone activates the tag within the window: not an error.
-	if (command(init, sizeof(init), r, sizeof(r), windowMs) < 0) return false;
-	tag.begin();
-	uint8_t resp[kMaxPayload];
-	resp[0] = kCmdTgSetData;
-	for (int i = 0; i < kMaxApdus; i++) {
-		const uint8_t get[] = {kCmdTgGetData};
-		int n = command(get, sizeof(get), r, sizeof(r), kTargetMs);
-		if (n < 1 || (r[0] & 0x3F)) break;  // the phone released the tag or left the field
-		size_t m = t4tRespond(tag, r + 1, (size_t)n - 1, resp + 1, sizeof(resp) - 1);
-		if (command(resp, m + 1, r, sizeof(r), kTargetMs) < 1 || (r[0] & 0x3F)) break;
-	}
-	return tag.served;
 }

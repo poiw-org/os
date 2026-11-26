@@ -13,7 +13,6 @@
 #include <stdint.h>
 #include "Jwt.h"
 #include "Pn532.h"
-#include "T4t.h"
 #include "WriteState.h"
 
 struct TagRead {
@@ -31,9 +30,7 @@ class Reader {
 
 	// Probes the PN532 and starts the reader task. The door keeps running without the chip: the
 	// task re-probes on its own, so other unlock methods are never blocked by the NFC hardware.
-	// Between polls the chip also acts as a Type 4 tag holding `link` (a URL without "https://"),
-	// so a phone that taps the reader opens it; empty means no tag.
-	void begin(uint8_t sda, uint8_t scl, const char* link = "");
+	void begin(uint8_t sda, uint8_t scl);
 	// A tag that was not on the reader before, or nullptr. Valid until release().
 	const TagRead* take() const { return full_.load(std::memory_order_acquire) ? &slot_ : nullptr; }
 	void release() { full_.store(false, std::memory_order_release); }
@@ -57,10 +54,7 @@ class Reader {
 	void printStatus() const;
 	// Keeps the reader off the bus for `ms`: the denial chord plays right after a tap and a wedge
 	// followed it, so the chip is left alone while it sounds.
-	void holdOff(uint32_t ms) {
-		holdUntilMs_.store(millis() + ms, std::memory_order_release);
-		holding_.store(true, std::memory_order_release);
-	}
+	void holdOff(uint32_t ms) { hold(ms); }
 
  private:
 	static void run(void* self);
@@ -81,18 +75,19 @@ class Reader {
 	// Quiets the session so loop() may rewrite the job; false while a write is in progress.
 	bool quiet();
 
-	// Lets a phone read the link, if one is set and no phone just read it.
-	void offerLink(uint32_t ms);
+	void hold(uint32_t ms) {
+		holdUntilMs_.store(millis() + ms, std::memory_order_release);
+		holding_.store(true, std::memory_order_release);
+	}
 
 	Pn532 pn_;
-	T4tTag link_;
-	uint32_t linkQuietUntilMs_ = 0;
 	TagRead slot_;
 	std::atomic<bool> full_{false};
 	volatile bool ready_ = false;
 	volatile uint32_t lastReadyMs_ = 0;  // last time the reader task saw the chip working
 	uint8_t sda_ = 0, scl_ = 0;
 	uint8_t errors_ = 0;
+	uint8_t resets_ = 0;  // chip resets in a row for failing polls (reader task only)
 	bool present_ = false;  // a tag that was already handed out is still on the reader (reader task only)
 	std::atomic<uint32_t> holdUntilMs_{0};
 	std::atomic<bool> holding_{false};
